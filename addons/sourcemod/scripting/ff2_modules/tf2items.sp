@@ -1,6 +1,7 @@
 #define FF2_TF2ITEMS
 
-#define WEAPON_CONFIG	"data/freak_fortress_2/weapons.cfg"
+#define MAX_CLASSNAME_LENGTH	36
+#define WEAPON_CONFIG		"data/freak_fortress_2/weapons.cfg"
 
 static KeyValues WeaponKV;
 
@@ -23,6 +24,31 @@ void TF2Items_Setup()
 	WeaponKV = null;
 }
 
+void TF2Items_EquipBoss(int client, int boss)
+{
+	TF2_RemoveAllWeapons(client);
+	BossKV[boss].Rewind();
+	BossKV[boss].GotoFirstSubKey();
+	do
+	{
+		static char classname[MAX_CLASSNAME_LENGTH];
+		if(!BossKV[boss].GetSectionName(classname, sizeof(classname))
+			continue;
+
+		if(StrContains(attrib, "tf_"))
+		{
+			if(StrContains(attrib, "weapon") && StrContains(attrib, "wearable"))
+				continue;
+
+			BossKV[boss].GetString("name", classname, sizeof(classname));
+		}
+
+		static char attrib[256];
+		BossKV[boss].GetString("attributes", attrib, sizeof(attrib));
+		
+	} while(BossKV[boss].GotoNextKey());
+}
+
 public Action TF2Items_OnGiveNamedItem(int client, char[] classname, int index, Handle &item)
 {
 	if(!Enabled || WeaponKV==null)
@@ -36,7 +62,7 @@ public Action TF2Items_OnGiveNamedItem(int client, char[] classname, int index, 
 		if(!WeaponKv.GetSectionName(attrib, sizeof(attrib))
 			continue;
 
-		static char names[8][36];
+		static char names[8][MAX_CLASSNAME_LENGTH];
 		int num = ExplodeString(attrib, " ; ", names, sizeof(names), sizeof(names[]));
 		bool mode;
 		for(int i; i<num; i++)
