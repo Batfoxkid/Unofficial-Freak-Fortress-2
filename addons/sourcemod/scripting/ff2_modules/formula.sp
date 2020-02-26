@@ -10,7 +10,7 @@ enum Operators
 	Operator_Exponent
 };
 
-stock int Operate(ArrayList sumArray, int &bracket, float value, ArrayList _operator)
+static int Operate(ArrayList sumArray, int &bracket, float value, ArrayList _operator)
 {
 	float sum = sumArray.Get(bracket);
 	switch(_operator.Get(bracket))
@@ -49,7 +49,7 @@ stock int Operate(ArrayList sumArray, int &bracket, float value, ArrayList _oper
 	_operator.Set(bracket, Operator_None);
 }
 
-stock void OperateString(ArrayList sumArray, int &bracket, char[] value, int size, ArrayList _operator)
+static void OperateString(ArrayList sumArray, int &bracket, char[] value, int size, ArrayList _operator)
 {
 	if(!value[0])  //Make sure 'value' isn't blank
 		return;
@@ -58,7 +58,7 @@ stock void OperateString(ArrayList sumArray, int &bracket, char[] value, int siz
 	strcopy(value, size, "");
 }
 
-stock float ParseFormula(int boss, const char[] key, const char[] defaultFormula)
+float ParseFormula(int boss, const char[] key, const char[] defaultFormula)
 {
 	static char formula[1024], bossName[64];
 	KvRewind(BossKV[boss]);
