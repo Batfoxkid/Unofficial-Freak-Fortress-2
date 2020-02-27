@@ -1,3 +1,8 @@
+/*
+	Requirement:
+	bosses.sp
+*/
+
 #define FF2_TARGETFILTER
 
 void TargetFilter_Setup()

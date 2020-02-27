@@ -1,3 +1,8 @@
+/*
+	Requirement:
+	bosses.sp
+*/
+
 #define FF2_FORMULA
 
 enum Operators
@@ -58,7 +63,7 @@ static void OperateString(ArrayList sumArray, int &bracket, char[] value, int si
 	strcopy(value, size, "");
 }
 
-float ParseFormula(int boss, const char[] key, const char[] defaultFormula)
+stock float ParseFormula(int boss, const char[] key, const char[] defaultFormula)
 {
 	static char formula[1024], bossName[64];
 	KvRewind(BossKV[boss]);

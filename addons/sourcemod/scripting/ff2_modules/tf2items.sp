@@ -1,54 +1,38 @@
+/*
+	Optional:
+	weapons.sp
+*/
+
+#if !defined _tf2items_included
+  #endinput
+#endif
+
 #define FF2_TF2ITEMS
 
-#define MAX_CLASSNAME_LENGTH	36
-#define WEAPON_CONFIG		"data/freak_fortress_2/weapons.cfg"
+bool TF2Items;
 
-static KeyValues WeaponKV;
+void TF2Items_Pre()
+{
+	MarkNativeAsOptional("TF2Items_CreateItem");
+	MarkNativeAsOptional("TF2Items_GetAttributeId");
+	MarkNativeAsOptional("TF2Items_GetAttributeValue");
+	MarkNativeAsOptional("TF2Items_GetNumAttributes");
+	MarkNativeAsOptional("TF2Items_GiveNamedItem");
+	MarkNativeAsOptional("TF2Items_SetAttribute");
+	MarkNativeAsOptional("TF2Items_SetClassname");
+	MarkNativeAsOptional("TF2Items_SetFlags");
+	MarkNativeAsOptional("TF2Items_SetItemIndex");
+	MarkNativeAsOptional("TF2Items_SetLevel");
+	MarkNativeAsOptional("TF2Items_SetNumAttributes");
+	MarkNativeAsOptional("TF2Items_SetQuality");
+}
 
 void TF2Items_Setup()
 {
-	char config[PLATFORM_MAX_PATH];
-	BuildPath(Path_SM, config, sizeof(config), WEAPON_CONFIG);
-	if(!FileExists(config))
-	{
-		LogError2("[Weapons] Could not find '%s'!", WEAPON_CONFIG);
-		WeaponKV = null;
-		return;
-	}
-
-	WeaponKV = CreateKeyValues("Weapons");
-	if(WeaponKV.ImportFromFile(config))
-		return;
-
-	LogError2("[Weapons] '%s' is improperly formatted!", WEAPON_CONFIG);
-	WeaponKV = null;
+	TF2Items = LibraryExists("TF2Items");
 }
 
-void TF2Items_EquipBoss(int client, int boss)
-{
-	TF2_RemoveAllWeapons(client);
-	BossKV[boss].Rewind();
-	BossKV[boss].GotoFirstSubKey();
-	do
-	{
-		static char classname[MAX_CLASSNAME_LENGTH];
-		if(!BossKV[boss].GetSectionName(classname, sizeof(classname))
-			continue;
-
-		if(StrContains(attrib, "tf_"))
-		{
-			if(StrContains(attrib, "weapon") && StrContains(attrib, "wearable"))
-				continue;
-
-			BossKV[boss].GetString("name", classname, sizeof(classname));
-		}
-
-		static char attrib[256];
-		BossKV[boss].GetString("attributes", attrib, sizeof(attrib));
-		
-	} while(BossKV[boss].GotoNextKey());
-}
-
+#if defined FF2_WEAPONS
 public Action TF2Items_OnGiveNamedItem(int client, char[] classname, int index, Handle &item)
 {
 	if(!Enabled || WeaponKV==null)
@@ -192,4 +176,79 @@ static Handle PrepareItemHandle(Handle item, char[] name="", int index=-1, const
 	}
 	TF2Items_SetFlags(weapon, flags);
 	return weapon;
+}
+#endif
+
+stock int TF2Items_SpawnWeapon(int client, char[] name, int index, int level, int qual, const char[] att)
+{
+	if(StrEqual(name, "saxxy"))
+	{ 
+		switch(TF2_GetPlayerClass(client))
+		{
+			case TFClass_Scout:	strcopy(name, 64, "tf_weapon_bat");
+			case TFClass_Pyro:	strcopy(name, 64, "tf_weapon_fireaxe");
+			case TFClass_DemoMan:	strcopy(name, 64, "tf_weapon_bottle");
+			case TFClass_Heavy:	strcopy(name, 64, "tf_weapon_fists");
+			case TFClass_Engineer:	strcopy(name, 64, "tf_weapon_wrench");
+			case TFClass_Medic:	strcopy(name, 64, "tf_weapon_bonesaw");
+			case TFClass_Sniper:	strcopy(name, 64, "tf_weapon_club");
+			case TFClass_Spy:	strcopy(name, 64, "tf_weapon_knife");
+			default:		strcopy(name, 64, "tf_weapon_shovel");
+		}
+	}
+	else if(StrEqual(name, "tf_weapon_shotgun"))
+	{
+		switch(TF2_GetPlayerClass(client))
+		{
+			case TFClass_Pyro:	strcopy(name, 64, "tf_weapon_shotgun_pyro");
+			case TFClass_Heavy:	strcopy(name, 64, "tf_weapon_shotgun_hwg");
+			case TFClass_Engineer:	strcopy(name, 64, "tf_weapon_shotgun_primary");
+			default:		strcopy(name, 64, "tf_weapon_shotgun_soldier");
+		}
+	}
+
+	Handle weapon = TF2Items_CreateItem(OVERRIDE_ALL|FORCE_GENERATION);
+	if(weapon == INVALID_HANDLE)
+		return -1;
+
+	TF2Items_SetClassname(weapon, name);
+	TF2Items_SetItemIndex(weapon, index);
+	TF2Items_SetLevel(weapon, level);
+	TF2Items_SetQuality(weapon, qual);
+	char atts[32][32];
+	int count = ExplodeString(att, ";", atts, 32, 32);
+
+	if(count % 2)
+		--count;
+
+	if(count > 0)
+	{
+		TF2Items_SetNumAttributes(weapon, count/2);
+		int i2;
+		for(int i; i<count; i+=2)
+		{
+			int attrib = StringToInt(atts[i]);
+			if(!attrib)
+			{
+				LogError2("[Boss] Bad weapon attribute passed: %s ; %s", atts[i], atts[i+1]);
+				delete weapon;
+				return -1;
+			}
+
+			TF2Items_SetAttribute(weapon, i2, attrib, StringToFloat(atts[i+1]));
+			i2++;
+		}
+	}
+	else
+	{
+		TF2Items_SetNumAttributes(weapon, 0);
+	}
+
+	int entity = TF2Items_GiveNamedItem(client, weapon);
+	delete weapon;
+	if(entity == -1)
+		return -1;
+
+	EquipPlayerWeapon(client, entity);
+	return entity;
 }
