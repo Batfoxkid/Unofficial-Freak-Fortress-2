@@ -100,18 +100,31 @@ Handle OnLoseLife;
 Handle OnAlivePlayersChanged;
 Handle OnBackstabbed;
 
-#tryinclude "ff2_modules/tf2attributes.sp"
+// First-Load (No module dependencies)
 #tryinclude "ff2_modules/tf2x10.sp"
+#tryinclude "ff2_modules/tf2attributes.sp"
 #tryinclude "ff2_modules/weapons.sp"
 
+// Second-Load
 #tryinclude "ff2_modules/tf2items.sp"	// weapons.sp
 #tryinclude "ff2_modules/steamworks.sp"	// tf2x10.sp
 
+// Third-Load
 #include "ff2_modules/sdkhooks.sp"	// tf2attributes.sp
+
+// Fourth-Load
 #include "ff2_modules/bosses.sp"	// sdkhooks.sp, tf2items.sp
 
-#include "ff2_modules/targetfilter.sp"	// bosses.sp
-#include "ff2_modules/formula.sp"	// bosses.sp
+// Last-Load
+#tryinclude "ff2_modules/targetfilter.sp"	// bosses.sp
+#include "ff2_modules/formula.sp"		// bosses.sp
+
+// Require either one due to needing weapon attributes for bosses
+#if !defined FF2_TF2ATTRIBUTES
+  #if !defined FF2_TF2ITEMS
+    #error "Must have either TF2Items or TF2Attributes compiled with"
+  #endif
+#endif
 
 public Plugin myinfo =
 {
