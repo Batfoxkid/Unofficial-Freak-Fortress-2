@@ -1,5 +1,6 @@
 /*
 	Requirement:
+	convars.sp
 	sdkhooks.sp
 
 	Optional:
@@ -21,109 +22,139 @@ enum struct BossEnum
 	KeyValues Kv;
 }
 
+ConVar CvarCharset;
+
 BossEnum Boss[MAXSPECIALS];
-ArrayList BossRand;
+ArrayList BossList;
 int Specials;
 
-ArrayList Charset;
+ArrayList Charsets;
+int Charset;
 
 void Bosses_Setup()
 {
+	CvarCharset = CreateConVar("ff2_current", "0", "Freak Fortress 2 Current Boss Pack", FCVAR_SPONLY|FCVAR_DONTRECORD);
+}
+
+void Bosses_Config()
+{
 	Specials = 0;
+	Charset = 0;
 	for(int i; i<MAXSPECIALS; i++)
 	{
 		Boss[i].Kv = null;
 		Boss[i].Charset = -1;
 	}
 
-	if(Charset == INVALID_HANDLE)
+	if(Charsets == INVALID_HANDLE)
 	{
-		Charset = new ArrayList(MAX_CHARSET_LENGTH, 0);
+		Charsets = new ArrayList(MAX_CHARSET_LENGTH, 0);
 	}
 	else
 	{
-		Charset.Clear();
+		Charsets.Clear();
 	}
 
-	char filepath[PLATFORM_MAX_PATH], config[PLATFORM_MAX_PATH], key[4], charset[42];
+	if(BossList == INVALID_HANDLE)
+	{
+		BossList = new ArrayList(5, 0);
+	}
+	else
+	{
+		BossList.Clear();
+	}
+
+	char filepath[PLATFORM_MAX_PATH];
 	BuildPath(Path_SM, filepath, PLATFORM_MAX_PATH, CHARSET_PATH);
 
 	if(!FileExists(filepath))
 	{
-		Charset.SetString(0, "Freak Fortress 2");
+		Charsets.SetString(0, "Freak Fortress 2");
 		BuildPath(Path_SM, filepath, PLATFORM_MAX_PATH, CONFIG_PATH);
 		ProcessDirectory(filepath, "", "", 0);
+		return;
 	}
 
-	KeyValues Kv = new KeyValues("");
-	Kv.ImportFromFile(filepath);
-	int i = cvarCharset.IntValue;
-	for(i=0; i<FF2CharSet; i++)
+	KeyValues kv = new KeyValues("");
+	kv.ImportFromFile(filepath);
+
+	Charset = CvarCharset.IntValue;
+	BuildPath(Path_SM, filepath, PLATFORM_MAX_PATH, ConfigPath);
+	char config[PLATFORM_MAX_PATH];
+	int charset;
+	do
 	{
-		if(!Kv.GotoNextKey())
+		kv.GetSectionName(config, sizeof(config));
+		Charsets.SetString(charset, config);
+
+		kv.GetString("1", config, PLATFORM_MAX_PATH);
+		if(config[0])
+		{
+			for(int i=2; Specials<MAXSPECIALS && i<=MAXSPECIALS; i++)
+			{
+				if(config[0])
+				{
+					if(StrContains(config, "*") != -1)
+					{
+						ReplaceString(config, PLATFORM_MAX_PATH, "*", "");
+						ProcessDirectory(filepath, "", config, Charset);
+						continue;
+					}
+					else
+					{
+						LoadCharacter(config, charset);
+					}
+				}
+
+				IntToString(i, key, sizeof(key));
+				kv.GetString(key, config, PLATFORM_MAX_PATH);
+			}
+		}
+		else
+		{
+			kv.GotoFirstSubKey();
+			do
+			{
+				kv.GetSectionName(config, PLATFORM_MAX_PATH);
+				if(!config[0])
+					break;
+
+				if(StrContains(config, "*") >= 0)
+				{
+					ReplaceString(config, PLATFORM_MAX_PATH, "*", "");
+					ProcessDirectory(filepath, "", config, -1);
+					continue;
+				}
+				LoadCharacter(config);
+			} while(kv.GotoNextKey() && Specials<MAXSPECIALS);
+		}
+		Charset++;
+	} while(kv.GotoNextKey())
+
+	kv.Rewind();
+	//kv.ImportFromFile(filepath);	// Just in case Rewind fails me...
+	for(int i=0; i<Charset; i++)
+	{
+		if(!kv.GotoNextKey())
 			break;
 	}
 
-	CurrentCharSet = i;
-	Kv.GetSectionName(CharSetString[CurrentCharSet], sizeof(CharSetString[]));
-
-	BuildPath(Path_SM, filepath, PLATFORM_MAX_PATH, ConfigPath);
-	Kv.GetString("1", config, PLATFORM_MAX_PATH);
-	if(config[0])
-	{
-		for(i=1; Specials<MAXSPECIALS && i<=MAXSPECIALS; i++)
-		{
-			IntToString(i, key, sizeof(key));
-			Kv.GetString(key, config, PLATFORM_MAX_PATH);
-			if(!config[0])
-				continue;
-
-			if(StrContains(config, "*") >= 0)
-			{
-				ReplaceString(config, PLATFORM_MAX_PATH, "*", "");
-				ProcessDirectory(filepath, "", config, -1);
-				continue;
-			}
-			LoadCharacter(config);
-		}
-	}
-	else
-	{
-		Kv.GotoFirstSubKey();
-		do
-		{
-			Kv.GetSectionName(config, PLATFORM_MAX_PATH);
-			if(!config[0])
-				break;
-
-			if(StrContains(config, "*") >= 0)
-			{
-				ReplaceString(config, PLATFORM_MAX_PATH, "*", "");
-				ProcessDirectory(filepath, "", config, -1);
-				continue;
-			}
-			LoadCharacter(config);
-		} while(Kv.GotoNextKey() && Specials<MAXSPECIALS);
-		KvGoBack(Kv);
-	}
+	#if defined FF2_CONVARS
+	if(CvarNameChange.IntValue == 2)
+		Convars_NameSuffix(Charsets.GetString(Charset));
+	#endif
 
 	// Check if the current charset is not the first
 	// one or if there's a charset after this one
 	HasCharSets = CurrentCharSet>0;
 	if(!HasCharSets)
-		HasCharSets = Kv.GotoNextKey();
+		HasCharSets = kv.GotoNextKey();
 
-	delete Kv;
+	delete kv;
 
 	int amount;
 	if(HasCharSets)
 	{
-		if(cvarNameChange.IntValue == 2)
-		{
-			char newName[256];
-			FormatEx(newName, 256, "%s | %s", oldName, CharSetString[CurrentCharSet]);
-			hostName.SetString(newName);
-		}
 
 		// KvRewind, you son of a-
 		BuildPath(Path_SM, config, sizeof(config), "%s/%s", CharSetOldPath ? ConfigPath : DataPath, CharsetCFG);
