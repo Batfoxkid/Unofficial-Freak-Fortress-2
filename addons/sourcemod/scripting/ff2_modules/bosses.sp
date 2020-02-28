@@ -1,10 +1,20 @@
 /*
 	Requirement:
-	convars.sp
 	sdkhooks.sp
 
 	Optional:
+	convars.sp
 	tf2items.sp
+
+	Enums:
+	BossEnum
+	SpecialEnum
+
+	Functions:
+	void Bosses_Setup()
+	void Bosses_Config()
+	void Bosses_Prepare(int boss)
+	void Bosses_Equip(int client, int boss)
 */
 
 #define FF2_BOSSES
@@ -29,7 +39,7 @@ enum struct BossEnum
 
 	int RageDamage;
 	int RageMode;
-	int Charge[4];
+	float Charge[4];
 
 	int Killstreak;
 	int RPSHealth;
@@ -54,6 +64,7 @@ enum struct SpecialEnum
 {
 	KeyValues Kv;
 	int Charset;
+	bool Precached;
 }
 
 ConVar CvarCharset;
@@ -114,8 +125,17 @@ void Bosses_Config()
 	kv.ImportFromFile(filepath);
 
 	Charset = CvarCharset.IntValue;
-	BuildPath(Path_SM, filepath, PLATFORM_MAX_PATH, ConfigPath);
 	char config[PLATFORM_MAX_PATH];
+	int i = Charset;
+	Action action = Plugin_Continue;
+	Call_StartForward(OnLoadCharacterSet);
+	Call_PushCellRef(i);
+	Call_PushStringEx(config, sizeof(config), SM_PARAM_STRING_UTF8|SM_PARAM_STRING_COPY, SM_PARAM_COPYBACK);
+	Call_Finish(action);
+	if(action == Plugin_Changed)
+		Charset = i;
+
+	BuildPath(Path_SM, filepath, PLATFORM_MAX_PATH, ConfigPath);
 	int charset;
 	do
 	{
@@ -125,14 +145,14 @@ void Bosses_Config()
 		kv.GetString("1", config, PLATFORM_MAX_PATH);
 		if(config[0])
 		{
-			for(int i=2; Specials<MAXSPECIALS && i<=MAXSPECIALS; i++)
+			for(i=2; Specials<MAXSPECIALS && i<=MAXSPECIALS; i++)
 			{
 				if(config[0])
 				{
 					if(StrContains(config, "*") != -1)
 					{
 						ReplaceString(config, PLATFORM_MAX_PATH, "*", "");
-						ProcessDirectory(filepath, "", config, Charset);
+						ProcessDirectory(filepath, "", config, charset);
 						continue;
 					}
 					else
@@ -144,109 +164,38 @@ void Bosses_Config()
 				IntToString(i, key, sizeof(key));
 				kv.GetString(key, config, PLATFORM_MAX_PATH);
 			}
+			charset++;
+			continue;
 		}
-		else
-		{
-			kv.GotoFirstSubKey();
-			do
-			{
-				kv.GetSectionName(config, PLATFORM_MAX_PATH);
-				if(!config[0])
-					break;
 
-				if(StrContains(config, "*") >= 0)
-				{
-					ReplaceString(config, PLATFORM_MAX_PATH, "*", "");
-					ProcessDirectory(filepath, "", config, -1);
-					continue;
-				}
-				LoadCharacter(config);
-			} while(kv.GotoNextKey() && Specials<MAXSPECIALS);
-		}
-		Charset++;
+		kv.SavePosition();
+		kv.GotoFirstSubKey();
+		do
+		{
+			if(!kv.GetSectionName(config, PLATFORM_MAX_PATH))
+				break;
+
+			if(StrContains(config, "*") >= 0)
+			{
+				ReplaceString(config, PLATFORM_MAX_PATH, "*", "");
+				ProcessDirectory(filepath, "", config, charset, kv);
+				continue;
+			}
+
+			KeyValues bosskv = LoadCharacter(config, charset);
+			if(bosskv != null)
+				bosskv.Import(kv);
+		} while(Specials<MAXSPECIALS && kv.GotoNextKey());
+		kv.GoBack();
+		charset++;
 	} while(kv.GotoNextKey())
 
-	kv.Rewind();
-	//kv.ImportFromFile(filepath);	// Just in case Rewind fails me...
-	for(int i=0; i<Charset; i++)
-	{
-		if(!kv.GotoNextKey())
-			break;
-	}
+	delete kv;
 
 	#if defined FF2_CONVARS
 	if(CvarNameChange.IntValue == 2)
 		Convars_NameSuffix(Charsets.GetString(Charset));
 	#endif
-
-	// Check if the current charset is not the first
-	// one or if there's a charset after this one
-	HasCharSets = CurrentCharSet>0;
-	if(!HasCharSets)
-		HasCharSets = kv.GotoNextKey();
-
-	delete kv;
-
-	int amount;
-	if(HasCharSets)
-	{
-
-		// KvRewind, you son of a-
-		BuildPath(Path_SM, config, sizeof(config), "%s/%s", CharSetOldPath ? ConfigPath : DataPath, CharsetCFG);
-		Kv = CreateKeyValues("");
-		FileToKeyValues(Kv, config);
-		do
-		{
-			if(amount == CurrentCharSet)	// Skip the current pack
-			{
-				amount++;
-				continue;
-			}
-
-			Kv.GetSectionName(CharSetString[amount], sizeof(CharSetString[]));
-			Kv.GetString("1", config, PLATFORM_MAX_PATH);
-			if(config[0])
-			{
-				for(i=1; PackSpecials[amount]<MAXSPECIALS && i<=MAXSPECIALS; i++)
-				{
-					IntToString(i, key, sizeof(key));
-					Kv.GetString(key, config, PLATFORM_MAX_PATH);
-					if(!config[0])
-						continue;
-
-					if(StrContains(config, "*") >= 0)
-					{
-						ReplaceString(config, PLATFORM_MAX_PATH, "*", "");
-						ProcessDirectory(filepath, "", config, amount);
-						continue;
-					}
-					LoadSideCharacter(config, amount);
-				}
-			}
-			else
-			{
-				Kv.GotoFirstSubKey();
-				do
-				{
-					Kv.GetSectionName(config, PLATFORM_MAX_PATH);
-					if(!config[0])
-						break;
-
-					if(StrContains(config, "*") >= 0)
-					{
-						ReplaceString(config, PLATFORM_MAX_PATH, "*", "");
-						ProcessDirectory(filepath, "", config, amount);
-						continue;
-					}
-					LoadSideCharacter(config, amount);
-				} while(Kv.GotoNextKey() && PackSpecials[amount]<MAXSPECIALS);
-				Kv.GoBack();
-			}
-			amount++;
-		} while(amount<MAXCHARSETS && Kv.GotoNextKey());
-
-		delete Kv;
-	}
 
 	if(FileExists("sound/saxton_hale/9000.wav", true))
 	{
@@ -268,7 +217,249 @@ void Bosses_Config()
 	isCharSetSelected = false;
 }
 
-static void ProcessDirectory(const char[] base, const char[] current, const char[] matching, int pack)
+public void LoadCharacter(const char[] character)
+{
+	static char extensions[][] = {".mdl", ".dx80.vtx", ".dx90.vtx", ".sw.vtx", ".vvd", ".phy"};
+	static char config[PLATFORM_MAX_PATH];
+
+	BuildPath(Path_SM, config, sizeof(config), "%s/%s.cfg", ConfigPath, character);
+	if(!FileExists(config))
+	{
+		LogError2("[Characters] Character %s does not exist!", character);
+		return;
+	}
+
+	Special[Specials].Kv = new KeyValues("character");
+	if(!Special[Specials].Kv.ImportFromFile(config))
+	{
+		LogError2("[Characters] Character %s failed to be imported for KeyValues!", character);
+		return;
+	}
+
+	MapBlocked[Specials] = false;
+	if(KvJumpToKey(Special[Specials].Kv, "map_exclude"))
+	{
+		char item[6];
+		static char buffer[34];
+		for(int size=1; ; size++)
+		{
+			FormatEx(item, sizeof(item), "map%d", size);
+			KvGetString(Special[Specials].Kv, item, buffer, sizeof(buffer));
+			if(!buffer[0])
+				break;
+
+			if(!StrContains(currentmap, buffer))
+			{
+				MapBlocked[Specials] = true;
+				break;
+			}
+		}
+	}
+	KvRewind(Special[Specials].Kv);
+
+	int version = KvGetNum(Special[Specials].Kv, "version", StringToInt(MAJOR_REVISION));
+	if(version!=StringToInt(MAJOR_REVISION) && version!=99) // 99 for bosses made ONLY for this fork
+	{
+		LogToFile(eLog, "[Boss] Character %s is only compatible with FF2 v%i!", character, version);
+		return;
+	}
+
+	version = KvGetNum(Special[Specials].Kv, "version_minor", StringToInt(MINOR_REVISION));
+	int version2 = KvGetNum(Special[Specials].Kv, "version_stable", StringToInt(STABLE_REVISION));
+	if(version>StringToInt(MINOR_REVISION) || (version2>StringToInt(STABLE_REVISION) && version==StringToInt(MINOR_REVISION)))
+	{
+		LogToFile(eLog, "[Boss] Character %s requires newer version of FF2 (at least %s.%i.%i)!", character, MAJOR_REVISION, version, version2);
+		return;
+	}
+
+	version = KvGetNum(Special[Specials].Kv, "fversion", StringToInt(FORK_MAJOR_REVISION));
+	if(version != StringToInt(FORK_MAJOR_REVISION))
+	{
+		LogToFile(eLog, "[Boss] Character %s is only compatible with %s FF2 v%i!", character, FORK_SUB_REVISION, version);
+		return;
+	}
+
+	version = KvGetNum(Special[Specials].Kv, "fversion_minor", StringToInt(FORK_MINOR_REVISION));
+	version2 = KvGetNum(Special[Specials].Kv, "fversion_stable", StringToInt(FORK_STABLE_REVISION));
+	if(version>StringToInt(FORK_MINOR_REVISION) || (version2>StringToInt(FORK_STABLE_REVISION) && version==StringToInt(FORK_MINOR_REVISION)))
+	{
+		LogToFile(eLog, "[Boss] Character %s requires newer version of %s FF2 (at least %s.%i.%i)!", character, FORK_SUB_REVISION, FORK_MAJOR_REVISION, version, version2);
+		return;
+	}
+
+	for(int i=1; ; i++)
+	{
+		Format(config, sizeof(config), "ability%i", i);
+		if(KvJumpToKey(Special[Specials].Kv, config))
+		{
+			static char plugin_name[64];
+			KvGetString(Special[Specials].Kv, "plugin_name", plugin_name, 64);
+			BuildPath(Path_SM, config, sizeof(config), "plugins/freaks/%s.ff2", plugin_name);
+			if(!FileExists(config))
+			{
+				LogToFile(eLog, "[Boss] Character %s needs plugin %s!", character, plugin_name);
+				return;
+			}
+		}
+		else
+		{
+			break;
+		}
+	}
+	KvRewind(Special[Specials].Kv);
+
+	char key[PLATFORM_MAX_PATH];
+	static char section[64];
+	KvSetString(Special[Specials].Kv, "filename", character);
+	KvGetString(Special[Specials].Kv, "name", config, sizeof(config));
+	bBlockVoice[Specials] = view_as<bool>(KvGetNum(Special[Specials].Kv, "sound_block_vo"));
+	BossSpeed[Specials] = KvGetFloat(Special[Specials].Kv, "maxspeed", 340.0);
+	KvGotoFirstSubKey(Special[Specials].Kv);
+
+	while(KvGotoNextKey(Special[Specials].Kv))
+	{
+		KvGetSectionName(Special[Specials].Kv, section, sizeof(section));
+		if(StrEqual(section, "download"))
+		{
+			for(int i=1; ; i++)
+			{
+				IntToString(i, key, sizeof(key));
+				KvGetString(Special[Specials].Kv, key, config, sizeof(config));
+				if(!config[0])
+					break;
+
+				if(FileExists(config, true))
+				{
+					AddFileToDownloadsTable(config);
+				}
+				else
+				{
+					LogToFile(eLog, "[Boss] Character %s is missing file '%s'!", character, config);
+				}
+			}
+		}
+		else if(StrEqual(section, "mod_download"))
+		{
+			for(int i=1; ; i++)
+			{
+				IntToString(i, key, sizeof(key));
+				KvGetString(Special[Specials].Kv, key, config, sizeof(config));
+				if(!config[0])
+					break;
+
+				for(int extension; extension<sizeof(extensions); extension++)
+				{
+					FormatEx(key, PLATFORM_MAX_PATH, "%s%s", config, extensions[extension]);
+					if(FileExists(key, true))
+					{
+						AddFileToDownloadsTable(key);
+					}
+					else if(StrContains(key, ".phy") == -1)
+					{
+						LogToFile(eLog, "[Boss] Character %s is missing file '%s'!", character, key);
+					}
+				}
+			}
+		}
+		else if(StrEqual(section, "mat_download"))
+		{
+			for(int i=1; ; i++)
+			{
+				IntToString(i, key, sizeof(key));
+				KvGetString(Special[Specials].Kv, key, config, sizeof(config));
+				if(!config[0])
+					break;
+
+				FormatEx(key, sizeof(key), "%s.vtf", config);
+				if(FileExists(key, true))
+				{
+					AddFileToDownloadsTable(key);
+				}
+				else
+				{
+					LogToFile(eLog, "[Boss] Character %s is missing file '%s'!", character, key);
+				}
+
+				FormatEx(key, sizeof(key), "%s.vmt", config);
+				if(FileExists(key, true))
+				{
+					AddFileToDownloadsTable(key);
+				}
+				else
+				{
+					LogToFile(eLog, "[Boss] Character %s is missing file '%s'!", character, key);
+				}
+			}
+		}
+	}
+	Specials++;
+}
+
+void Bosses_Prepare(int boss)
+{
+	char filePath[PLATFORM_MAX_PATH], key[8];
+	static char file[PLATFORM_MAX_PATH], section[16], bossName[MAX_TARGET_LENGTH];
+	Special[boss].Kv.Rewind();
+	Special[boss].Kv.GetString("filename", bossName, sizeof(bossName));
+	Special[boss].Kv.GoFirstSubKey();
+	while(Special[boss].Kv.GotoNextKey())
+	{
+		Special[boss].Kv.GetSectionName(section, sizeof(section));
+		if(StrEqual(section, "sound_bgm"))
+		{
+			for(int i=1; ; i++)
+			{
+				FormatEx(key, sizeof(key), "path%d", i);
+				Special[boss].Kv.GetString(key, file, sizeof(file));
+				if(!file[0])
+					break;
+
+				FormatEx(filePath, sizeof(filePath), "sound/%s", file);
+				if(FileExists(filePath, true))
+				{
+					PrecacheSound(file);
+				}
+				else
+				{
+					LogError2("[Boss] Character %s is missing file '%s' in section '%s'!", bossName, filePath, section);
+				}
+			}
+		}
+		else if(StrEqual(section, "mod_precache") || !StrContains(section, "sound_") || !StrContains(section, "catch_"))
+		{
+			for(int i=1; ; i++)
+			{
+				IntToString(i, key, sizeof(key));
+				Special[boss].Kv.GetString(key, file, sizeof(file));
+				if(!file[0])
+					break;
+
+				if(StrEqual(section, "mod_precache"))
+				{
+					if(FileExists(file, true))
+					{
+						PrecacheModel(file);
+						continue;
+					}
+
+					LogError2("[Boss] Character %s is missing file '%s' in section '%s'!", bossName, filePath, section);
+					continue;
+				}
+				
+				FormatEx(filePath, sizeof(filePath), "sound/%s", file);
+				if(FileExists(filePath, true))
+				{
+					PrecacheSound(file);
+					continue;
+				}
+				
+				LogError2("[Boss] Character %s is missing file '%s' in section '%s'!", bossName, filePath, section);
+			}
+		}
+	}
+}
+
+static void ProcessDirectory(const char[] base, const char[] current, const char[] matching, int pack, KeyValues kv=null)
 {
 	char file[PLATFORM_MAX_PATH];
 	FormatEx(file, PLATFORM_MAX_PATH, "%s/%s", base, current);
@@ -294,8 +485,17 @@ static void ProcessDirectory(const char[] base, const char[] current, const char
 			}
 
 			if(!StrContains(file, matching))
-				LoadCharacter(file, pack);
+			{
+				if(kv == null)
+				{
+					LoadCharacter(file, pack);
+					continue;
+				}
 
+				KeyValues bosskv = LoadCharacter(file, pack);
+				if(bosskv != null)
+					bosskv.Import(kv);
+			}
 			continue;
 		}
 
@@ -305,7 +505,7 @@ static void ProcessDirectory(const char[] base, const char[] current, const char
 		if(current[0])
 			Format(file, PLATFORM_MAX_PATH, "%s/%s", current, file);
 
-		ProcessDirectory(base, file, matching, pack);
+		ProcessDirectory(base, file, matching, pack, kv);
 	}
 	delete listing;
 }
