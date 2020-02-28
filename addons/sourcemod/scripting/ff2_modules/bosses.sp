@@ -8,23 +8,240 @@
 
 #define FF2_BOSSES
 
+#define CONFIG_PATH		"config/freak_fortress_2"
+#define CHARSET_PATH		"data/freak_fortress_2/characters.cfg"
 #define DEFAULT_ATTRIBUTES	"2 ; 3.1 ; 68 ; %i ; 275 ; 1"
 #define MAX_CLASSNAME_LENGTH	36
+#define MAX_CHARSET_LENGTH	42
+#define MAXSPECIALS		1024
 
-static char DefaultAttributes[256];
-static ConVar CvarAttributes;
+enum struct BossEnum
+{
+	int Charset;
+	KeyValues Kv;
+}
+
+BossEnum Boss[MAXSPECIALS];
+ArrayList BossRand;
+int Specials;
+
+ArrayList Charset;
 
 void Bosses_Setup()
 {
-	strcopy(DefaultAttributes, sizeof(DefaultAttributes), DEFAULT_ATTRIBUTES);
-	CvarAttributes = CreateConVar("ff2_boss_attributes", DEFAULT_ATTRIBUTES, "Default attributes applied to boss weapons, (%i) is required");
-	CvarAttributes.AddChangeHook(Bosses_ConVarChange);
+	Specials = 0;
+	for(int i; i<MAXSPECIALS; i++)
+	{
+		Boss[i].Kv = null;
+		Boss[i].Charset = -1;
+	}
+
+	if(Charset == INVALID_HANDLE)
+	{
+		Charset = new ArrayList(MAX_CHARSET_LENGTH, 0);
+	}
+	else
+	{
+		Charset.Clear();
+	}
+
+	char filepath[PLATFORM_MAX_PATH], config[PLATFORM_MAX_PATH], key[4], charset[42];
+	BuildPath(Path_SM, filepath, PLATFORM_MAX_PATH, CHARSET_PATH);
+
+	if(!FileExists(filepath))
+	{
+		Charset.SetString(0, "Freak Fortress 2");
+		BuildPath(Path_SM, filepath, PLATFORM_MAX_PATH, CONFIG_PATH);
+		ProcessDirectory(filepath, "", "", 0);
+	}
+
+	KeyValues Kv = new KeyValues("");
+	Kv.ImportFromFile(filepath);
+	int i = cvarCharset.IntValue;
+	for(i=0; i<FF2CharSet; i++)
+	{
+		if(!Kv.GotoNextKey())
+			break;
+	}
+
+	CurrentCharSet = i;
+	Kv.GetSectionName(CharSetString[CurrentCharSet], sizeof(CharSetString[]));
+
+	BuildPath(Path_SM, filepath, PLATFORM_MAX_PATH, ConfigPath);
+	Kv.GetString("1", config, PLATFORM_MAX_PATH);
+	if(config[0])
+	{
+		for(i=1; Specials<MAXSPECIALS && i<=MAXSPECIALS; i++)
+		{
+			IntToString(i, key, sizeof(key));
+			Kv.GetString(key, config, PLATFORM_MAX_PATH);
+			if(!config[0])
+				continue;
+
+			if(StrContains(config, "*") >= 0)
+			{
+				ReplaceString(config, PLATFORM_MAX_PATH, "*", "");
+				ProcessDirectory(filepath, "", config, -1);
+				continue;
+			}
+			LoadCharacter(config);
+		}
+	}
+	else
+	{
+		Kv.GotoFirstSubKey();
+		do
+		{
+			Kv.GetSectionName(config, PLATFORM_MAX_PATH);
+			if(!config[0])
+				break;
+
+			if(StrContains(config, "*") >= 0)
+			{
+				ReplaceString(config, PLATFORM_MAX_PATH, "*", "");
+				ProcessDirectory(filepath, "", config, -1);
+				continue;
+			}
+			LoadCharacter(config);
+		} while(Kv.GotoNextKey() && Specials<MAXSPECIALS);
+		KvGoBack(Kv);
+	}
+
+	// Check if the current charset is not the first
+	// one or if there's a charset after this one
+	HasCharSets = CurrentCharSet>0;
+	if(!HasCharSets)
+		HasCharSets = Kv.GotoNextKey();
+
+	delete Kv;
+
+	int amount;
+	if(HasCharSets)
+	{
+		if(cvarNameChange.IntValue == 2)
+		{
+			char newName[256];
+			FormatEx(newName, 256, "%s | %s", oldName, CharSetString[CurrentCharSet]);
+			hostName.SetString(newName);
+		}
+
+		// KvRewind, you son of a-
+		BuildPath(Path_SM, config, sizeof(config), "%s/%s", CharSetOldPath ? ConfigPath : DataPath, CharsetCFG);
+		Kv = CreateKeyValues("");
+		FileToKeyValues(Kv, config);
+		do
+		{
+			if(amount == CurrentCharSet)	// Skip the current pack
+			{
+				amount++;
+				continue;
+			}
+
+			Kv.GetSectionName(CharSetString[amount], sizeof(CharSetString[]));
+			Kv.GetString("1", config, PLATFORM_MAX_PATH);
+			if(config[0])
+			{
+				for(i=1; PackSpecials[amount]<MAXSPECIALS && i<=MAXSPECIALS; i++)
+				{
+					IntToString(i, key, sizeof(key));
+					Kv.GetString(key, config, PLATFORM_MAX_PATH);
+					if(!config[0])
+						continue;
+
+					if(StrContains(config, "*") >= 0)
+					{
+						ReplaceString(config, PLATFORM_MAX_PATH, "*", "");
+						ProcessDirectory(filepath, "", config, amount);
+						continue;
+					}
+					LoadSideCharacter(config, amount);
+				}
+			}
+			else
+			{
+				Kv.GotoFirstSubKey();
+				do
+				{
+					Kv.GetSectionName(config, PLATFORM_MAX_PATH);
+					if(!config[0])
+						break;
+
+					if(StrContains(config, "*") >= 0)
+					{
+						ReplaceString(config, PLATFORM_MAX_PATH, "*", "");
+						ProcessDirectory(filepath, "", config, amount);
+						continue;
+					}
+					LoadSideCharacter(config, amount);
+				} while(Kv.GotoNextKey() && PackSpecials[amount]<MAXSPECIALS);
+				Kv.GoBack();
+			}
+			amount++;
+		} while(amount<MAXCHARSETS && Kv.GotoNextKey());
+
+		delete Kv;
+	}
+
+	if(FileExists("sound/saxton_hale/9000.wav", true))
+	{
+		AddFileToDownloadsTable("sound/saxton_hale/9000.wav");
+		PrecacheSound("saxton_hale/9000.wav", true);
+	}
+
+	PrecacheScriptSound("Announcer.AM_CapEnabledRandom");
+	PrecacheScriptSound("Announcer.AM_CapIncite01.mp3");
+	PrecacheScriptSound("Announcer.AM_CapIncite02.mp3");
+	PrecacheScriptSound("Announcer.AM_CapIncite03.mp3");
+	PrecacheScriptSound("Announcer.AM_CapIncite04.mp3");
+	PrecacheScriptSound("Announcer.RoundEnds5minutes");
+	PrecacheScriptSound("Announcer.RoundEnds2minutes");
+	PrecacheSound("weapons/barret_arm_zap.wav", true);
+	PrecacheSound("player/doubledonk.wav", true);
+	PrecacheSound("ambient/lightson.wav", true);
+	PrecacheSound("ambient/lightsoff.wav", true);
+	isCharSetSelected = false;
 }
 
-public void Bosses_ConVarChange(ConVar convar, const char[] oldValue, const char[] newValue)
+static void ProcessDirectory(const char[] base, const char[] current, const char[] matching, int pack)
 {
-	if(StrContains(newValue, "%i") != -1)
-		strcopy(DefaultAttributes, sizeof(DefaultAttributes), newValue);
+	char file[PLATFORM_MAX_PATH];
+	FormatEx(file, PLATFORM_MAX_PATH, "%s/%s", base, current);
+	if(!DirExists(file))
+		return;
+
+	DirectoryListing listing = OpenDirectory(file);
+	if(listing == null)
+		return;
+
+	FileType type;
+	while(Specials<MAXSPECIALS && listing.GetNext(file, PLATFORM_MAX_PATH, type))
+	{
+		if(type == FileType_File)
+		{
+			if(ReplaceString(file, PLATFORM_MAX_PATH, ".cfg", "", false) != 1)
+				continue;
+
+			if(current[0])
+			{
+				ReplaceString(file, PLATFORM_MAX_PATH, "\\", "/");
+				Format(file, PLATFORM_MAX_PATH, "%s/%s", current, file);
+			}
+
+			if(!StrContains(file, matching))
+				LoadCharacter(file, pack);
+
+			continue;
+		}
+
+		if(type!=FileType_Directory || !StrContains(file, "."))
+			continue;
+
+		if(current[0])
+			Format(file, PLATFORM_MAX_PATH, "%s/%s", current, file);
+
+		ProcessDirectory(base, file, matching, pack);
+	}
+	delete listing;
 }
 
 void Bosses_Equip(int client, int boss)
@@ -80,7 +297,7 @@ void Bosses_Equip(int client, int boss)
 				}
 				else
 				{
-					Format(attributes, sizeof(attributes), "%s ; 214 ; %f ; %s", DefaultAttributes, TF2_GetPlayerClass(client)==TFClass_Scout ? 1 : 2, view_as<float>(kills), attributes);
+					Format(attributes, sizeof(attributes), "%s ; 214 ; %f ; %s", DEFAULT_ATTRIBUTES, TF2_GetPlayerClass(client)==TFClass_Scout ? 1 : 2, view_as<float>(kills), attributes);
 				}
 			}
 			else
@@ -91,7 +308,7 @@ void Bosses_Equip(int client, int boss)
 				}
 				else
 				{
-					FormatEx(attributes, sizeof(attributes), "%s ; 214 ; %f", DefaultAttributes, TF2_GetPlayerClass(client)==TFClass_Scout ? 1 : 2, view_as<float>(kills));
+					FormatEx(attributes, sizeof(attributes), "%s ; 214 ; %f", DEFAULT_ATTRIBUTES, TF2_GetPlayerClass(client)==TFClass_Scout ? 1 : 2, view_as<float>(kills));
 				}
 			}
 		}
@@ -99,11 +316,11 @@ void Bosses_Equip(int client, int boss)
 		{
 			if(attributes[0])
 			{
-				Format(attributes, sizeof(attributes), "%s ; %s", DefaultAttributes, TF2_GetPlayerClass(client)==TFClass_Scout ? 1 : 2, attributes);
+				Format(attributes, sizeof(attributes), "%s ; %s", DEFAULT_ATTRIBUTES, TF2_GetPlayerClass(client)==TFClass_Scout ? 1 : 2, attributes);
 			}
 			else
 			{
-				FormatEx(attributes, sizeof(attributes), DefaultAttributes, TF2_GetPlayerClass(client)==TFClass_Scout ? 1 : 2);
+				FormatEx(attributes, sizeof(attributes), DEFAULT_ATTRIBUTES, TF2_GetPlayerClass(client)==TFClass_Scout ? 1 : 2);
 			}
 		}
 
