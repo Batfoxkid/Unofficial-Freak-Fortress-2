@@ -87,7 +87,7 @@ stock int SDK_SpawnWeapon(int client, const char[] name, int index, int level, i
 	DispatchSpawn(entity);
 	if(!StrContains(name, "tf_weap"))
 	{
-		EquipPlayerWeapon(iClient, iWeapon);
+		EquipPlayerWeapon(client, entity);
 		return entity;
 	}
 
