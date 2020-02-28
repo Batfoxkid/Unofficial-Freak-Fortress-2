@@ -18,13 +18,48 @@
 
 enum struct BossEnum
 {
-	int Charset;
+	bool Leader;
+	char Name[MAX_TARGET_LENGTH];
+	TFClassType Class;
+	TFTeam Team;
+
+	int MaxHealth;
+	int Lives;
+	int MaxLives;
+
+	int RageDamage;
+	int RageMode;
+	int Charge[4];
+
+	int Killstreak;
+	int RPSHealth;
+	int RPSCount;
+
+	bool Triple;
+	bool Knockback;
+	bool Crits;
+	bool Healing;
+	bool Sapper;
+	bool AmmoKits;
+	bool HealthKits;
+	bool Cosmetics;
+
+	int Health(int client)
+	{
+		return GetClientHealth(client)+((this.Lives-1)*this.MaxHealth);
+	}
+}
+
+enum struct SpecialEnum
+{
 	KeyValues Kv;
+	int Charset;
 }
 
 ConVar CvarCharset;
 
-BossEnum Boss[MAXSPECIALS];
+BossEnum Boss[MAXTF2PLAYERS];
+SpecialEnum Special[MAXSPECIALS];
 ArrayList BossList;
 int Specials;
 
@@ -42,8 +77,8 @@ void Bosses_Config()
 	Charset = 0;
 	for(int i; i<MAXSPECIALS; i++)
 	{
-		Boss[i].Kv = null;
-		Boss[i].Charset = -1;
+		Special[i].Kv = null;
+		Special[i].Charset = -1;
 	}
 
 	if(Charsets == INVALID_HANDLE)
@@ -278,13 +313,13 @@ static void ProcessDirectory(const char[] base, const char[] current, const char
 void Bosses_Equip(int client, int boss)
 {
 	TF2_RemoveAllWeapons(client);
-	BossKV[boss].Rewind();
-	BossKV[boss].GotoFirstSubKey();
+	Special[boss].Kv.Rewind();
+	Special[boss].Kv.GotoFirstSubKey();
 	char attributes[256];
 	do
 	{
 		static char classname[MAX_CLASSNAME_LENGTH];
-		if(!BossKV[boss].GetSectionName(classname, sizeof(classname))
+		if(!Special[boss].Kv.GetSectionName(classname, sizeof(classname))
 			continue;
 
 		bool wearable;
@@ -298,7 +333,7 @@ void Bosses_Equip(int client, int boss)
 				wearable = true;
 			}
 
-			BossKV[boss].GetString("name", classname, sizeof(classname), wearable ? "tf_wearable" : "saxxy");
+			Special[boss].Kv.GetString("name", classname, sizeof(classname), wearable ? "tf_wearable" : "saxxy");
 		}
 		else
 		{
@@ -308,16 +343,16 @@ void Bosses_Equip(int client, int boss)
 		if(wearable && SDKEquipWearable==null)
 			continue;
 
-		int index = BossKV[boss].GetNum("index");
-		int level = BossKV[boss].GetNum("level", -1);
-		bool override = view_as<bool>(BossKV[boss].GetNum("override"));
-		int rank = BossKV[boss].GetNum("rank", (level==-1 || override) ? -1 : 21);
+		int index = Special[boss].Kv.GetNum("index");
+		int level = Special[boss].Kv.GetNum("level", -1);
+		bool override = view_as<bool>(Special[boss].Kv.GetNum("override"));
+		int rank = Special[boss].Kv.GetNum("rank", (level==-1 || override) ? -1 : 21);
 		int kills = GetRankingKills(rank, index, wearable);
 
 		if(level < 0)
 			level = 101;
 
-		BossKV[boss].GetString("attributes", attributes, sizeof(attributes));
+		Special[boss].Kv.GetString("attributes", attributes, sizeof(attributes));
 		if(kills >= 0)
 		{
 			if(attributes[0])
@@ -356,16 +391,16 @@ void Bosses_Equip(int client, int boss)
 		}
 
 		#if defined FF2_TF2ITEMS
-		index = (TF2Items && !wearable) ? TF2Items_SpawnWeapon(client, classname, index, level, BossKV[boss].GetNum("quality", 5), attributes) : SDK_SpawnWeapon(client, classname, index, level, BossKV[boss].GetNum("quality", 5), attributes);
+		index = (TF2Items && !wearable) ? TF2Items_SpawnWeapon(client, classname, index, level, Special[boss].Kv.GetNum("quality", 5), attributes) : SDK_SpawnWeapon(client, classname, index, level, Special[boss].Kv.GetNum("quality", 5), attributes);
 		#else
-		index = SDK_SpawnWeapon(client, classname, index, level, BossKV[boss].GetNum("quality", 5), attributes);
+		index = SDK_SpawnWeapon(client, classname, index, level, Special[boss].Kv.GetNum("quality", 5), attributes);
 		#endif
 		if(index == -1)
 			continue;
 
 		if(!wearable)
 		{
-			FF2_SetAmmo(client, index, BossKV[boss].GetNum("ammo", -1), BossKV[boss].GetNum("clip", -1));
+			FF2_SetAmmo(client, index, Special[boss].Kv.GetNum("ammo", -1), Special[boss].Kv.GetNum("clip", -1));
 			if(index!=735 && StrEqual(classname, "tf_weapon_builder", false))
 			{
 				SetEntProp(index, Prop_Send, "m_aBuildableObjectTypes", 1, _, 0);
@@ -384,9 +419,9 @@ void Bosses_Equip(int client, int boss)
 			}
 		}
 
-		if(BossKV[boss].GetNum("show", wearable ? 1 : 0))
+		if(Special[boss].Kv.GetNum("show", wearable ? 1 : 0))
 		{
-			BossKV[boss].GetString("worldmodel", attributes, sizeof(attributes));
+			Special[boss].Kv.GetString("worldmodel", attributes, sizeof(attributes));
 			if(attributes[0])
 				ConfigureWorldModelOverride(index, attributes, wearable);
 
@@ -400,10 +435,10 @@ void Bosses_Equip(int client, int boss)
 		}
 
 		static int rgba[4];
-		rgba[0] = BossKV[boss].GetNum("alpha", 255);
-		rgba[1] = BossKV[boss].GetNum("red", 255);
-		rgba[2] = BossKV[boss].GetNum("green", 255);
-		rgba[3] = BossKV[boss].GetNum("blue", 255);
+		rgba[0] = Special[boss].Kv.GetNum("alpha", 255);
+		rgba[1] = Special[boss].Kv.GetNum("red", 255);
+		rgba[2] = Special[boss].Kv.GetNum("green", 255);
+		rgba[3] = Special[boss].Kv.GetNum("blue", 255);
 
 		for(level=0; level<4; level++)
 		{
@@ -416,7 +451,7 @@ void Bosses_Equip(int client, int boss)
 		}
 
 		SetEntPropEnt(client, Prop_Send, "m_hActiveWeapon", index);
-	} while(BossKV[boss].GotoNextKey());
+	} while(Special[boss].Kv.GotoNextKey());
 }
 
 static bool ConfigureWorldModelOverride(int entity, const char[] model, bool wearable=false)
