@@ -4,6 +4,28 @@
 
 #define FF2_STOCKS
 
+static const TFCond CritConditions[] =
+{
+	TFCond_Kritzkrieged,
+	TFCond_HalloweenCritCandy,
+	TFCond_CritCanteen,
+	TFCond_CritOnFirstBlood,
+	TFCond_CritOnWin,
+	TFCond_CritOnFlagCapture,
+	TFCond_CritOnKill,
+	TFCond_CritMmmph,
+	TFCond_CritOnDamage,
+	TFCond_CritRuneTemp
+};
+
+static const TFCond MiniCritConditions[] =
+{
+	TFCond_Buffed,
+	TFCond_CritCola,
+	TFCond_NoHealingDamageBuff,
+	TFCond_MiniCritOnKill
+};
+
 stock int OnlyScoutsLeft(int team)
 {
 	int scouts;
@@ -51,14 +73,17 @@ stock int GetClientCloakIndex(int client)
 
 stock void SpawnSmallHealthPackAt(int client, int team=0, int attacker)
 {
-	int healthpack = CreateEntityByName("item_healthkit_small");
-	if(!IsValidEntity(healthpack))
+	if(++Client[attacker].Stale[2] > 20))
 		return;
 
-	DispatchKeyValue(healthpack, "OnPlayerTouch", "!self,Kill,,0,-1");
-	DispatchSpawn(healthpack);
-	SetEntProp(healthpack, Prop_Send, "m_iTeamNum", team, 4);
-	SetEntityMoveType(healthpack, MOVETYPE_VPHYSICS);
+	int entity = CreateEntityByName(Client[attacker].Stale[2]==1 ? "item_healthkit_medium" : "item_healthkit_small");
+	if(!IsValidEntity(entity))
+		return;
+
+	DispatchKeyValue(entity, "OnPlayerTouch", "!self,Kill,,0,-1");
+	DispatchSpawn(entity);
+	SetEntProp(entity, Prop_Send, "m_iTeamNum", team, 4);
+	SetEntityMoveType(entity, MOVETYPE_VPHYSICS);
 	static float velocity[3] = {0.0, 0.0, 50.0};
 	velocity[0] = float(GetRandomInt(-10, 10));
 	velocity[1] = float(GetRandomInt(-10, 10));
@@ -66,8 +91,8 @@ stock void SpawnSmallHealthPackAt(int client, int team=0, int attacker)
 	static float position[3];
 	GetClientAbsOrigin(client, position);
 	position[2] += 20.0;
-	TeleportEntity(healthpack, position, NULL_VECTOR, velocity);
-	SetEntPropEnt(healthpack, Prop_Send, "m_hOwnerEntity", attacker);
+	TeleportEntity(entity, position, NULL_VECTOR, velocity);
+	SetEntPropEnt(entity, Prop_Send, "m_hOwnerEntity", attacker);
 }
 
 stock void IncrementHeadCount(int client)
@@ -78,7 +103,7 @@ stock void IncrementHeadCount(int client)
 	SetEntProp(client, Prop_Send, "m_iDecapitations", GetEntProp(client, Prop_Send, "m_iDecapitations")+1);
 	TF2_AddCondition(client, TFCond_SpeedBuffAlly, 0.01);
 
-	if(++Client[client].Stale[2] > 15))
+	if(++Client[client].Stale[2] > 20))
 		return;
 
 	int health = GetClientHealth(client);
@@ -86,7 +111,7 @@ stock void IncrementHeadCount(int client)
 	if(health >= max)
 		return;
 
-	health += (16-Client[client].Stale[2]);
+	health += (21-Client[client].Stale[2]);
 	if(health > max)
 		health = max;
 
@@ -95,26 +120,39 @@ stock void IncrementHeadCount(int client)
 
 stock int FindTeleOwner(int client)
 {
-	if(!IsValidClient(client) || !IsPlayerAlive(client))
+	int entity = GetEntPropEnt(client, Prop_Send, "m_hGroundEntity");
+	if(!IsValidEntity(entity))
 		return -1;
 
-	int teleporter = GetEntPropEnt(client, Prop_Send, "m_hGroundEntity");
 	static char classname[32];
-	if(IsValidEntity(teleporter) && GetEntityClassname(teleporter, classname, sizeof(classname)) && StrEqual(classname, "obj_teleporter", false))
-	{
-		int owner = GetEntPropEnt(teleporter, Prop_Send, "m_hBuilder");
-		if(IsValidClient(owner, false))
-			return owner;
-	}
-	return -1;
+	if(!GetEntityClassname(entity, classname, sizeof(classname)) || !StrEqual(classname, "obj_teleporter", false))
+		return -1;
+
+	int owner = GetEntPropEnt(entity, Prop_Send, "m_hBuilder");
+	return IsValidClient(owner, false) ? owner : -1;
 }
 
-stock bool TF2_IsPlayerCritBuffed(int client)
+stock bool IsPlayerCritBuffed(int client)
 {
-	return (TF2_IsPlayerInCondition(client, TFCond_Kritzkrieged) || TF2_IsPlayerInCondition(client, TFCond_HalloweenCritCandy) || TF2_IsPlayerInCondition(client, view_as<TFCond>(34)) || TF2_IsPlayerInCondition(client, view_as<TFCond>(35)) || TF2_IsPlayerInCondition(client, TFCond_CritOnFirstBlood) || TF2_IsPlayerInCondition(client, TFCond_CritOnWin) || TF2_IsPlayerInCondition(client, TFCond_CritOnFlagCapture) || TF2_IsPlayerInCondition(client, TFCond_CritOnKill) || TF2_IsPlayerInCondition(client, TFCond_CritMmmph));
+	for(int i; i<sizeof(CritConditions); i++)
+	{
+		if(TF2_IsPlayerInCondition(client, CritConditions[i]))
+			return true;
+	}
+	return false;
 }
 
-public Action Timer_DisguiseBackstab(Handle timer, any userid)
+stock bool IsPlayerMiniCritBuffed(int client)
+{
+	for(int i; i<sizeof(MiniCritConditions); i++)
+	{
+		if(TF2_IsPlayerInCondition(client, MiniCritConditions[i]))
+			return true;
+	}
+	return false;
+}
+
+public Action Timer_DisguiseBackstab(Handle timer, int userid)
 {
 	int client = GetClientOfUserId(userid);
 	if(IsValidClient(client) && IsPlayerAlive(client))
@@ -123,35 +161,25 @@ public Action Timer_DisguiseBackstab(Handle timer, any userid)
 	return Plugin_Continue;
 }
 
-stock TFClassType KvGetClass(Handle keyvalue, const char[] string)
+stock TFClassType KvGetClass(Handle kv, const char[] string)
 {
-	TFClassType class;
 	static char buffer[24];
-	KvGetString(keyvalue, string, buffer, sizeof(buffer));
-	class = view_as<TFClassType>(StringToInt(buffer));
+	KvGetString(kv, string, buffer, sizeof(buffer), "1");
+	TFClassType class = view_as<TFClassType>(StringToInt(buffer));
+	if(class != TFClass_Unknown)
+		return class;
+
+	class = TF2_GetClass(buffer);
 	if(class == TFClass_Unknown)
-	{
-		class = TF2_GetClass(buffer);
-		if(class == TFClass_Unknown)
-			class = TFClass_Scout;
-	}
+		class = TFClass_Scout;
+
 	return class;
 }
 
 stock void AssignTeam(int client, int team)
 {
-	if(!GetEntProp(client, Prop_Send, "m_iDesiredPlayerClass"))  //Living spectator check: 0 means that no class is selected
-	{
-		//PrintToConsoleAll("%N does not have a desired class", client);
-		if(IsBoss(client))
-		{
-			SetEntProp(client, Prop_Send, "m_iDesiredPlayerClass", view_as<int>(KvGetClass(BossKV[Special[GetBossIndex(client)]], "class")));  //So we assign one to prevent living spectators
-		}
-		/*else
-		{
-			PrintToConsoleAll("%N was not a boss and did not have a desired class", client);
-		}*/
-	}
+	if(!GetEntProp(client, Prop_Send, "m_iDesiredPlayerClass") && Boss[client].Active)
+		SetEntProp(client, Prop_Send, "m_iDesiredPlayerClass", view_as<int>(KvGetClass(Special[Boss[client].Special].Kv, "class")));
 
 	SetEntProp(client, Prop_Send, "m_lifeState", 2);
 	ChangeClientTeam(client, team);
