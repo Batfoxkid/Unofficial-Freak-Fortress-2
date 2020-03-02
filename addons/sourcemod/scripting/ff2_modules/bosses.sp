@@ -39,6 +39,8 @@ enum struct BossEnum
 
 	int RageDamage;
 	int RageMode;
+	float RageMin;
+	float RageMax;
 	float Charge[4];
 
 	int Killstreak;
@@ -47,7 +49,7 @@ enum struct BossEnum
 
 	bool Voice;
 	bool Triple;
-	bool Knockback;
+	int Knockback;
 	bool Crits;
 	bool Healing;
 	bool Sapper;
@@ -73,7 +75,18 @@ enum struct SpecialEnum
 	bool Precached;
 }
 
+enum
+{
+	RageMode_Full = 0,
+	RageMode_Part,
+	RageMode_None
+}
+
 ConVar CvarCharset;
+static ConVar CvarTriple;
+static ConVar CvarKnockback;
+static ConVar CvarCrits;
+static ConVar CvarHealing;
 
 BossEnum Boss[MAXTF2PLAYERS];
 SpecialEnum Special[MAXSPECIALS];
@@ -86,6 +99,11 @@ int Charset;
 void Bosses_Setup()
 {
 	CvarCharset = CreateConVar("ff2_current", "0", "Freak Fortress 2 Current Boss Pack", FCVAR_SPONLY|FCVAR_DONTRECORD);
+
+	CvarTriple = CreateConVar("ff2_boss_triple", "1", "If to triple damage against players if initial damage is less than 160", _, true, 0.0, true, 1.0);
+	CvarKnockback = CreateConVar("ff2_boss_knockback", "0", "If bosses can knockback themselves, 2 to also allow self-damaging", _, true, 0.0, true, 2.0);
+	CvarCrits = CreateConVar("ff2_boss_crits", "0", "If bosses can perform random crits", _, true, 0.0, true, 1.0);
+	CvarHealing = CreateConVar("ff2_boss_healing", "0", "If bosses can be healed by Medics, packs, etc.", _, true, 0.0, true, 1.0);
 }
 
 void Bosses_Config()
@@ -564,7 +582,81 @@ void Bosses_Create(int client, int boss)
 	if(Boss[client].MaxHealth < 1)
 		Boss[client].MaxHealth = RoundFloat(Pow((760.8+float(Players))*(float(Players)-1.0), 1.0341)+2046.0);
 
-	
+	Boss[client].Health = Boss[client].MaxHealth*Boss[client].Lives;
+
+	Boss[client].Triple = view_as<bool>(Special[boss].Kv.GetNum("triple", CvarTriple.IntValue));
+	Boss[client].Knockback = Special[boss].Kv.GetNum("knockback", Special[boss].Kv.GetNum("rocketjump", CvarKnockback.IntValue));
+	Boss[client].Crits = Special[boss].Kv.GetNum("crits", CvarCrits.IntValue);
+	Boss[client].Healing = view_as<bool>(Special[boss].Kv.GetNum("healing", CvarHealing.IntValue));
+
+	Boss[client].Voice = !Special[boss].Kv.GetNum("sound_block_vo");
+	Boss[client].RageMode = Special[boss].Kv.GetNum("ragemode");
+	Boss[client].RageMax = Special[boss].Kv.GetFloat("ragemax", 100.0);
+	Boss[client].RageMin = Special[boss].Kv.GetFloat("ragemin", 100.0);
+
+	SetEntProp(client, Prop_Send, "m_bGlowEnabled", 0);
+	TF2_RemovePlayerDisguise(client);
+	TF2_SetPlayerClass(client, KvGetClass(Special[boss].Kv, "class"), _, !GetEntProp(client, Prop_Send, "m_iDesiredPlayerClass") ? true : false);
+	SDKHook(client, SDKHook_GetMaxHealth, SDK_OnGetMaxHealth);
+
+	int i = Special[boss].Kv.GetNum("sapper", CvarSapper.IntValue);
+	Boss[client].Sapper = (i==1 || i>2);
+
+	i = Special[boss].Kv.GetNum("pickups");
+	Boss[client].HealthKits = (i==1 || i>2);
+	Boss[client].AmmoKits = i>1;
+
+	Boss[client].Killstreak = 0;
+	Boss[client].RPSHealth = 0;
+	Boss[client].RPSCount = 0;
+	Boss[client].Charge[0] = 0.0;
+	Boss[client].Hazard = 0.0;
+
+	Boss[client].Cosmetics = view_as<bool>(Special[boss].Kv.GetNum("cosmetics"));
+	i = -1;
+	while((i=FindEntityByClassname2(i, "tf_wear*")) != -1)
+	{
+		if(GetEntPropEnt(i, Prop_Send, "m_hOwnerEntity") != client)
+			continue;
+
+		switch(GetEntProp(i, Prop_Send, "m_iItemDefinitionIndex"))
+		{
+			case 493, 233, 234, 241, 280, 281, 282, 283, 284, 286, 288, 362, 364, 365, 536, 542, 577, 599, 673, 729, 791, 839, 5607:  //Action slot items
+			{
+				//NOOP
+			}
+			case 131, 133, 405, 406, 444, 608, 1099, 1144:	// Wearable weapons
+			{
+				TF2_RemoveWearable(client, i);
+			}
+			default:
+			{
+				if(!Boss[client].Cosmetics)
+					TF2_RemoveWearable(client, i);
+			}
+		}
+	}
+
+	i = -1;
+	while((i=FindEntityByClassname2(i, "tf_powerup_bottle")) != -1)
+	{
+		if(GetEntPropEnt(i, Prop_Send, "m_hOwnerEntity") == client)
+			TF2_RemoveWearable(client, i);
+	}
+
+	Bosses_Equip(client, boss);
+
+	bool var = false;
+	for(int target=1; target<=MaxClients; target++)
+	{
+		if(!Boss[target].Active || !Boss[target].Leader)
+			continue;
+
+		var = true;
+		break;
+	}
+
+	Boss[client].Leader = !var;
 }
 
 void Bosses_Equip(int client, int boss)
