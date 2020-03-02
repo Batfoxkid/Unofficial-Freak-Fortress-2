@@ -18,12 +18,15 @@
 #define CONFIG_PATH		"config/freak_fortress_2"
 #define CHARSET_PATH		"data/freak_fortress_2/characters.cfg"
 #define DEFAULT_ATTRIBUTES	"2 ; 3.1 ; 68 ; %i ; 275 ; 1"
+#define DEFAULT_RAGEDAMAGE	"1900"
+#define DEFAULT_HEALTH		""
 #define MAX_CLASSNAME_LENGTH	36
 #define MAX_CHARSET_LENGTH	42
 #define MAXSPECIALS		1024
 
 enum struct BossEnum
 {
+	bool Active;
 	bool Leader;
 	char Name[MAX_TARGET_LENGTH];
 	TFClassType Class;
@@ -222,7 +225,6 @@ void Bosses_Config()
 	PrecacheSound("ambient/lightsoff.wav", true);
 	isCharSetSelected = false;
 }
-
 
 static void ProcessDirectory(const char[] base, const char[] current, const char[] matching, int pack, KeyValues kv=INVALID_HANDLE)
 {
@@ -541,6 +543,30 @@ void Bosses_Prepare(int boss)
 	Special[boss].Precached = true;
 }
 
+void Bosses_Create(int client, int boss)
+{
+	if(boss < 0)
+	{
+		if(!Boss[client].Active)
+			return;
+
+		Boss[client].Active = false;
+		// Unhook stuff
+	}
+
+	Boss[client].RageDamage = RoundFloat(ParseFormula(boss, "ragedamage", DEFAULT_RAGEDAMAGE));
+	Boss[client].Lives = Special[boss].Kv.GetNum("lives", 1);
+	if(Boss[client].Lives < 1)
+		Boss[client].Lives = 1;
+
+	Boss[client].MaxLives = Boss[client].Lives;
+	Boss[client].MaxHealth = RoundFloat(ParseFormula(boss, "health_formula", DEFAULT_HEALTH));
+	if(Boss[client].MaxHealth < 1)
+		Boss[client].MaxHealth = RoundFloat(Pow((760.8+float(Players))*(float(Players)-1.0), 1.0341)+2046.0);
+
+	
+}
+
 void Bosses_Equip(int client, int boss)
 {
 	TF2_RemoveAllWeapons(client);
@@ -566,10 +592,9 @@ void Bosses_Equip(int client, int boss)
 
 			Special[boss].Kv.GetString("name", classname, sizeof(classname), wearable ? "tf_wearable" : "saxxy");
 		}
-		else
-		{
-			wearable = view_as<bool>(StrContains(classname, "tf_weap"));
-		}
+
+		MultiClassname(classname, sizeof(classname));
+		wearable = view_as<bool>(StrContains(classname, "tf_weap"));
 
 		if(wearable && SDKEquipWearable==null)
 			continue;
@@ -660,6 +685,7 @@ void Bosses_Equip(int client, int boss)
 		}
 		else
 		{
+			SetEntProp(index, Prop_Send, "m_bValidatedAttachedEntity", 0);
 			SetEntProp(index, Prop_Send, "m_iWorldModelIndex", -1);
 			SetEntPropFloat(index, Prop_Send, "m_flModelScale", 0.001);
 			SetEntProp(index, Prop_Send, "m_nModelIndexOverrides", -1, _, 0);
@@ -697,6 +723,35 @@ static bool ConfigureWorldModelOverride(int entity, const char[] model, bool wea
 	SetEntProp(entity, Prop_Send, "m_nModelIndexOverrides", index, _, 3);
 	SetEntProp(entity, Prop_Send, "m_nModelIndexOverrides", (wearable ? index : GetEntProp(entity, Prop_Send, "m_iWorldModelIndex")), _, 0);
 	return true;
+}
+
+static void MultiClassname(char[] name, int length)
+{
+	if(StrEqual(name, "saxxy"))
+	{ 
+		switch(TF2_GetPlayerClass(client))
+		{
+			case TFClass_Scout:	strcopy(name, length, "tf_weapon_bat");
+			case TFClass_Pyro:	strcopy(name, length, "tf_weapon_fireaxe");
+			case TFClass_DemoMan:	strcopy(name, length, "tf_weapon_bottle");
+			case TFClass_Heavy:	strcopy(name, length, "tf_weapon_fists");
+			case TFClass_Engineer:	strcopy(name, length, "tf_weapon_wrench");
+			case TFClass_Medic:	strcopy(name, length, "tf_weapon_bonesaw");
+			case TFClass_Sniper:	strcopy(name, length, "tf_weapon_club");
+			case TFClass_Spy:	strcopy(name, length, "tf_weapon_knife");
+			default:		strcopy(name, length, "tf_weapon_shovel");
+		}
+	}
+	else if(StrEqual(name, "tf_weapon_shotgun"))
+	{
+		switch(TF2_GetPlayerClass(client))
+		{
+			case TFClass_Pyro:	strcopy(name, length, "tf_weapon_shotgun_pyro");
+			case TFClass_Heavy:	strcopy(name, length, "tf_weapon_shotgun_hwg");
+			case TFClass_Engineer:	strcopy(name, length, "tf_weapon_shotgun_primary");
+			default:		strcopy(name, length, "tf_weapon_shotgun_soldier");
+		}
+	}
 }
 
 static int GetRankingKills(int rank, int index, bool wearable)
