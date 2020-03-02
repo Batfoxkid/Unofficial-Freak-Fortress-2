@@ -10,6 +10,7 @@
 	void Bosses_Setup()
 	void Bosses_Config()
 	void Bosses_Prepare(int boss)
+	void Bosses_Create(int client, int boss)
 	void Bosses_Equip(int client, int boss)
 */
 
@@ -23,50 +24,6 @@
 #define MAX_CLASSNAME_LENGTH	36
 #define MAX_CHARSET_LENGTH	42
 #define MAXSPECIALS		1024
-
-enum struct BossEnum
-{
-	bool Active;
-	bool Leader;
-	char Name[MAX_TARGET_LENGTH];
-	TFClassType Class;
-	TFTeam Team;
-
-	int MaxHealth;
-	int Lives;
-	int MaxLives;
-	float MaxSpeed;
-
-	int RageDamage;
-	int RageMode;
-	float RageMin;
-	float RageMax;
-	float Charge[4];
-
-	int Killstreak;
-	int RPSHealth;
-	int RPSCount;
-
-	bool Voice;
-	bool Triple;
-	int Knockback;
-	bool Crits;
-	bool Healing;
-	bool Sapper;
-	bool AmmoKits;
-	bool HealthKits;
-	bool Cosmetics;
-
-	int Health(int client)
-	{
-		return GetClientHealth(client)+((this.Lives-1)*this.MaxHealth);
-	}
-
-	float Speed(int client)
-	{
-		return this.MaxSpeed+0.7*(100.0-Health(client)*100.0/this.MaxLives/this.MaxHealth));
-	}
-}
 
 enum struct SpecialEnum
 {
@@ -88,7 +45,6 @@ static ConVar CvarKnockback;
 static ConVar CvarCrits;
 static ConVar CvarHealing;
 
-BossEnum Boss[MAXTF2PLAYERS];
 SpecialEnum Special[MAXSPECIALS];
 ArrayList BossList;
 int Specials;
@@ -492,8 +448,6 @@ void Bosses_Prepare(int boss)
 		return;
 
 	Special[boss].Kv.Rewind();
-	static char bossName[MAX_TARGET_LENGTH];
-	Special[boss].Kv.GetString("filename", bossName, sizeof(bossName));
 	Special[boss].Kv.GoFirstSubKey();
 	char filePath[PLATFORM_MAX_PATH], key[8];
 	while(Special[boss].Kv.GotoNextKey())
@@ -513,11 +467,12 @@ void Bosses_Prepare(int boss)
 				if(FileExists(filePath, true))
 				{
 					PrecacheSound(file);
+					continue;
 				}
-				else
-				{
-					LogError2("[Boss] Character %s is missing file '%s' in section '%s'!", bossName, filePath, section);
-				}
+
+				char bossName[MAX_TARGET_LENGTH];
+				Special[boss].Kv.GetString("filename", bossName, sizeof(bossName));
+				LogError2("[Boss] Character %s is missing file '%s' in section '%s'!", bossName, filePath, section);
 			}
 		}
 		else if(StrEqual(section, "mod_precache"))
@@ -535,6 +490,8 @@ void Bosses_Prepare(int boss)
 					continue;
 				}
 
+				char bossName[MAX_TARGET_LENGTH];
+				Special[boss].Kv.GetString("filename", bossName, sizeof(bossName));
 				LogError2("[Boss] Character %s is missing file '%s' in section '%s'!", bossName, filePath, section);
 			}
 		}
@@ -554,6 +511,8 @@ void Bosses_Prepare(int boss)
 					continue;
 				}
 
+				char bossName[MAX_TARGET_LENGTH];
+				Special[boss].Kv.GetString("filename", bossName, sizeof(bossName));
 				LogError2("[Boss] Character %s is missing file '%s' in section '%s'!", bossName, filePath, section);
 			}
 		}
@@ -569,8 +528,12 @@ void Bosses_Create(int client, int boss)
 			return;
 
 		Boss[client].Active = false;
-		// Unhook stuff
+		SDKUnhook(client, SDKHook_GetMaxHealth, SDK_OnGetMaxHealth);
+		if(IsPlayerAlive(client))
+			TF2_RegeneratePlayer(client);
 	}
+
+	Bosses_Prepare(boss);
 
 	Boss[client].RageDamage = RoundFloat(ParseFormula(boss, "ragedamage", DEFAULT_RAGEDAMAGE));
 	Boss[client].Lives = Special[boss].Kv.GetNum("lives", 1);
@@ -593,10 +556,26 @@ void Bosses_Create(int client, int boss)
 	Boss[client].RageMode = Special[boss].Kv.GetNum("ragemode");
 	Boss[client].RageMax = Special[boss].Kv.GetFloat("ragemax", 100.0);
 	Boss[client].RageMin = Special[boss].Kv.GetFloat("ragemin", 100.0);
+	Boss[client].Class = KvGetClass(Special[boss].Kv, "class");
+	Boss[client].MaxSpeed = Special[boss].Kv.GetFloat("maxspeed", 340.0);
+	Boss[client].Team = view_as<TFTeam>(Special[boss].Kv.GetNum("bossteam"));
+	if(Boss[client].Team == TFTeam_Unassigned)
+	{
+		switch(CvarTeam.IntValue)
+		{
+			case 1:		Boss[client].Team = GetRandomInt(0, 1) ? TFTeam_Red : TFTeam_Blue;
+			case 2:		Boss[client].Team = TFTeam_Red;
+			default:	Boss[client].Team = TFTeam_Blue;
+		}	
+	}
+	else if(Boss[client].Team == TFTeam_Spectator)
+	{
+		Boss[client].Team = GetRandomInt(0, 1) ? TFTeam_Red : TFTeam_Blue;
+	}
 
 	SetEntProp(client, Prop_Send, "m_bGlowEnabled", 0);
 	TF2_RemovePlayerDisguise(client);
-	TF2_SetPlayerClass(client, KvGetClass(Special[boss].Kv, "class"), _, !GetEntProp(client, Prop_Send, "m_iDesiredPlayerClass") ? true : false);
+	TF2_SetPlayerClass(client, Boss[client].Class, _, !GetEntProp(client, Prop_Send, "m_iDesiredPlayerClass") ? true : false);
 	SDKHook(client, SDKHook_GetMaxHealth, SDK_OnGetMaxHealth);
 
 	int i = Special[boss].Kv.GetNum("sapper", CvarSapper.IntValue);
