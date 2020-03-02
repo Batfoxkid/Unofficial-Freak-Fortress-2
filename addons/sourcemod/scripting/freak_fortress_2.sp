@@ -88,19 +88,80 @@
 #define MAXENTITIES	2048
 #define MAXTF2PLAYERS	36
 
-Handle PreAbility;
-Handle OnAbility;
-Handle OnMusic;
-Handle OnMusic2;
-Handle OnTriggerHurt;
-Handle OnSpecialSelected;
-Handle OnAddQueuePoints;
-Handle OnLoadCharacterSet;
-Handle OnLoseLife;
-Handle OnAlivePlayersChanged;
-Handle OnBackstabbed;
+enum struct BossEnum
+{
+	bool Active;
+	bool Leader;
+	char Name[MAX_TARGET_LENGTH];
+	TFClassType Class;
+	TFTeam Team;
+
+	int MaxHealth;
+	int Lives;
+	int MaxLives;
+	float MaxSpeed;
+
+	int RageDamage;
+	int RageMode;
+	float RageMin;
+	float RageMax;
+	float Charge[4];
+
+	int Killstreak;
+	int RPSHealth;
+	int RPSCount;
+
+	bool Voice;
+	bool Triple;
+	int Knockback;
+	bool Crits;
+	bool Healing;
+	bool Sapper;
+	bool AmmoKits;
+	bool HealthKits;
+	bool Cosmetics;
+
+	int Health(int client)
+	{
+		return GetClientHealth(client)+((this.Lives-1)*this.MaxHealth);
+	}
+
+	float Speed(int client)
+	{
+		return this.MaxSpeed+0.7*(100.0-Health(client)*100.0/this.MaxLives/this.MaxHealth));
+	}
+}
+
+enum struct ClientEnum
+{
+	bool Minion;
+	TFTeam Team;
+
+	char BGM[PLATFORM_MAX_PATH];
+	float GlowFor;
+	int Damage;
+
+	int Crit[3];
+	int Stale[3];
+}
+
+ClientEnum Client[MAXTF2PLAYERS];
+BossEnum Boss[MAXTF2PLAYERS];
+
+GlobalForward PreAbility;
+GlobalForward OnAbility;
+GlobalForward OnMusic;
+GlobalForward OnMusic2;
+GlobalForward OnTriggerHurt;
+GlobalForward OnSpecialSelected;
+GlobalForward OnAddQueuePoints;
+GlobalForward OnLoadCharacterSet;
+GlobalForward OnLoseLife;
+GlobalForward OnAlivePlayersChanged;
+GlobalForward OnBackstabbed;
 
 // First-Load (No module dependencies)
+#tryinclude "ff2_modules/convars.sp"
 #tryinclude "ff2_modules/tf2x10.sp"
 #tryinclude "ff2_modules/tf2attributes.sp"
 #tryinclude "ff2_modules/weapons.sp"
@@ -108,16 +169,18 @@ Handle OnBackstabbed;
 // Second-Load
 #tryinclude "ff2_modules/tf2items.sp"	// weapons.sp
 #tryinclude "ff2_modules/steamworks.sp"	// tf2x10.sp
-
-// Third-Load
 #include "ff2_modules/sdkhooks.sp"	// tf2attributes.sp
 
+// Third-Load
+#include "ff2_modules/bosses.sp"	// convars.sp, sdkhooks.sp, tf2items.sp
+
 // Fourth-Load
-#include "ff2_modules/bosses.sp"	// sdkhooks.sp, tf2items.sp
+#tryinclude "ff2_modules/targetfilter.sp"	// bosses.sp
+#include "ff2_modules/music.sp"			// bosses.sp
+#include "ff2_modules/formula.sp"		// bosses.sp
 
 // Last-Load
-#tryinclude "ff2_modules/targetfilter.sp"	// bosses.sp
-#include "ff2_modules/formula.sp"		// bosses.sp
+#include "ff2_modules/natives.sp"
 
 // Require either one due to needing weapon attributes for bosses
 #if !defined FF2_TF2ATTRIBUTES
@@ -198,17 +261,17 @@ public APLRes AskPluginLoad2(Handle myself, bool late, char[] error, int err_max
 	CreateNative("FF2_MakeBoss", Native_MakeBoss);
 	CreateNative("FF2_SelectBoss", Native_ChooseBoss);*/
 
-	PreAbility = CreateGlobalForward("FF2_PreAbility", ET_Hook, Param_Cell, Param_String, Param_String, Param_Cell, Param_CellByRef);  //Boss, plugin name, ability name, slot, enabled
-	OnAbility = CreateGlobalForward("FF2_OnAbility", ET_Hook, Param_Cell, Param_String, Param_String, Param_Cell);  //Boss, plugin name, ability name, status
-	OnMusic = CreateGlobalForward("FF2_OnMusic", ET_Hook, Param_String, Param_FloatByRef);
-	OnMusic2 = CreateGlobalForward("FF2_OnMusic2", ET_Hook, Param_String, Param_FloatByRef, Param_String, Param_String);
-	OnTriggerHurt = CreateGlobalForward("FF2_OnTriggerHurt", ET_Hook, Param_Cell, Param_Cell, Param_FloatByRef);
-	OnSpecialSelected = CreateGlobalForward("FF2_OnSpecialSelected", ET_Hook, Param_Cell, Param_CellByRef, Param_String, Param_Cell);  //Boss, character index, character name, preset
-	OnAddQueuePoints = CreateGlobalForward("FF2_OnAddQueuePoints", ET_Hook, Param_Array);
-	OnLoadCharacterSet = CreateGlobalForward("FF2_OnLoadCharacterSet", ET_Hook, Param_CellByRef, Param_String);
-	OnLoseLife = CreateGlobalForward("FF2_OnLoseLife", ET_Hook, Param_Cell, Param_CellByRef, Param_Cell);  //Boss, lives left, max lives
-	OnAlivePlayersChanged = CreateGlobalForward("FF2_OnAlivePlayersChanged", ET_Hook, Param_Cell, Param_Cell);  //Players, bosses
-	OnBackstabbed = CreateGlobalForward("FF2_OnBackStabbed", ET_Hook, Param_Cell, Param_Cell, Param_Cell);  //Boss, client, attacker
+	PreAbility = GlobalForward("FF2_PreAbility", ET_Hook, Param_Cell, Param_String, Param_String, Param_Cell, Param_CellByRef);  //Boss, plugin name, ability name, slot, enabled
+	OnAbility = GlobalForward("FF2_OnAbility", ET_Hook, Param_Cell, Param_String, Param_String, Param_Cell);  //Boss, plugin name, ability name, status
+	OnMusic = GlobalForward("FF2_OnMusic", ET_Hook, Param_String, Param_FloatByRef);
+	OnMusic2 = GlobalForward("FF2_OnMusic2", ET_Hook, Param_String, Param_FloatByRef, Param_String, Param_String);
+	OnTriggerHurt = GlobalForward("FF2_OnTriggerHurt", ET_Hook, Param_Cell, Param_Cell, Param_FloatByRef);
+	OnSpecialSelected = GlobalForward("FF2_OnSpecialSelected", ET_Hook, Param_Cell, Param_CellByRef, Param_String, Param_Cell);  //Boss, character index, character name, preset
+	OnAddQueuePoints = GlobalForward("FF2_OnAddQueuePoints", ET_Hook, Param_Array);
+	OnLoadCharacterSet = GlobalForward("FF2_OnLoadCharacterSet", ET_Hook, Param_CellByRef, Param_String);
+	OnLoseLife = GlobalForward("FF2_OnLoseLife", ET_Hook, Param_Cell, Param_CellByRef, Param_Cell);  //Boss, lives left, max lives
+	OnAlivePlayersChanged = GlobalForward("FF2_OnAlivePlayersChanged", ET_Hook, Param_Cell, Param_Cell);  //Players, bosses
+	OnBackstabbed = GlobalForward("FF2_OnBackStabbed", ET_Hook, Param_Cell, Param_Cell, Param_Cell);  //Boss, client, attacker
 
 	RegPluginLibrary("freak_fortress_2");
 
@@ -260,6 +323,8 @@ public void OnConfigsExecuted()
 	#if defined FF2_WEAPONS
 	Weapons_Setup();
 	#endif
+
+	Bosses_Config();
 }
 
 #file "Unofficial Freak Fortress 2"
