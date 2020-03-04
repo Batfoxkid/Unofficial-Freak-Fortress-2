@@ -75,23 +75,14 @@ void Bosses_Config()
 		Special[i].Charset = -1;
 	}
 
-	if(Charsets == INVALID_HANDLE)
-	{
-		Charsets = new ArrayList(MAX_CHARSET_LENGTH, 0);
-	}
-	else
-	{
-		Charsets.Clear();
-	}
+	if(Charsets != INVALID_HANDLE)
+		delete Charsets;
 
-	if(BossList == INVALID_HANDLE)
-	{
-		BossList = new ArrayList(5, 0);
-	}
-	else
-	{
-		BossList.Clear();
-	}
+	if(BossList != INVALID_HANDLE)
+		delete BossList;
+
+	Charsets = new ArrayList(MAX_CHARSET_LENGTH, 0);
+	BossList = new ArrayList(5, 0);
 
 	char filepath[PLATFORM_MAX_PATH];
 	BuildPath(Path_SM, filepath, PLATFORM_MAX_PATH, CHARSET_PATH);
@@ -104,9 +95,6 @@ void Bosses_Config()
 		return;
 	}
 
-	KeyValues kv = new KeyValues("");
-	kv.ImportFromFile(filepath);
-
 	Charset = CvarCharset.IntValue;
 	char config[PLATFORM_MAX_PATH];
 	int i = Charset;
@@ -117,6 +105,9 @@ void Bosses_Config()
 	Call_Finish(action);
 	if(action == Plugin_Changed)
 		Charset = i;
+
+	KeyValues kv = new KeyValues("");
+	kv.ImportFromFile(filepath);
 
 	BuildPath(Path_SM, filepath, PLATFORM_MAX_PATH, ConfigPath);
 	int charset;
@@ -197,7 +188,6 @@ void Bosses_Config()
 	PrecacheSound("player/doubledonk.wav", true);
 	PrecacheSound("ambient/lightson.wav", true);
 	PrecacheSound("ambient/lightsoff.wav", true);
-	isCharSetSelected = false;
 }
 
 static void ProcessDirectory(const char[] base, const char[] current, const char[] matching, int pack, KeyValues kv=INVALID_HANDLE)
@@ -298,6 +288,13 @@ static KeyValues LoadCharacter(const char[] character, int charset)
 		return INVALID_HANDLE;
 	}
 
+	if(Charset != charset)
+	{
+		Special[Specials].Kv.SetString("filename", character);
+		Specials++;
+		return Special[Specials-1].Kv;
+	}
+
 	static char section[64];
 	if(charset != Charset)
 	{
@@ -359,6 +356,7 @@ static KeyValues LoadCharacter(const char[] character, int charset)
 	Special[Specials].Kv.SetString("filename", character);
 	Special[Specials].Kv.GetString("name", config, sizeof(config));
 	Special[Specials].Kv.GotoFirstSubKey();
+	BossList.Push(Specials);
 
 	char key[PLATFORM_MAX_PATH];
 	while(Special[Specials].Kv.GotoNextKey())
@@ -439,7 +437,7 @@ static KeyValues LoadCharacter(const char[] character, int charset)
 		}
 	}
 	Specials++;
-	return Special[Specials].Kv;
+	return Special[Specials-1].Kv;
 }
 
 void Bosses_Prepare(int boss)
