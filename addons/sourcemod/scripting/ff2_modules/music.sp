@@ -87,6 +87,8 @@ static void AddMusicTracks(int boss, int lives)
 
 void Music_Play(int client, int song=-1)
 {
+	Music_Stop(client);
+
 	if(song<0 || song>=BGMs)
 		song = GetRandomInt(0, BGMs-1);
 
@@ -107,6 +109,7 @@ void Music_Play(int client, int song=-1)
 	{
 		case Plugin_Stop, Plugin_Handled:
 		{
+			Client[client].BGMAt = FAR_FUTURE;
 			return;
 		}
 		case Plugin_Continue:
@@ -125,6 +128,7 @@ void Music_Play(int client, int song=-1)
 			{
 				case Plugin_Stop, Plugin_Handled:
 				{
+					Client[client].BGMAt = FAR_FUTURE;
 					return;
 				}
 				case Plugin_Continue:
@@ -136,34 +140,23 @@ void Music_Play(int client, int song=-1)
 		}
 	}
 
-	bool unknown1;
-	bool unknown2;
-	if(ToggleMusic[client])
-	{
-		strcopy(currentBGM[client], PLATFORM_MAX_PATH, music);
+	// TODO: Client Preferences
+	strcopy(Client[client].BGM, PLATFORM_MAX_PATH, path);
 
-		// EmitSoundToClient can sometimes not loop correctly
-		// 'playgamesound' can rarely not stop correctly
-		// 'play' can be stopped or interrupted by other things
-		// # before filepath effects music slider but can't stop correctly most of the time
-
-		ClientCommand(client, "playgamesound \"%s\"", music);
-		if(time > 1)
-			MusicTimer[client] = CreateTimer(time, Timer_PrepareBGM, GetClientUserId(client), TIMER_FLAG_NO_MAPCHANGE);
-	}
+	ClientCommand(client, "playgamesound \"%s\"", path);
+	Client[client].BGMAt = time>1 ? GetEngineTime()+time : FAR_FUTURE;
 
 	if(!name[0])
-	{
-		FormatEx(name, sizeof(name), "%T", "unknown_song", client);
-		unknown1 = true;
-	}
+		FormatEx(name, sizeof(name), "%T", "Music Name", client);
 
 	if(!artist[0])
-	{
-		FormatEx(artist, sizeof(artist), "%T", "unknown_artist", client);
-		unknown2 = true;
-	}
+		FormatEx(artist, sizeof(artist), "%T", "Music Artist", client);
 
-	if(cvarSongInfo.IntValue==1 || (!(unknown1 || unknown2) && !cvarSongInfo.IntValue))
-		FPrintToChat(client, "%t", "track_info", artist, name);
+	FPrintToChat(client, "%t", "Music Info", artist, name);
+}
+
+void Music_Stop(int client)
+{
+	if(Client[client].BGM[0])
+		StopSound(client, SNDCHAN_AUTO, Client[client].BGM);
 }
