@@ -321,12 +321,14 @@ void Music_List(int client)
 	SetGlobalTransTarget(client);
 	menu.SetTitle("%t", "Music Select Menu");
 
-	char buffer[64], num[4];
+	char buffer[64];
+	static char buffer2[16];
 	for(int i; i<BGMs; i++)
 	{
-		FormatEx(buffer, sizeof(buffer), "%t", "Music Format", BGM[i].Artist, BGM[i].Name);
-		IntToString(i, num, sizeof(num));
-		menu.AddItem(num, buffer);
+		TimeToString(RoundToCeil(BGM[i].Time), buffer2, sizeof(buffer2));
+		FormatEx(buffer, sizeof(buffer), "%t", "Music Select Song", BGM[i].Artist, BGM[i].Name, buffer2);
+		IntToString(i, buffer2, sizeof(buffer2));
+		menu.AddItem(buffer2, buffer);
 	}
 
 	menu.ExitButton = true;
@@ -361,5 +363,26 @@ public int Music_ListH(Menu menu, MenuAction action, int client, int selection)
 			Music_Play(client, GetEngineTime(), StringToInt(buffer));
 			Music_List(client);
 		}
+	}
+}
+
+static void TimeToString(int time, char[] buffer, int length)
+{
+	if(time/60 > 9)
+	{
+		IntToString(time/60, buffer, length);
+	}
+	else
+	{
+		FormatEx(buffer, length, "0%i", time/60);
+	}
+
+	if(time%60 > 9)
+	{
+		Format(buffer, length, "%s:%i", buffer, time%60);
+	}
+	else
+	{
+		Format(buffer, length, "%s:0%i", buffer, time%60);
 	}
 }
