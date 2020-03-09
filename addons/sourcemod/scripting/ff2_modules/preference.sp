@@ -162,31 +162,43 @@ public int Pref_QuickToggleH(Menu menu, MenuAction action, int client, int selec
 
 void Pref_Boss(int client, int pack)
 {
-	char buffer[64];
-	if(Charset < 0)
-	{
-		return;
-	}
-
-	if(pack == -2)
+	static char buffer[64], buffer2[64];
+	if(pack < 0)
 	{
 		return;
 	}
 
 	Menu menu = new Menu(Pref_BossH);
 	SetGlobalTransTarget(client);
+
+	char boss[64];
+	FormatEx(boss, sizeof(boss), "%t", "Pref Random");
+	menu.AddItem("", boss);
+
+	for(int i; i<Specials; i++)
+	{
+		if(Special[i].Charset != pack)
+			continue;
+
+		Special[i].Kv.Rewind();
+		if(Special[i].Kv.GetNum("blocked"))
+			continue;
+
+		Special[i].Kv.GetString("name", buffer, sizeof(buffer));
+		KvGetLang(Special[i].Kv, "name", buffer2, sizeof(buffer2), client);
+		if(i == Client[client].Selection)
+			strcopy(boss, sizeof(boss), buffer2);
+	}
+
 	if(Charsets.Length > 1)
 	{
-		Charsets.GetString(Charset, buffer, sizeof(buffer))
-		menu.SetTitle("%t", "Pref Selection BC", buffer, boss);
+		Charsets.GetString(Charset, buffer, sizeof(buffer));
+		menu.SetTitle("%t", "Pref Selection CB", buffer, buffer2);
 	}
 	else
 	{
 		menu.SetTitle("%t", "Pref Selection B", boss);
 	}
-
-	FormatEx(buffer, sizeof(buffer), "%t", "Pref Random");
-	menu.AddItem(buffer, buffer);
 }
 
 void Pref_Bosses(int client)
@@ -279,4 +291,25 @@ public int Pref_BossesH(Menu menu, MenuAction action, int client, int selection)
 			Pref_Boss(client, StringToInt(buffer));
 		}
 	}
+}
+
+stock void KvGetLang(Handle kv, const char[] key, char[] buffer, int length, int client=0, const char[] default="=Failed name=")
+{
+	static char language[20];
+	GetLanguageInfo(client ? GetClientLanguage(client) : GetServerLanguage(), language, sizeof(language), buffer, sizeof(buffer));
+	Format(language, sizeof(language), "%s_%s", key, language);
+
+	KvGetString(kv, language, buffer, length);
+	if(buffer[0])
+		return;
+
+	if(client)
+	{
+		GetLanguageInfo(GetServerLanguage(), language, sizeof(language), buffer, sizeof(buffer));
+		Format(language, sizeof(language), "%s_%s", key, language);
+		KvGetString(kv, language, buffer, length);
+	}
+
+	if(!buffer[0])
+		KvGetString(kv, key, buffer, length, default);
 }
