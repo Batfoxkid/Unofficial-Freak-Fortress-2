@@ -107,7 +107,8 @@ enum
 	Pref_Boss,
 	Pref_Duo,
 	Pref_Diff,
-	Pref_Damage,
+	Pref_Dmg,
+	Pref_DmgPos,
 	Pref_MAX
 }
 
