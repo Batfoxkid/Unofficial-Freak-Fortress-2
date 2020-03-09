@@ -12,19 +12,19 @@ void Pref_Menu(int client)
 	menu.SetTitle("%t", "Pref Menu");
 
 	char buffer[64];
-	FormatEx(buffer, sizeof(buffer), "%t", "Pref Voice", Client[client].Pref[Pref_Voice]==Pref_Off ? "Disabled" : Client[client].Pref[Pref_Voice]==Pref_Temp ? "Temp Round" : "Enabled");
+	FormatEx(buffer, sizeof(buffer), "%t", "Pref Voice", Client[client].Pref[Pref_Voice]==Pref_Off ? "Off" : Client[client].Pref[Pref_Voice]==Pref_Temp ? "Temp Round" : "On");
 	menu.AddItem("1", buffer);
 
-	FormatEx(buffer, sizeof(buffer), "%t", "Pref Help", Client[client].Pref[Pref_Help]==Pref_Off ? "Disabled" : Client[client].Pref[Pref_Help]==Pref_Temp ? "Temp Map" : "Enabled");
+	FormatEx(buffer, sizeof(buffer), "%t", "Pref Help", Client[client].Pref[Pref_Help]==Pref_Off ? "Off" : Client[client].Pref[Pref_Help]==Pref_Temp ? "Temp Map" : "On");
 	menu.AddItem("2", buffer);
 
-	FormatEx(buffer, sizeof(buffer), "%t", "Pref Boss", Client[client].Pref[Pref_Boss]==Pref_Off ? "Disabled" : Client[client].Pref[Pref_Boss]==Pref_Temp ? "Temp Map" : "Enabled");
+	FormatEx(buffer, sizeof(buffer), "%t", "Pref Boss", Client[client].Pref[Pref_Boss]==Pref_Off ? "Off" : Client[client].Pref[Pref_Boss]==Pref_Temp ? "Temp Map" : "On");
 	menu.AddItem("4", buffer);
 
-	FormatEx(buffer, sizeof(buffer), "%t", "Pref Duo", Client[client].Pref[Pref_Duo]==Pref_Off ? "Disabled" : Client[client].Pref[Pref_Duo]==Pref_Temp ? "Temp Map" : "Enabled");
+	FormatEx(buffer, sizeof(buffer), "%t", "Pref Duo", Client[client].Pref[Pref_Duo]==Pref_Off ? "Off" : Client[client].Pref[Pref_Duo]==Pref_Temp ? "Temp Map" : "On");
 	menu.AddItem("5", buffer);
 
-	FormatEx(buffer, sizeof(buffer), "%t", "Pref Diff", Client[client].Pref[Pref_Diff]==Pref_Off ? "Disabled" : Client[client].Pref[Pref_Diff]==Pref_Temp ? "Temp Map" : "Enabled");
+	FormatEx(buffer, sizeof(buffer), "%t", "Pref Diff", Client[client].Pref[Pref_Diff]==Pref_Off ? "Off" : Client[client].Pref[Pref_Diff]==Pref_Temp ? "Temp Map" : "On");
 	menu.AddItem("6", buffer);
 
 	if(Client[client].Pref[Pref_Dmg])
@@ -120,9 +120,9 @@ void Pref_QuickToggle(int client, int selection)
 
 	char buffer[64], num[4];
 	IntToString(selection, num, sizeof(num));
-	FormatEx(buffer, sizeof(buffer), "%t", "Enabled");
+	FormatEx(buffer, sizeof(buffer), "%t", "On");
 	menu.AddItem(num, buffer);
-	FormatEx(buffer, sizeof(buffer), "%t", "Disabled");
+	FormatEx(buffer, sizeof(buffer), "%t", "Off");
 	menu.AddItem(num, buffer);
 	FormatEx(buffer, sizeof(buffer), "%t", "Temp Map");
 	menu.AddItem(num, buffer);
@@ -147,6 +147,58 @@ public int Pref_QuickToggleH(Menu menu, MenuAction action, int client, int selec
 		}
 		case MenuAction_Select:
 		{
+			char buffer[6];
+			menu.GetItem(selection, buffer, sizeof(buffer));
+			if(StringToInt(buffer) == -1)
+			{
+				FPrintToChat(client, "%t", "Pref Remind");
+				return;
+			}
+
+			// Select Boss
+		}
+	}
+}
+
+void Pref_Boss(int client, bool args)
+{
+	char buffer[64];
+	if(!Enabled2)
+	{
+		return;
+	}
+
+	if(args)
+	{
+		return;
+	}
+
+	if(Charsets.Length > 1)
+	{
+		Charsets.GetString(Charset, buffer, sizeof(buffer))
+		menu.SetTitle("%t", "Pref Selection C", buffer, boss);
+
+		FormatEx(buffer, sizeof(buffer), "%t", "Pref View All");
+		menu.AddItem(buffer, buffer);
+	}
+	else
+	{
+		menu.SetTitle("%t", "Pref Selection", boss);
+	}
+
+	FormatEx(buffer, sizeof(buffer), "%t", "Pref Random");
+	menu.AddItem(buffer, buffer);
+}
+
+void Pref_Bosses(int client)
+{
+	char buffer[96];
+	if(AreClientCookiesCached(client))
+	{
+		for(int i; i<Charsets.Length; i++)
+		{
+			Charsets.GetString(Charset, buffer, sizeof(buffer));
+			
 		}
 	}
 }
