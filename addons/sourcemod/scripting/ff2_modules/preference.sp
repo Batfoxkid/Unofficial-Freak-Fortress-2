@@ -160,30 +160,29 @@ public int Pref_QuickToggleH(Menu menu, MenuAction action, int client, int selec
 	}
 }
 
-void Pref_Boss(int client, bool args)
+void Pref_Boss(int client, int pack)
 {
 	char buffer[64];
-	if(!Enabled2)
+	if(Charset < 0)
 	{
 		return;
 	}
 
-	if(args)
+	if(pack == -2)
 	{
 		return;
 	}
 
+	Menu menu = new Menu(Pref_BossH);
+	SetGlobalTransTarget(client);
 	if(Charsets.Length > 1)
 	{
 		Charsets.GetString(Charset, buffer, sizeof(buffer))
-		menu.SetTitle("%t", "Pref Selection C", buffer, boss);
-
-		FormatEx(buffer, sizeof(buffer), "%t", "Pref View All");
-		menu.AddItem(buffer, buffer);
+		menu.SetTitle("%t", "Pref Selection BC", buffer, boss);
 	}
 	else
 	{
-		menu.SetTitle("%t", "Pref Selection", boss);
+		menu.SetTitle("%t", "Pref Selection B", boss);
 	}
 
 	FormatEx(buffer, sizeof(buffer), "%t", "Pref Random");
@@ -192,13 +191,92 @@ void Pref_Boss(int client, bool args)
 
 void Pref_Bosses(int client)
 {
-	char buffer[96];
+	Menu menu = new Menu(Pref_BossesH);
+	SetGlobalTransTarget(client);
+	menu.SetTitle("%t", "Pref Selection");
+
+	static char buffer[512];
 	if(AreClientCookiesCached(client))
 	{
-		for(int i; i<Charsets.Length; i++)
+		int size = Charsets.Length>0 ? sizeof(buffer)/Charsets.Length : 64;
+		if(size > 64)
+		{
+			size = 64;
+		}
+		else if(size < 12)
+		{
+			size = 12;
+		}
+
+		SelectionCookie.Get(client, buffer, sizeof(buffer));
+		char[][] buffers = new char[Charsets.Length][size];
+		int amount = ExplodeString(buffer, ";", buffers, Charsets.Length, size);
+
+		if(Charset >= 0)
 		{
 			Charsets.GetString(Charset, buffer, sizeof(buffer));
-			
+			if(amount > Charset)
+				Format(buffer, sizeof(buffer), "%s: %s", buffer, buffers[Charset]);
+
+			IntToString(Charset, buffers[Charset], size);
+			menu.AddItem(buffers[Charset], buffer);
+			menu.AddItem(buffers[Charset], "- = - = -", ITEMDRAW_SPACER);
+		}
+
+		for(int i; i<Charsets.Length; i++)
+		{
+			if(i == Charset)
+				continue;
+
+			Charsets.GetString(i, buffer, sizeof(buffer));
+			if(i < amount)
+				Format(buffer, sizeof(buffer), "%s: %s", buffer, buffers[Charset]);
+
+			IntToString(i, buffers[0], size);
+			menu.AddItem(buffers[0], buffer);
+		}
+	}
+	else
+	{
+		char num[6];
+		if(Charset >= 0)
+		{
+			Charsets.GetString(Charset, buffer, sizeof(buffer));
+			IntToString(Charset, num, sizeof(num));
+			menu.AddItem(num, buffer);
+			menu.AddItem(num, "- = - = -", ITEMDRAW_SPACER);
+		}
+
+		for(int i; i<Charsets.Length; i++)
+		{
+			if(i == Charset)
+				continue;
+
+			Charsets.GetString(i, buffer, sizeof(buffer));
+			IntToString(i, num, sizeof(num));
+			menu.AddItem(num, buffer);
+		}
+	}
+}
+
+public int Pref_BossesH(Menu menu, MenuAction action, int client, int selection)
+{
+	switch(action)
+	{
+		case MenuAction_End:
+		{
+			delete menu;
+		}
+		case MenuAction_Cancel:
+		{
+			if(selection == MenuCancel_ExitBack)
+				Menu_Main(client);
+		}
+		case MenuAction_Select:
+		{
+			char buffer[6];
+			menu.GetItem(selection, buffer, sizeof(buffer));
+			Pref_Boss(client, StringToInt(buffer));
 		}
 	}
 }
