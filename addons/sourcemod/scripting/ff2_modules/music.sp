@@ -19,11 +19,12 @@ enum struct BGMEnum
 
 BGMEnum BGM[MAXSONGS];
 
-void Music_Setup()
+void Music_Start(float engineTime)
 {
 	BGMs = 0;
 	for(int client=1; client<=MaxClients; client++)
 	{
+		Client[client].BGMAt = engineTime+3.0;
 		if(Boss[client].Active)
 			AddMusicTracks(Boss[client].Special, Boss[client].Lives);
 	}
@@ -85,12 +86,18 @@ static void AddMusicTracks(int boss, int lives)
 	}
 }
 
-void Music_Play(int client, int song=-1)
+void Music_Play(int client, float engineTime, int song=-1)
 {
 	Music_Stop(client);
 
-	if(song<0 || song>=BGMs)
+	if(song < 0)
+	{
 		song = GetRandomInt(0, BGMs-1);
+	}
+	else if(song >= BGMs)
+	{
+		song = 0;
+	}
 
 	float time = BGM[song].Time;
 	char name[64], artist[64], path[MAX_PLATFORM_PATH];
@@ -144,7 +151,7 @@ void Music_Play(int client, int song=-1)
 	strcopy(Client[client].BGM, PLATFORM_MAX_PATH, path);
 
 	ClientCommand(client, "playgamesound \"%s\"", path);
-	Client[client].BGMAt = time>1 ? GetEngineTime()+time : FAR_FUTURE;
+	Client[client].BGMAt = time>1 ? engineTime+time : FAR_FUTURE;
 
 	if(!name[0])
 		FormatEx(name, sizeof(name), "%T", "Music Name", client);
@@ -157,6 +164,60 @@ void Music_Play(int client, int song=-1)
 
 void Music_Stop(int client)
 {
+	Client[client].BGMAt = FAR_FUTURE;
+	if(!Client[client].BGM[0])
+		return;
+
+	StopSound(client, SNDCHAN_AUTO, Client[client].BGM);
+	Client[client].BGM[0] = 0;
+}
+
+void Music_Menu(int client)
+{
+	Menu menu = new Menu(Music_MenuH);
+	SetGlobalTransTarget(client);
+	menu.SetTitle("%t", "Music Menu");
+
+	char buffer[64];
+	FormatEx(buffer, sizeof(buffer), "%t", Client[client].Pref[Pref_Music]>Pref_On ? "Music Enable" : "Music Disable");
+	menu.AddItem(buffer, buffer);
+	FormatEx(buffer, sizeof(buffer), "%t", "Music Skip");
+	menu.AddItem(buffer, buffer);
+	FormatEx(buffer, sizeof(buffer), "%t", "Music Shuffle");
+	menu.AddItem(buffer, buffer);
+	FormatEx(buffer, sizeof(buffer), "%t", "Music Select");
+	menu.AddItem(buffer, buffer);
+
+	menu.ExitButton = true;
+	menu.Display(client, MENU_TIME_FOREVER);
+}
+
+public int Music_MenuH(Menu menu, MenuAction action, int client, int selection)
+{
+	switch(action)
+	{
+		case MenuAction_End:
+		{
+			delete menu;
+		}
+		case MenuAction_Select:
+		{
+		}
+	}
+}
+
+void Music_Skip(int client)
+{
 	if(Client[client].BGM[0])
-		StopSound(client, SNDCHAN_AUTO, Client[client].BGM);
+	{
+		for(int i; i<BGMs; i++)
+		{
+			if(!StrEqual(BGM[i].Path[0], Client[client].BGM))
+				continue;
+
+			Music_Play(client, GetEngineTime(), i+1);
+			return;
+		}
+	}
+	Music_Play(client, GetEngineTime());
 }
