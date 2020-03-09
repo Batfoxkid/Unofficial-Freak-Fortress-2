@@ -88,6 +88,29 @@
 #define MAXENTITIES	2048
 #define MAXTF2PLAYERS	36
 
+#define HUD_DAMAGE	(1 << 0)
+#define HUD_ITEM	(1 << 1)
+#define HUD_HEALTH	(1 << 2)
+#define HUD_MESSAGE	(1 << 3)
+
+enum
+{
+	Pref_Undef = 0,
+	Pref_On,
+	Pref_Off,
+	Pref_Temp,
+
+	Pref_Music = 0,
+	Pref_Voice,
+	Pref_Help,
+	Pref_Hud,
+	Pref_Boss,
+	Pref_Duo,
+	Pref_Diff,
+	Pref_Damage,
+	Pref_MAX
+}
+
 enum struct BossEnum
 {
 	bool Active;
@@ -138,8 +161,10 @@ enum struct ClientEnum
 	TFTeam Team;
 
 	char BGM[PLATFORM_MAX_PATH];
+	float BGMAt;
 	float GlowFor;
 	int Damage;
+	int Pref[Pref_MAX];
 
 	int Crit[3];
 	int Stale[3];
