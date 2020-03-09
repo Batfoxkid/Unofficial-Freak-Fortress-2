@@ -25,32 +25,11 @@
 #define MAX_CHARSET_LENGTH	42
 #define MAXSPECIALS		1024
 
-enum struct SpecialEnum
-{
-	KeyValues Kv;
-	int Charset;
-	bool Precached;
-}
-
-enum
-{
-	RageMode_Full = 0,
-	RageMode_Part,
-	RageMode_None
-}
-
 ConVar CvarCharset;
 static ConVar CvarTriple;
 static ConVar CvarKnockback;
 static ConVar CvarCrits;
 static ConVar CvarHealing;
-
-SpecialEnum Special[MAXSPECIALS];
-ArrayList BossList;
-int Specials;
-
-ArrayList Charsets;
-int Charset;
 
 void Bosses_Setup()
 {
