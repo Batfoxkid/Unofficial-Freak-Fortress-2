@@ -109,7 +109,11 @@ enum
 	Pref_Diff,
 	Pref_Dmg,
 	Pref_DmgPos,
-	Pref_MAX
+	Pref_MAX,
+
+	RageMode_Full = 0,
+	RageMode_Part,
+	RageMode_None
 }
 
 enum struct BossEnum
@@ -170,6 +174,20 @@ enum struct ClientEnum
 	int Crit[3];
 	int Stale[3];
 }
+
+enum struct SpecialEnum
+{
+	KeyValues Kv;
+	int Charset;
+	bool Precached;
+}
+
+SpecialEnum Special[MAXSPECIALS];
+ArrayList BossList;
+int Specials;
+
+ArrayList Charsets;
+int Charset;
 
 ClientEnum Client[MAXTF2PLAYERS];
 BossEnum Boss[MAXTF2PLAYERS];
