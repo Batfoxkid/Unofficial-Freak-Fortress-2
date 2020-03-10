@@ -14,27 +14,64 @@ void Pref_Setup()
 	BossCookie = new Cookie("ff2_cookies_selection", "Player's Boss Selections", CookieAccess_Protected);
 }
 
-void Pref_SetupClient(int client)
+void Pref_SetupClient(int client, float engineTime)
 {
-	int amount;
-	static char buffer[59], buffers[9][6];
-	bool cached = (!IsFakeClient(client) && AreClientCookiesCached(client));
-	if(cached)
+	if(IsFakeClient(client) || !AreClientCookiesCached(client))
 	{
-		CoreCookie.Get(client, buffer, sizeof(buffer));
-		amount = ExplodeString(buffer, " ", buffers, sizeof(buffers), sizeof(buffers[]));
+		Client[client].Queue = 0;
+		for(int i; i<Pref_MAX; i++)
+		{
+			Client[client].Pref[i] = Pref_Undef;
+		}
+		Client[client].PopUpAt = engineTime+30.0;
+		Client[client].Selection = -1;
+		return;
 	}
+
+	int length = Charsets.Length;
+	if(!length)
+		length = 1;
+
+	static char buffer[512];
+	int size = sizeof(buffer)/length;
+	if(size > 64)
+	{
+		size = 64;
+	}
+	else if(size < 12)
+	{
+		size = 12;
+	}
+
+	if(length < 9)
+		length = 9;
+
+	CoreCookie.Get(client, buffer, sizeof(buffer));
+	char[][] buffers = new char[length][size];
+	int amount = ExplodeString(buffer, " ", buffers, length, size);
 
 	Client[client].Queue = amount ? StringToInt(buffers[0]) : 0;
 	for(int i=1; i<9; i++)
 	{
 		Client[client].Pref[i-1] = amount>i ? StringToInt(buffers[i]) : Pref_Undef;
 	}
+	Client[client].PopUpAt = Client[client].Pref[Pref_Boss]==Pref_Undef ? engineTime+30.0 : FAR_FUTURE;
 
-	if(cached)
+	BossCookie.Get(client, buffer, sizeof(buffer));
+	amount = ExplodeString(buffer, ";", buffers, sizeof(buffers), sizeof(buffers[]));
+	if(amount <= Charset)
 	{
-		BossCookie.Get(client, buffer, sizeof(buffer));
-		amount = ExplodeString(buffer, " ", buffers, sizeof(buffers), sizeof(buffers[]));
+		Client[client].Selection = -1;
+		return;
+	}
+
+	for(int i; i<Specials; i++)
+	{
+		if(Special[i].Charset != Charset)
+			continue;
+
+		Special[i].Kv.GetString(buffer, sizeof(buffer));
+		if(!StrContains(buffer, buffers))
 	}
 }
 
@@ -113,7 +150,7 @@ public int Pref_MenuH(Menu menu, MenuAction action, int client, int selection)
 		case MenuAction_Cancel:
 		{
 			if(selection == MenuCancel_ExitBack)
-				Menu_Main(client);
+				MainMenu(client);
 		}
 		case MenuAction_Select:
 		{
@@ -538,7 +575,7 @@ public int Pref_BossesH(Menu menu, MenuAction action, int client, int selection)
 		case MenuAction_Cancel:
 		{
 			if(selection == MenuCancel_ExitBack)
-				Menu_Main(client);
+				MainMenu(client);
 		}
 		case MenuAction_Select:
 		{
