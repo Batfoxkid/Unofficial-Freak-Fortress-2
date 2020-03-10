@@ -103,12 +103,12 @@ enum
 	Pref_Music = 0,
 	Pref_Voice,
 	Pref_Help,
-	Pref_Hud,
 	Pref_Boss,
 	Pref_Duo,
 	Pref_Diff,
 	Pref_Dmg,
 	Pref_DmgPos,
+	Pref_Hud,
 	Pref_MAX,
 
 	RageMode_Full = 0,
@@ -168,7 +168,9 @@ enum struct ClientEnum
 	char BGM[PLATFORM_MAX_PATH];
 	float BGMAt;
 	float GlowFor;
+	float PopUpAt;
 	int Damage;
+	int Queue;
 	int Pref[Pref_MAX];
 
 	int Crit[3];
