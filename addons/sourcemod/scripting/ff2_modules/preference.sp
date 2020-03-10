@@ -178,7 +178,7 @@ void Pref_Boss(int client, int pack)
 		GetCmdArgString(buffer, sizeof(buffer));
 		if(!StrContains(boss, buffer, false))
 		{
-			Pref_SelectBoss(client, -1, Charset);
+			Pref_SelectBoss(client, -1);
 			FReplyToCommand(client, "%t", "Pref Selected", boss);
 			return;
 		}
@@ -294,7 +294,7 @@ public int Pref_BossH(Menu menu, MenuAction action, int client, int selection)
 				return;
 			}
 
-			Pref_SelectBoss(client, -1, boss);
+			Pref_SelectBoss(client, -1);
 			Pref_Boss(boss);
 		}
 	}
@@ -302,13 +302,43 @@ public int Pref_BossH(Menu menu, MenuAction action, int client, int selection)
 
 static void ConfirmBoss(int client, int boss)
 {
-	Menu menu = new Menu(ConfirmBossH);
+	Menu menu = new Menu(ConfirmBossH, MenuAction_Select|MenuAction_End);
 	SetGlobalTransTarget(client);
 
-	static char buffer[256];
 	Special[boss].Kv.Rewind();
-	KvGetLang(Special[boss].Kv, "description", buffer, sizeof(buffer), client, "No Description");
+
+	char buffer2[64];
+	FormatEx(buffer2, sizeof(buffer2), "%t", "Pref No Desc");
+
+	char buffer[256];
+	KvGetLang(Special[boss].Kv, "description", buffer, sizeof(buffer), client, buffer2);
 	menu.SetTitle(buffer);
+
+	KvGetLang(Special[boss].Kv, "name", buffer2, sizeof(buffer2), client);
+	if(Special[boss].Charset == Charset)
+	{
+		FormatEx(buffer, sizeof(buffer), "%t", "Pref Confirm", buffer2); 
+	}
+	else
+	{
+		Charsets.GetString(Charset, buffer, sizeof(buffer));
+		Format(buffer, sizeof(buffer), "%t", "Pref Confirm C", buffer2, buffer);
+	}
+
+	IntToString(boss, buffer2, sizeof(buffer2));
+	menu.AddItem(buffer2, buffer);
+
+	for(int i; i<6; i++)
+	{
+		menu.AddItem(buffer2, " ", ITEMDRAW_SPACER);
+	}
+
+	FormatEx(buffer, sizeof(buffer), "%t", "Back"); 
+	menu.AddItem(buffer2, buffer);
+
+	menu.Pagination = false;
+	menu.ExitButton = true;
+	menu.Display(client, MENU_TIME_FOREVER);
 }
 
 public int ConfirmBossH(Menu menu, MenuAction action, int client, int selection)
@@ -319,16 +349,15 @@ public int ConfirmBossH(Menu menu, MenuAction action, int client, int selection)
 		{
 			delete menu;
 		}
-		case MenuAction_Cancel:
-		{
-			if(selection == MenuCancel_ExitBack)
-				Pref_Bosses(client);
-		}
 		case MenuAction_Select:
 		{
 			char buffer[6];
 			menu.GetItem(selection, buffer, sizeof(buffer));
-			ConfirmBoss(client, StringToInt(buffer));
+			int boss = StringToInt(buffer);
+			if(!selection)
+				Pref_SelectBoss(client, boss);
+
+			Pref_Boss(client, Special[boss].Charset);
 		}
 	}
 }
@@ -433,13 +462,13 @@ public int Pref_BossesH(Menu menu, MenuAction action, int client, int selection)
 	}
 }
 
-void Pref_SelectBoss(int client, int boss, int pack)
+void Pref_SelectBoss(int client, int boss)
 {
-	if(pack == Charset)
+	if(Charset == Special[boss].Charset)
 		Client[client].Selection = boss;
 
 	int length = Charsets.Length;
-	if(pack>length || !AreClientCookiesCached(client))
+	if(Special[boss].Charset>length || !AreClientCookiesCached(client))
 		return;
 
 	static char buffer[512];
@@ -458,12 +487,12 @@ void Pref_SelectBoss(int client, int boss, int pack)
 	ExplodeString(buffer, ";", buffers, length, size);
 	if(boss >= 0)
 	{
-		Special[i].Kv.Rewind();
-		Special[i].Kv.GetString("name", buffers[pack], size);
+		Special[boss].Kv.Rewind();
+		Special[boss].Kv.GetString("name", buffers[Special[boss].Charset], size);
 	}
 	else
 	{
-		buffers[pack][0] = 0;
+		buffers[Special[boss].Charset][0] = 0;
 	}
 
 	strcopy(buffer, buffers[0], sizeof(buffer));
