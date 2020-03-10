@@ -5,6 +5,39 @@
 
 #define FF2_PREF
 
+static Cookie CoreCookie;
+static Cookie BossCookie;
+
+void Pref_Setup()
+{
+	CoreCookie = new Cookie("ff2_cookies_mk3", "Player's Preferences", CookieAccess_Protected);
+	BossCookie = new Cookie("ff2_cookies_selection", "Player's Boss Selections", CookieAccess_Protected);
+}
+
+void Pref_SetupClient(int client)
+{
+	int amount;
+	static char buffer[59], buffers[9][6];
+	bool cached = (!IsFakeClient(client) && AreClientCookiesCached(client));
+	if(cached)
+	{
+		CoreCookie.Get(client, buffer, sizeof(buffer));
+		amount = ExplodeString(buffer, " ", buffers, sizeof(buffers), sizeof(buffers[]));
+	}
+
+	Client[client].Queue = amount ? StringToInt(buffers[0]) : 0;
+	for(int i=1; i<9; i++)
+	{
+		Client[client].Pref[i-1] = amount>i ? StringToInt(buffers[i]) : Pref_Undef;
+	}
+
+	if(cached)
+	{
+		BossCookie.Get(client, buffer, sizeof(buffer));
+		amount = ExplodeString(buffer, " ", buffers, sizeof(buffers), sizeof(buffers[]));
+	}
+}
+
 void Pref_Menu(int client)
 {
 	Menu menu = new Menu(Pref_MenuH);
@@ -118,7 +151,7 @@ void Pref_QuickToggle(int client, int selection)
 	SetGlobalTransTarget(client);
 	menu.SetTitle("%t", "Pref Popup");
 
-	char buffer[64], num[4];
+	char buffer[64], num[6];
 	IntToString(selection, num, sizeof(num));
 	FormatEx(buffer, sizeof(buffer), "%t", "On");
 	menu.AddItem(num, buffer);
@@ -127,9 +160,24 @@ void Pref_QuickToggle(int client, int selection)
 	FormatEx(buffer, sizeof(buffer), "%t", "Temp Map");
 	menu.AddItem(num, buffer);
 
-	menu.ExitButton = selection>=0;
-	menu.ExitBackButton = selection>=0;
-	menu.Display(client, MENU_TIME_FOREVER);
+	if(selection < -1)
+	{
+		menu.ExitButton = false;
+		menu.Display(client, MENU_TIME_FOREVER);
+		return;
+	}
+
+	for(int i; i<4; i++)
+	{
+		menu.AddItem(num, " ", ITEMDRAW_SPACER);
+	}
+
+	FormatEx(buffer, sizeof(buffer), "%t", "Back"); 
+	menu.AddItem(num, buffer);
+
+	menu.Pagination = false;
+	menu.ExitButton = true;
+	menu.Display(client, 20);
 }
 
 public int Pref_QuickToggleH(Menu menu, MenuAction action, int client, int selection)
@@ -142,20 +190,35 @@ public int Pref_QuickToggleH(Menu menu, MenuAction action, int client, int selec
 		}
 		case MenuAction_Cancel:
 		{
-			if(selection == MenuCancel_ExitBack)
-				Pref_Boss(client);
+			if(selection == MenuCancel_Timeout)
+				Pref_QuickToggleH(menu, MenuAction_Select, client, 0);
 		}
 		case MenuAction_Select:
 		{
+			switch(selection)
+			{
+				case 0:
+					Client[client].Pref[Pref_Boss] = Pref_On;
+
+				case 1:
+					Client[client].Pref[Pref_Boss] = Pref_Off;
+
+				case 2:
+					Client[client].Pref[Pref_Boss] = Pref_Temp;
+			}
+
 			char buffer[6];
 			menu.GetItem(selection, buffer, sizeof(buffer));
-			if(StringToInt(buffer) == -1)
+			int boss = StringToInt(buffer);
+			if(boss < -1)
 			{
 				FPrintToChat(client, "%t", "Pref Remind");
 				return;
 			}
 
-			// Select Boss
+			bool blank = boss==-1;
+			Pref_SelectBoss(client, blank ? Charset : boss, blank);
+			Pref_Boss(blank ? Charset : Special[boss].Charset);
 		}
 	}
 }
@@ -178,7 +241,13 @@ void Pref_Boss(int client, int pack)
 		GetCmdArgString(buffer, sizeof(buffer));
 		if(!StrContains(boss, buffer, false))
 		{
-			Pref_SelectBoss(client, -1);
+			if(Client[client].Pref[Pref_Boss] != Pref_On)
+			{
+				Pref_QuickToggle(client, -1);
+				return;
+			}
+
+			Pref_SelectBoss(client, Charset, true);
 			FReplyToCommand(client, "%t", "Pref Selected", boss);
 			return;
 		}
@@ -210,6 +279,12 @@ void Pref_Boss(int client, int pack)
 			if(!KvGetBossAccess2(Special[i].Kv, client, buffer, sizeof(buffer)))
 			{
 				FReplyToCommand(client, buffer);
+				return;
+			}
+
+			if(Client[client].Pref[Pref_Boss] != Pref_On)
+			{
+				Pref_QuickToggle(client, i);
 				return;
 			}
 
@@ -294,7 +369,13 @@ public int Pref_BossH(Menu menu, MenuAction action, int client, int selection)
 				return;
 			}
 
-			Pref_SelectBoss(client, -1);
+			if(Client[client].Pref[Pref_Boss] != Pref_On)
+			{
+				Pref_QuickToggle(client, -1);
+				return;
+			}
+
+			Pref_SelectBoss(client, boss, true);
 			Pref_Boss(boss);
 		}
 	}
@@ -355,8 +436,14 @@ public int ConfirmBossH(Menu menu, MenuAction action, int client, int selection)
 			menu.GetItem(selection, buffer, sizeof(buffer));
 			int boss = StringToInt(buffer);
 			if(!selection)
+			{
+				if(Client[client].Pref[Pref_Boss] != Pref_On)
+				{
+					Pref_QuickToggle(client, boss);
+					return;
+				}
 				Pref_SelectBoss(client, boss);
-
+			}
 			Pref_Boss(client, Special[boss].Charset);
 		}
 	}
@@ -385,7 +472,7 @@ void Pref_Bosses(int client)
 			size = 12;
 		}
 
-		SelectionCookie.Get(client, buffer, sizeof(buffer));
+		BossCookie.Get(client, buffer, sizeof(buffer));
 		char[][] buffers = new char[length][size];
 		int amount = ExplodeString(buffer, ";", buffers, length, size);
 
@@ -462,13 +549,14 @@ public int Pref_BossesH(Menu menu, MenuAction action, int client, int selection)
 	}
 }
 
-void Pref_SelectBoss(int client, int boss)
+void Pref_SelectBoss(int client, int boss, bool blank=false)
 {
-	if(Charset == Special[boss].Charset)
-		Client[client].Selection = boss;
+	int pack = blank ? boss : Special[boss].Charset;
+	if(Charset == pack)
+		Client[client].Selection = blank ? -1 : boss;
 
 	int length = Charsets.Length;
-	if(Special[boss].Charset>length || !AreClientCookiesCached(client))
+	if(pack>length || !AreClientCookiesCached(client))
 		return;
 
 	static char buffer[512];
@@ -482,17 +570,17 @@ void Pref_SelectBoss(int client, int boss)
 		size = 12;
 	}
 
-	SelectionCookie.Get(client, buffer, sizeof(buffer));
+	BossCookie.Get(client, buffer, sizeof(buffer));
 	char[][] buffers = new char[length][size];
 	ExplodeString(buffer, ";", buffers, length, size);
-	if(boss >= 0)
+	if(blank)
 	{
-		Special[boss].Kv.Rewind();
-		Special[boss].Kv.GetString("name", buffers[Special[boss].Charset], size);
+		buffers[pack][0] = 0;
 	}
 	else
 	{
-		buffers[Special[boss].Charset][0] = 0;
+		Special[boss].Kv.Rewind();
+		Special[boss].Kv.GetString("name", buffers[pack], size);
 	}
 
 	strcopy(buffer, buffers[0], sizeof(buffer));
@@ -500,7 +588,7 @@ void Pref_SelectBoss(int client, int boss)
 	{
 		Format(buffer, sizeof(buffer), "%s;%s", buffer, buffers[i]);
 	}
-	SelectionCookie.Set(client, buffer);
+	BossCookie.Set(client, buffer);
 }
 
 // -2: Blocked, -1: No Access, 0: Hidden, 1: Visible
