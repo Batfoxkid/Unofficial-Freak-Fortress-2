@@ -43,15 +43,15 @@ void Pref_SetupClient(int client, float engineTime)
 		size = 12;
 	}
 
-	if(length < 9)
-		length = 9;
+	if(length <= Pref_MAX)
+		length = Pref_MAX+1;
 
 	CoreCookie.Get(client, buffer, sizeof(buffer));
 	char[][] buffers = new char[length][size];
 	int amount = ExplodeString(buffer, " ", buffers, length, size);
 
 	Client[client].Queue = amount ? StringToInt(buffers[0]) : 0;
-	for(int i=1; i<9; i++)
+	for(int i=1; i<=Pref_MAX; i++)
 	{
 		Client[client].Pref[i-1] = amount>i ? StringToInt(buffers[i]) : Pref_Undef;
 	}
@@ -59,20 +59,40 @@ void Pref_SetupClient(int client, float engineTime)
 
 	BossCookie.Get(client, buffer, sizeof(buffer));
 	amount = ExplodeString(buffer, ";", buffers, sizeof(buffers), sizeof(buffers[]));
-	if(amount <= Charset)
+	if(amount > Charset)
 	{
-		Client[client].Selection = -1;
+		for(int i; i<Specials; i++)
+		{
+			if(Special[i].Charset != Charset)
+				continue;
+
+			Special[i].Kv.GetString(buffer, sizeof(buffer));
+			if(StrContains(buffer, buffers))
+				continue;
+
+			Client[client].Selection = i;
+			return;
+		}
+	}
+	Client[client].Selection = -1;
+}
+
+void Pref_SaveClient(int client)
+{
+	if(IsFakeClient(client) || !AreClientCookiesCached(client))
 		return;
-	}
 
-	for(int i; i<Specials; i++)
+	if(Client[client].Queue > 9999)
+		Client[client].Queue = 9999;
+
+	static char buffer[Pref_MAX*6+5];
+	IntToString(Client[client].Queue, buffer, sizeof(buffer));
+	for(int i; i<Pref_Hud; i++)
 	{
-		if(Special[i].Charset != Charset)
-			continue;
-
-		Special[i].Kv.GetString(buffer, sizeof(buffer));
-		if(!StrContains(buffer, buffers))
+		Format(buffer, sizeof(buffer), "%s %d", buffer, Client[client].Pref[i]==Pref_Temp ? Pref_Undef : Client[client].Pref[i]);
 	}
+	Format(buffer, sizeof(buffer), "%s %d", buffer, Client[client].Pref[Pref_Hud]);
+	CoreCookie.Set(client, buffer);
 }
 
 void Pref_Menu(int client)
@@ -262,11 +282,6 @@ public int Pref_QuickToggleH(Menu menu, MenuAction action, int client, int selec
 
 void Pref_Boss(int client, int pack)
 {
-	char buffer[64], boss[64];
-	SetGlobalTransTarget(client);
-	FormatEx(boss, sizeof(boss), "%t", "Pref Random");
-
-	static char buffer2[64];
 	if(pack < 0)
 	{
 		if(Charset < 0)
@@ -275,6 +290,11 @@ void Pref_Boss(int client, int pack)
 			return;
 		}
 
+		char boss[64];
+		SetGlobalTransTarget(client);
+		FormatEx(boss, sizeof(boss), "%t", "Pref Random");
+
+		static char buffer[64];
 		GetCmdArgString(buffer, sizeof(buffer));
 		if(!StrContains(boss, buffer, false))
 		{
@@ -301,6 +321,7 @@ void Pref_Boss(int client, int pack)
 			KvGetLang(Special[i].Kv, "name", boss, sizeof(boss), client);
 			if(StrContains(boss, buffer, false))
 			{
+				static char buffer2[64];
 				Special[i].Kv.GetString("name", buffer2, sizeof(buffer2));
 				if(StrContains(buffer2, buffer, false))
 				{
@@ -334,9 +355,14 @@ void Pref_Boss(int client, int pack)
 	}
 
 	Menu menu = new Menu(Pref_BossH);
-	IntToString(pack, buffer2, sizeof(buffer2));
-	menu.AddItem(buffer2, boss);
 
+	char buffer[64], boss[64];
+	SetGlobalTransTarget(client);
+	FormatEx(boss, sizeof(boss), "%t", "Pref Random");
+	IntToString(pack, buffer, sizeof(buffer));
+	menu.AddItem(buffer, boss);
+
+	char buffer2[64];
 	for(int i; i<Specials; i++)
 	{
 		if(Special[i].Charset != pack)
@@ -353,24 +379,25 @@ void Pref_Boss(int client, int pack)
 
 		if(access == -1)
 		{
-			menu.AddItem("-1", boss, ITEMDRAW_DISABLED);
+			menu.AddItem("-1", buffer, ITEMDRAW_DISABLED);
 			continue;
 		}
 
 		IntToString(i, buffer2, sizeof(buffer2));
-		menu.AddItem(buffer2, boss);
+		menu.AddItem(buffer2, buffer);
 	}
 
+	FormatEx(buffer, sizeof(buffer), "%t", "Pref Selection A");
 	if(Charsets.Length > 1)
 	{
-		Charsets.GetString(Charset, buffer, sizeof(buffer));
-		menu.SetTitle("%t", "Pref Selection CB", buffer, boss);
-	}
-	else
-	{
-		menu.SetTitle("%t", "Pref Selection B", boss);
+		Charsets.GetString(Charset, buffer2, sizeof(buffer2));
+		Format(buffer, sizeof(buffer), "%s\n%t", buffer, "Pref Selection C", buffer2);
 	}
 
+	if(Client[client].Pref[Pref_Boss] == Pref_On)
+		Format(buffer, sizeof(buffer), "%s\n%t", buffer, "Pref Selection B", boss);
+
+	menu.SetTitle(buffer);
 	menu.ExitButton = true;
 	menu.ExitBackButton = true;
 	menu.Display(client, MENU_TIME_FOREVER);
