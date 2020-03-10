@@ -162,18 +162,68 @@ public int Pref_QuickToggleH(Menu menu, MenuAction action, int client, int selec
 
 void Pref_Boss(int client, int pack)
 {
-	static char buffer[64], buffer2[64];
+	char buffer[64], boss[64];
+	SetGlobalTransTarget(client);
+	FormatEx(boss, sizeof(boss), "%t", "Pref Random");
+
+	static char buffer2[64];
 	if(pack < 0)
 	{
+		if(Charset < 0)
+		{
+			Pref_Bosses(client);
+			return;
+		}
+
+		GetCmdArgString(buffer, sizeof(buffer));
+		if(!StrContains(boss, buffer, false))
+		{
+			Pref_SelectBoss(client, -1, Charset);
+			FReplyToCommand(client, "%t", "Pref Selected", boss);
+			return;
+		}
+
+		for(int i; i<Specials; i++)
+		{
+			if(Special[i].Charset != pack)
+				continue;
+
+			Special[i].Kv.Rewind();
+			if(Special[i].Kv.GetNum("blocked"))
+				continue;
+
+			KvGetLang(Special[i].Kv, "name", boss, sizeof(boss), client);
+			if(StrContains(boss, buffer, false))
+			{
+				Special[i].Kv.GetString("name", buffer2, sizeof(buffer2));
+				if(StrContains(buffer2, buffer, false))
+				{
+					if(!CheckCommandAccess(client, "ff2_special", ADMFLAG_CHEATS))
+						continue;
+
+					Special[i].Kv.GetString("filename", buffer2, sizeof(buffer2));
+					if(StrContains(buffer2, buffer, false))
+						continue;
+				}
+			}
+
+			if(!KvGetBossAccess2(Special[i].Kv, client, buffer, sizeof(buffer)))
+			{
+				FReplyToCommand(client, buffer);
+				return;
+			}
+
+			FReplyToCommand(client, "%t", "Pref Selected", boss);
+			return;
+		}
+
+		FReplyToCommand(client, "%t", "Deny Unknown");
 		return;
 	}
 
 	Menu menu = new Menu(Pref_BossH);
-	SetGlobalTransTarget(client);
-
-	char boss[64];
-	FormatEx(boss, sizeof(boss), "%t", "Pref Random");
-	menu.AddItem("-1", boss);
+	IntToString(pack, buffer2, sizeof(buffer2));
+	menu.AddItem(buffer2, boss);
 
 	for(int i; i<Specials; i++)
 	{
@@ -189,8 +239,14 @@ void Pref_Boss(int client, int pack)
 		if(i == Client[client].Selection)
 			strcopy(boss, sizeof(boss), buffer);
 
+		if(access == -1)
+		{
+			menu.AddItem("-1", boss, ITEMDRAW_DISABLED);
+			continue;
+		}
+
 		IntToString(i, buffer2, sizeof(buffer2));
-		menu.AddItem(buffer2, boss, access==1 ? ITEMDRAW_DEFAULT : ITEMDRAW_DISABLED);
+		menu.AddItem(buffer2, boss);
 	}
 
 	if(Charsets.Length > 1)
@@ -202,10 +258,87 @@ void Pref_Boss(int client, int pack)
 	{
 		menu.SetTitle("%t", "Pref Selection B", boss);
 	}
+
+	menu.ExitButton = true;
+	menu.ExitBackButton = true;
+	menu.Display(client, MENU_TIME_FOREVER);
+}
+
+public int Pref_BossH(Menu menu, MenuAction action, int client, int selection)
+{
+	switch(action)
+	{
+		case MenuAction_End:
+		{
+			delete menu;
+		}
+		case MenuAction_Cancel:
+		{
+			if(selection == MenuCancel_ExitBack)
+				Pref_Bosses(client);
+		}
+		case MenuAction_Select:
+		{
+			char buffer[6];
+			menu.GetItem(selection, buffer, sizeof(buffer));
+			int boss = StringToInt(buffer);
+			if(boss == -1)
+			{
+				Pref_Bosses(client);
+				return;
+			}
+
+			if(selection)
+			{
+				ConfirmBoss(client, boss);
+				return;
+			}
+
+			Pref_SelectBoss(client, -1, boss);
+			Pref_Boss(boss);
+		}
+	}
+}
+
+static void ConfirmBoss(int client, int boss)
+{
+	Menu menu = new Menu(ConfirmBossH);
+	SetGlobalTransTarget(client);
+
+	static char buffer[256];
+	Special[boss].Kv.Rewind();
+	KvGetLang(Special[boss].Kv, "description", buffer, sizeof(buffer), client, "No Description");
+	menu.SetTitle(buffer);
+}
+
+public int ConfirmBossH(Menu menu, MenuAction action, int client, int selection)
+{
+	switch(action)
+	{
+		case MenuAction_End:
+		{
+			delete menu;
+		}
+		case MenuAction_Cancel:
+		{
+			if(selection == MenuCancel_ExitBack)
+				Pref_Bosses(client);
+		}
+		case MenuAction_Select:
+		{
+			char buffer[6];
+			menu.GetItem(selection, buffer, sizeof(buffer));
+			ConfirmBoss(client, StringToInt(buffer));
+		}
+	}
 }
 
 void Pref_Bosses(int client)
 {
+	int length = Charsets.Length;
+	if(length < 1)
+		return;
+
 	Menu menu = new Menu(Pref_BossesH);
 	SetGlobalTransTarget(client);
 	menu.SetTitle("%t", "Pref Selection");
@@ -213,7 +346,7 @@ void Pref_Bosses(int client)
 	static char buffer[512];
 	if(AreClientCookiesCached(client))
 	{
-		int size = Charsets.Length>0 ? sizeof(buffer)/Charsets.Length : 64;
+		int size = sizeof(buffer)/length;
 		if(size > 64)
 		{
 			size = 64;
@@ -224,8 +357,8 @@ void Pref_Bosses(int client)
 		}
 
 		SelectionCookie.Get(client, buffer, sizeof(buffer));
-		char[][] buffers = new char[Charsets.Length][size];
-		int amount = ExplodeString(buffer, ";", buffers, Charsets.Length, size);
+		char[][] buffers = new char[length][size];
+		int amount = ExplodeString(buffer, ";", buffers, length, size);
 
 		if(Charset >= 0)
 		{
@@ -238,7 +371,7 @@ void Pref_Bosses(int client)
 			menu.AddItem(buffers[Charset], "- = - = -", ITEMDRAW_SPACER);
 		}
 
-		for(int i; i<Charsets.Length; i++)
+		for(int i; i<length; i++)
 		{
 			if(i == Charset)
 				continue;
@@ -272,6 +405,10 @@ void Pref_Bosses(int client)
 			menu.AddItem(num, buffer);
 		}
 	}
+
+	menu.ExitButton = true;
+	menu.ExitBackButton = true;
+	menu.Display(client, MENU_TIME_FOREVER);
 }
 
 public int Pref_BossesH(Menu menu, MenuAction action, int client, int selection)
@@ -296,6 +433,47 @@ public int Pref_BossesH(Menu menu, MenuAction action, int client, int selection)
 	}
 }
 
+void Pref_SelectBoss(int client, int boss, int pack)
+{
+	if(pack == Charset)
+		Client[client].Selection = boss;
+
+	int length = Charsets.Length;
+	if(pack>length || !AreClientCookiesCached(client))
+		return;
+
+	static char buffer[512];
+	int size = sizeof(buffer)/length;
+	if(size > 64)
+	{
+		size = 64;
+	}
+	else if(size < 12)
+	{
+		size = 12;
+	}
+
+	SelectionCookie.Get(client, buffer, sizeof(buffer));
+	char[][] buffers = new char[length][size];
+	ExplodeString(buffer, ";", buffers, length, size);
+	if(boss >= 0)
+	{
+		Special[i].Kv.Rewind();
+		Special[i].Kv.GetString("name", buffers[pack], size);
+	}
+	else
+	{
+		buffers[pack][0] = 0;
+	}
+
+	strcopy(buffer, buffers[0], sizeof(buffer));
+	for(int i=1; i<length; i++)
+	{
+		Format(buffer, sizeof(buffer), "%s;%s", buffer, buffers[i]);
+	}
+	SelectionCookie.Set(client, buffer);
+}
+
 // -2: Blocked, -1: No Access, 0: Hidden, 1: Visible
 stock int KvGetBossAccess(Handle kv, int client, bool force=false)
 {
@@ -308,12 +486,41 @@ stock int KvGetBossAccess(Handle kv, int client, bool force=false)
 	if(!(donator || admin || owner))
 		return KvGetNum(kv, "hidden") ? 0 : 1;
 
-	if((donator && !CheckCommandAccess(client, "ff2_donator_bosses", ADMFLAG_RESERVATION)) ||
-	   (owner && !CheckCommandAccess(client, "ff2_owner_bosses", ADMFLAG_ROOT)) ||
-	   (admin && !CheckCommandAccess(client, "ff2_aaaaaaaaaaaaaaa_bosses", admin, true)))
-		return KvGetNum(kv, "hidden", owner ? 1 : 0) ? -2 : -1;
+	if(!((donator && !CheckCommandAccess(client, "ff2_donator_bosses", ADMFLAG_RESERVATION)) ||
+	     (owner && !CheckCommandAccess(client, "ff2_owner_bosses", ADMFLAG_ROOT)) ||
+	     (admin && !CheckCommandAccess(client, "ff2_admin_bosses", admin, true))))
+		return 1;
 
-	return 1;
+	return KvGetNum(kv, "hidden", owner ? 1 : 0) ? -2 : -1;
+}
+
+stock bool KvGetBossAccess2(Handle kv, int client, char[] buffer, int length)
+{
+	if(KvGetNum(kv, "blocked"))
+	{
+		FormatEx(buffer, length, "%T", "Deny Unknown", client);
+		return false;
+	}
+
+	bool donator = KvGetNum(kv, "donator");
+	int admin = KvGetNum(kv, "admin");
+	bool owner = KvGetNum(kv, "owner");
+	if(!(donator || admin>0 || owner))
+	{
+		if(!KvGetNum(kv, "hidden"))
+			return true;
+
+		FormatEx(buffer, length, "%T", "Deny Unknown", client);
+		return false;
+	}
+
+	if(!((donator && !CheckCommandAccess(client, "ff2_donator_bosses", ADMFLAG_RESERVATION)) ||
+	     (owner && !CheckCommandAccess(client, "ff2_owner_bosses", ADMFLAG_ROOT)) ||
+	     (admin>0 && !CheckCommandAccess(client, "ff2_admin_bosses", admin, true))))
+		return true;
+
+	FormatEx(buffer, length, "%T", KvGetNum(kv, "hidden", owner ? 1 : 0) ? "Deny Unknown" : "Deny Access", client);
+	return false;
 }
 
 stock void KvGetLang(Handle kv, const char[] key, char[] buffer, int length, int client=0, const char[] default="=Failed name=")
