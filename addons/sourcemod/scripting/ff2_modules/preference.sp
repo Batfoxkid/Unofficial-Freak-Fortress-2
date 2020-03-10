@@ -173,7 +173,7 @@ void Pref_Boss(int client, int pack)
 
 	char boss[64];
 	FormatEx(boss, sizeof(boss), "%t", "Pref Random");
-	menu.AddItem("", boss);
+	menu.AddItem("-1", boss);
 
 	for(int i; i<Specials; i++)
 	{
@@ -181,19 +181,22 @@ void Pref_Boss(int client, int pack)
 			continue;
 
 		Special[i].Kv.Rewind();
-		if(Special[i].Kv.GetNum("blocked"))
+		int access = KvGetBossAccess(Special[i].Kv, client);
+		if(access==-2 || !access)
 			continue;
 
-		Special[i].Kv.GetString("name", buffer, sizeof(buffer));
-		KvGetLang(Special[i].Kv, "name", buffer2, sizeof(buffer2), client);
+		KvGetLang(Special[i].Kv, "name", buffer, sizeof(buffer), client);
 		if(i == Client[client].Selection)
-			strcopy(boss, sizeof(boss), buffer2);
+			strcopy(boss, sizeof(boss), buffer);
+
+		IntToString(i, buffer2, sizeof(buffer2));
+		menu.AddItem(buffer2, boss, access==1 ? ITEMDRAW_DEFAULT : ITEMDRAW_DISABLED);
 	}
 
 	if(Charsets.Length > 1)
 	{
 		Charsets.GetString(Charset, buffer, sizeof(buffer));
-		menu.SetTitle("%t", "Pref Selection CB", buffer, buffer2);
+		menu.SetTitle("%t", "Pref Selection CB", buffer, boss);
 	}
 	else
 	{
@@ -291,6 +294,26 @@ public int Pref_BossesH(Menu menu, MenuAction action, int client, int selection)
 			Pref_Boss(client, StringToInt(buffer));
 		}
 	}
+}
+
+// -2: Blocked, -1: No Access, 0: Hidden, 1: Visible
+stock int KvGetBossAccess(Handle kv, int client, bool force=false)
+{
+	if(!force && KvGetNum(kv, "blocked"))
+		return -2;
+
+	bool donator = KvGetNum(kv, "donator");
+	int admin = KvGetNum(kv, "admin");
+	bool owner = KvGetNum(kv, "owner");
+	if(!(donator || admin || owner))
+		return KvGetNum(kv, "hidden") ? 0 : 1;
+
+	if((donator && !CheckCommandAccess(client, "ff2_donator_bosses", ADMFLAG_RESERVATION)) ||
+	   (owner && !CheckCommandAccess(client, "ff2_owner_bosses", ADMFLAG_ROOT)) ||
+	   (admin && !CheckCommandAccess(client, "ff2_aaaaaaaaaaaaaaa_bosses", admin, true)))
+		return KvGetNum(kv, "hidden", owner ? 1 : 0) ? -2 : -1;
+
+	return 1;
 }
 
 stock void KvGetLang(Handle kv, const char[] key, char[] buffer, int length, int client=0, const char[] default="=Failed name=")
