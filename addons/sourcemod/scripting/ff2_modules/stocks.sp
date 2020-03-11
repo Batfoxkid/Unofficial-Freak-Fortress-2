@@ -1,5 +1,22 @@
 /*
 	Top Module
+
+	Functions:
+	int OnlyScoutsLeft(int team)
+	int GetIndexOfWeaponSlot(int client, int slot)
+	bool RemoveCond(int client, TFCond cond)
+	int GetClientCloakIndex(int client)
+	void SpawnSmallHealthPackAt(int client, int team, int attacker)
+	void IncrementHeadCount(int client)
+	int FindTeleOwner(int client)
+	bool IsPlayerCritBuffed(int client)
+	bool IsPlayerMiniCritBuffed(int client)
+	Action Timer_DisguiseBackstab(Handle timer, int userid)
+	TFClassType KvGetClass(Handle kv, const char[] string)
+	void RandomlyDisguise(int client)
+	SectionType KvGetSectionType(Handle kv, char[] buffer, int length)
+	bool ConfigureWorldModelOverride(int entity, const char[] model, bool wearable)
+	void MultiClassname(TFClassType class, char[] name, int length)
 */
 
 #define FF2_STOCKS
@@ -30,16 +47,13 @@ enum SectionType
 {
 	Section_Unknown = 0,
 	Section_Ability,	// ability | Ability Name
-	Section_Map,		// map_exclude
-	Section_Blacklist,	// map_blacklist
-	Section_Whitelist,	// map_whitelist
+	Section_Map,		// map_
 	Section_Weapon,		// tf_ | saxxy
 	Section_Sound,		// sound_ | catch_
 	Section_Download,	// download
 	Section_Model,		// mod_download
 	Section_Material,	// mat_download
-	Section_PrecacheSound,	// sound_precache
-	Section_PrecacheModel	// mod_precache
+	Section_Precache	// mod_precache
 };
 
 stock int OnlyScoutsLeft(int team)
@@ -194,65 +208,55 @@ stock TFClassType KvGetClass(Handle kv, const char[] string)
 
 stock void AssignTeam(int client, int team)
 {
-	if(!GetEntProp(client, Prop_Send, "m_iDesiredPlayerClass") && Boss[client].Active)
-		SetEntProp(client, Prop_Send, "m_iDesiredPlayerClass", view_as<int>(KvGetClass(Special[Boss[client].Special].Kv, "class")));
+	if(Boss[client].Active && !GetEntProp(client, Prop_Send, "m_iDesiredPlayerClass"))
+		SetEntProp(client, Prop_Send, "m_iDesiredPlayerClass", view_as<int>(Boss[client].Class));
 
 	SetEntProp(client, Prop_Send, "m_lifeState", 2);
 	ChangeClientTeam(client, team);
 	TF2_RespawnPlayer(client);
 
-	if(GetEntProp(client, Prop_Send, "m_iObserverMode") && IsPlayerAlive(client))  //Welp
-	{
-		//PrintToConsoleAll("%N is a living spectator", client);
-		if(IsBoss(client))
-		{
-			TF2_SetPlayerClass(client, KvGetClass(BossKV[Special[GetBossIndex(client)]], "class"));
-		}
-		else
-		{
-			//PrintToConsoleAll("Additional information: %N was not a boss", client);
-			TF2_SetPlayerClass(client, TFClass_Heavy);
-		}
-		TF2_RespawnPlayer(client);
-	}
+	if(!GetEntProp(client, Prop_Send, "m_iObserverMode") || !IsPlayerAlive(client))
+		return;
+
+	TF2_SetPlayerClass(client, Boss[client].Active ? Boss[client].Class : TFClass_Heavy);
+	TF2_RespawnPlayer(client);
 }
 
-stock void RandomlyDisguise(int client)	//Original code was mecha's, but the original code is broken and this uses a better method now.
+stock void RandomlyDisguise(int client)
 {
 	int disguiseTarget = -1;
 	int team = GetClientTeam(client);
 
-		ArrayList disguiseArray = new ArrayList();
-		for(int clientcheck=1; clientcheck<=MaxClients; clientcheck++)
-		{
-			if(IsValidClient(clientcheck) && GetClientTeam(clientcheck)==team && clientcheck!=client)
-				disguiseArray.Push(clientcheck);
-		}
+	ArrayList disguiseArray = new ArrayList();
+	for(int clientcheck=1; clientcheck<=MaxClients; clientcheck++)
+	{
+		if(IsValidClient(clientcheck) && GetClientTeam(clientcheck)==team && clientcheck!=client)
+			disguiseArray.Push(clientcheck);
+	}
 
-		if(disguiseArray.Length < 1)
-		{
+	if(disguiseArray.Length < 1)
+	{
+		disguiseTarget = client;
+	}
+	else
+	{
+		disguiseTarget = disguiseArray.Get(GetRandomInt(0, disguiseArray.Length-1));
+		if(!IsValidClient(disguiseTarget))
 			disguiseTarget = client;
-		}
-		else
-		{
-			disguiseTarget = disguiseArray.Get(GetRandomInt(0, disguiseArray.Length-1));
-			if(!IsValidClient(disguiseTarget))
-				disguiseTarget = client;
-		}
-		delete disguiseArray;
+	}
+	delete disguiseArray;
 
-		if(TF2_GetPlayerClass(client) == TFClass_Spy)
-		{
-			TF2_DisguisePlayer(client, view_as<TFTeam>(team), GetRandomInt(0, 1) ? TFClass_Medic : TFClass_Scout, disguiseTarget);
-		}
-		else
-		{
-			TF2_AddCondition(client, TFCond_Disguised, -1.0);
-			SetEntProp(client, Prop_Send, "m_nDisguiseTeam", team);
-			SetEntProp(client, Prop_Send, "m_nDisguiseClass", GetRandomInt(0, 1) ? view_as<int>(TFClass_Medic) : view_as<int>(TFClass_Scout));
-			SetEntProp(client, Prop_Send, "m_iDisguiseTargetIndex", disguiseTarget);
-			SetEntProp(client, Prop_Send, "m_iDisguiseHealth", 200);
-		}
+	if(TF2_GetPlayerClass(client) == TFClass_Spy)
+	{
+		TF2_DisguisePlayer(client, view_as<TFTeam>(team), GetRandomInt(0, 1) ? TFClass_Medic : TFClass_Scout, disguiseTarget);
+	}
+	else
+	{
+		TF2_AddCondition(client, TFCond_Disguised, -1.0);
+		SetEntProp(client, Prop_Send, "m_nDisguiseTeam", team);
+		SetEntProp(client, Prop_Send, "m_nDisguiseClass", GetRandomInt(0, 1) ? view_as<int>(TFClass_Medic) : view_as<int>(TFClass_Scout));
+		SetEntProp(client, Prop_Send, "m_iDisguiseTargetIndex", disguiseTarget);
+		SetEntProp(client, Prop_Send, "m_iDisguiseHealth", 200);
 	}
 }
 
@@ -261,9 +265,6 @@ stock SectionType KvGetSectionType(Handle kv, char[] buffer="", int length=16)
 	if(!KvGetSectionName(kv, buffer, length))
 		return Section_Unknown;
 
-	if(StrEqual(buffer, "sound_precache"))
-		return Section_PrecacheSound;
-
 	if(!StrContains(buffer, "sound_") || !StrContains(buffer, "catch_"))
 		return Section_Sound;
 
@@ -271,7 +272,7 @@ stock SectionType KvGetSectionType(Handle kv, char[] buffer="", int length=16)
 		return Section_Model;
 
 	if(StrEqual(buffer, "mod_precache"))
-		return Section_PrecacheModel;
+		return Section_Precache;
 
 	if(StrEqual(buffer, "mat_download"))
 		return Section_Material;
@@ -279,17 +280,54 @@ stock SectionType KvGetSectionType(Handle kv, char[] buffer="", int length=16)
 	if(StrEqual(buffer, "download"))
 		return Section_Download;
 
-	if(StrEqual(buffer, "map_exclude"))
+	if(!StrContains(buffer, "map_"))
 		return Section_Map;
 
-	if(StrEqual(buffer, "map_blacklist"))
-		return Section_Blacklist;
-
-	if(StrEqual(buffer, "map_whitelist"))
-		return Section_Whitelist;
-
-	if(!StrContains(buffer, "tf_") || StrEqual(buffer, "saxxy"))
+	if(!StrContains(buffer, "weapon") || !StrContains(buffer, "wearable") || !StrContains(buffer, "tf_") || StrEqual(buffer, "saxxy"))
 		return Section_Weapon;
 
 	return Section_Ability;
+}
+
+stock bool ConfigureWorldModelOverride(int entity, const char[] model, bool wearable=false)
+{
+	if(!FileExists(model, true))
+		return false;
+
+	int index = PrecacheModel(model);
+	SetEntProp(entity, Prop_Send, "m_nModelIndex", index);
+	SetEntProp(entity, Prop_Send, "m_nModelIndexOverrides", index, _, 1);
+	SetEntProp(entity, Prop_Send, "m_nModelIndexOverrides", index, _, 2);
+	SetEntProp(entity, Prop_Send, "m_nModelIndexOverrides", index, _, 3);
+	SetEntProp(entity, Prop_Send, "m_nModelIndexOverrides", (wearable ? index : GetEntProp(entity, Prop_Send, "m_iWorldModelIndex")), _, 0);
+	return true;
+}
+
+stock void MultiClassname(TFClassType class, char[] name, int length)
+{
+	if(StrEqual(name, "saxxy"))
+	{ 
+		switch(class)
+		{
+			case TFClass_Scout:	strcopy(name, length, "tf_weapon_bat");
+			case TFClass_Pyro:	strcopy(name, length, "tf_weapon_fireaxe");
+			case TFClass_DemoMan:	strcopy(name, length, "tf_weapon_bottle");
+			case TFClass_Heavy:	strcopy(name, length, "tf_weapon_fists");
+			case TFClass_Engineer:	strcopy(name, length, "tf_weapon_wrench");
+			case TFClass_Medic:	strcopy(name, length, "tf_weapon_bonesaw");
+			case TFClass_Sniper:	strcopy(name, length, "tf_weapon_club");
+			case TFClass_Spy:	strcopy(name, length, "tf_weapon_knife");
+			default:		strcopy(name, length, "tf_weapon_shovel");
+		}
+	}
+	else if(StrEqual(name, "tf_weapon_shotgun"))
+	{
+		switch(class)
+		{
+			case TFClass_Pyro:	strcopy(name, length, "tf_weapon_shotgun_pyro");
+			case TFClass_Heavy:	strcopy(name, length, "tf_weapon_shotgun_hwg");
+			case TFClass_Engineer:	strcopy(name, length, "tf_weapon_shotgun_primary");
+			default:		strcopy(name, length, "tf_weapon_shotgun_soldier");
+		}
+	}
 }
