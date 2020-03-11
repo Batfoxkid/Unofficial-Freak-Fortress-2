@@ -113,9 +113,10 @@ public any Native_GetBoss(Handle plugin, int numParams)
 	if(!boss)
 	{
 		boss = GetZeroBoss();
-		return boss==-1 ? -1 : GetClientUserId(boss);
+		if(IsValidClient(boss))
+			return GetClientUserId(boss);
 	}
-	else if(boss>0 && boss<MAXTF2PLAYERS && Boss[boss].Active)
+	else if(IsValidClient(boss) && Boss[boss].Active)
 	{
 		return GetClientUserId(boss);
 	}
@@ -128,13 +129,13 @@ public any Native_GetIndex(Handle plugin, int numParams)
 	if(client<0 && client>=MAXTF2PLAYERS)
 		return -1;
 
-	return Boss[client].Active ? -1 : Boss[client].Leader ? 0 : client;
+	return Boss[client].Active ? Boss[client].Leader ? 0 : client : -1;
 }
 
 public any Native_GetTeam(Handle plugin, int numParams)
 {
 	int client = GetZeroBoss();
-	return client<1 ? view_as<int>(TFTeam_Blue) : view_as<int>(Client[client].Team);
+	return client==-1 ? view_as<int>(TFTeam_Blue) : view_as<int>(Client[client].Team);
 }
 
 public any Native_GetSpecial(Handle plugin, int numParams)
@@ -155,7 +156,7 @@ public any Native_GetSpecial(Handle plugin, int numParams)
 		if(!index)
 		{
 			index = GetZeroBoss();
-			if(index < 1)
+			if(index == -1)
 				return false;
 		}
 		else if(index>=MAXTF2PLAYERS || !Boss[index].Active)
@@ -190,7 +191,7 @@ public any Native_GetName(Handle plugin, int numParams)
 		if(!index)
 		{
 			index = GetZeroBoss();
-			if(index < 1)
+			if(index == -1)
 				return false;
 		}
 		else if(index>=MAXTF2PLAYERS || !Boss[index].Active)
@@ -210,7 +211,7 @@ public any Native_GetName(Handle plugin, int numParams)
 public any Native_GetBossHealth(Handle plugin, int numParams)
 {
 	int client = BossToClient(GetNativeCell(1));
-	if(client < 1)
+	if(!IsValidClient(client))
 		return 0;
 
 	return Boss[client].Health(client);
@@ -219,32 +220,35 @@ public any Native_GetBossHealth(Handle plugin, int numParams)
 public any Native_SetBossHealth(Handle plugin, int numParams)
 {
 	int client = BossToClient(GetNativeCell(1));
-	if(client < 1)
+	if(client == -1)
 		return;
 
 	int health = GetNativeCell(2);
 	if(health < 1)
 	{
-		ForcePlayerSuicide(client);
+		if(IsValidClient(client))
+			ForcePlayerSuicide(client);
+
 		return;
 	}
 
 	int newHealth = health;
-	int extra = Client[client].MaxHealth*(Client[client].Lives-1);
+	int extra = Boss[client].MaxHealth*(Boss[client].Lives-1);
 	while(health > extra)
 	{
-		newHealth -= Client[client].MaxHealth;
-		extra -= Client[client].MaxHealth;
-		Client[client].Lives--;
+		newHealth -= Boss[client].MaxHealth;
+		extra -= Boss[client].MaxHealth;
+		Boss[client].Lives--;
 	}
 
-	SetEntityHealth(client, newHealth-(Client[client].MaxHealth*(Client[client].Lives-1)));
+	if(IsValidClient(client))
+		SetEntityHealth(client, newHealth-(Boss[client].MaxHealth*(Boss[client].Lives-1)));
 }
 
 public any Native_GetBossMaxHealth(Handle plugin, int numParams)
 {
 	int client = BossToClient(GetNativeCell(1));
-	if(client < 1)
+	if(client == -1)
 		return 0;
 
 	return Boss[client].MaxHealth;
@@ -253,7 +257,7 @@ public any Native_GetBossMaxHealth(Handle plugin, int numParams)
 public any Native_SetBossMaxHealth(Handle plugin, int numParams)
 {
 	int client = BossToClient(GetNativeCell(1));
-	if(client < 1)
+	if(client == -1)
 		return;
 
 	Boss[client].MaxHealth = GetNativeCell(2);
@@ -271,7 +275,7 @@ public any Native_GetBossLives(Handle plugin, int numParams)
 public any Native_SetBossLives(Handle plugin, int numParams)
 {
 	int client = BossToClient(GetNativeCell(1));
-	if(client < 1)
+	if(client == -1)
 		return;
 
 	Boss[client].Lives = GetNativeCell(2);
@@ -280,7 +284,7 @@ public any Native_SetBossLives(Handle plugin, int numParams)
 public any Native_GetBossMaxLives(Handle plugin, int numParams)
 {
 	int client = BossToClient(GetNativeCell(1));
-	if(client < 1)
+	if(client == -1)
 		return 0;
 
 	return Boss[client].MaxLives;
@@ -289,7 +293,7 @@ public any Native_GetBossMaxLives(Handle plugin, int numParams)
 public any Native_SetBossMaxLives(Handle plugin, int numParams)
 {
 	int client = BossToClient(GetNativeCell(1));
-	if(client < 1)
+	if(client == -1)
 		return;
 
 	Boss[client].MaxLives = GetNativeCell(2);
@@ -298,7 +302,7 @@ public any Native_SetBossMaxLives(Handle plugin, int numParams)
 public any Native_GetBossCharge(Handle plugin, int numParams)
 {
 	int client = BossToClient(GetNativeCell(1));
-	if(client < 1)
+	if(client == -1)
 		return 0;
 
 	int charge = GetNativeCell(2);
@@ -311,7 +315,7 @@ public any Native_GetBossCharge(Handle plugin, int numParams)
 public any Native_SetBossCharge(Handle plugin, int numParams)
 {
 	int client = BossToClient(GetNativeCell(1));
-	if(client < 1)
+	if(client == -1)
 		return;
 
 	int charge = GetNativeCell(2);
@@ -322,7 +326,7 @@ public any Native_SetBossCharge(Handle plugin, int numParams)
 public any Native_GetBossRageDamage(Handle plugin, int numParams)
 {
 	int client = BossToClient(GetNativeCell(1));
-	if(client < 1)
+	if(client == -1)
 		return 0;
 
 	return Boss[client].RageDamage;
@@ -331,7 +335,7 @@ public any Native_GetBossRageDamage(Handle plugin, int numParams)
 public any Native_SetBossRageDamage(Handle plugin, int numParams)
 {
 	int client = BossToClient(GetNativeCell(1));
-	if(client < 1)
+	if(client == -1)
 		return;
 
 	Boss[client].RageDamage = GetNativeCell(2);
@@ -346,7 +350,7 @@ public any Native_GetRoundState(Handle plugin, int numParams)
 public any Native_GetRageDist(Handle plugin, int numParams)
 {
 	int client = BossToClient(GetNativeCell(1));
-	if(client < 1)
+	if(client == -1)
 		return 0.0;
 
 	static char ability[64];
@@ -382,7 +386,7 @@ public any Native_GetRageDist(Handle plugin, int numParams)
 public any Native_HasAbility(Handle plugin, int numParams)
 {
 	int client = BossToClient(GetNativeCell(1));
-	if(client < 1)
+	if(client == -1)
 		return false;
 
 	static char plugin[64], ability[64];
@@ -526,14 +530,11 @@ public any Native_GetFF2flags(Handle plugin, int numParams)
 	{
 		static char buffer[64];
 		int i = GetPlayerWeaponSlot(client, TFWeaponSlot_Secondary);
-		if(IsValidEntity(i))
-		{
-			if(IsValidEntity(i) && GetEntityClassname(i, buffer, sizeof(buffer)) && !StrContains(buffer, "tf_weapon_medigun", false))
-			{
-				if(GetEntPropFloat(i, Prop_Send, "m_flChargeLevel") == 1)
-					flags |= FF2FLAG_UBERREADY;
-			}
-		}
+		if(IsValidEntity(i) && GetEntityClassname(i, buffer, sizeof(buffer)) && !StrContains(buffer, "tf_weapon_medigun", false) && GetEntPropFloat(i, Prop_Send, "m_flChargeLevel")==1)
+			flags |= FF2FLAG_UBERREADY;
+
+		if(TF2_IsPlayerInCondition(client, TFCond_BlastJumping))
+			flags |= FF2FLAG_ROCKET_JUMPING;
 
 		flags |= FF2FLAG_ALLOW_HEALTH_PICKUPS|FF2FLAG_ALLOW_AMMO_PICKUPS|FF2FLAG_ALLOW_BOSS_WEARABLES;
 	}
@@ -541,11 +542,8 @@ public any Native_GetFF2flags(Handle plugin, int numParams)
 	if(TF2_IsPlayerInCondition(client, TFCond_DefenseBuffed))
 		flags |= FF2FLAG_ISBUFFED;
 
-	if(Client[client].Pref[Pref_Hud] == 15)
+	if(Client[client].DisableHud)
 		flags |= FF2FLAG_HUDDISABLED;
-
-	if(TF2_IsPlayerInCondition(client, TFCond_BlastJumping))
-		flags |= FF2FLAG_ROCKET_JUMPING;
 
 	return flags;
 }
@@ -553,8 +551,8 @@ public any Native_GetFF2flags(Handle plugin, int numParams)
 public any Native_SetFF2flags(Handle plugin, int numParams)
 {
 	int client = GetNativeCell(1);
-	if(!IsValidClient(client))
-		return 0;
+	if(client<0 || client>=MAXTF2PLAYERS)
+		return;
 
 	int flags = GetNativeCell(2);
 	if(Boss[client].Active)
@@ -563,82 +561,113 @@ public any Native_SetFF2flags(Handle plugin, int numParams)
 		Boss[client].AmmoKits = (flags & FF2FLAG_ALLOW_AMMO_PICKUPS);
 		Boss[client].Cosmetics = (flags & FF2FLAG_ALLOW_BOSS_WEARABLES);
 	}
-	else if(flags & FF2FLAG_ALLOWSPAWNINBOSSTEAM)
+	else
 	{
-		Client[client].Minion = true;
-	}
-	else if(!(flags & FF2FLAG_CLASSTIMERDISABLED) && !(flags & FF2FLAG_ALLOWSPAWNINBOSSTEAM))
-	{
-		Client[client].Minion = false;
+		if(flags & FF2FLAG_ALLOWSPAWNINBOSSTEAM)
+		{
+			Client[client].Minion = true;
+		}
+		else if(!(flags & FF2FLAG_CLASSTIMERDISABLED) && !(flags & FF2FLAG_ALLOWSPAWNINBOSSTEAM))
+		{
+			Client[client].Minion = false;
+		}
+
+		if(IsValidClient(client))
+		{
+			if(flags & FF2FLAG_ROCKET_JUMPING)
+			{
+				if(!TF2_IsPlayerInCondition(client, TFCond_BlastJumping))
+					TF2_AddCondition(client, TFCond_BlastJumping, _, client);
+			}
+			else if(TF2_IsPlayerInCondition(client, TFCond_BlastJumping))
+			{
+				TF2_RemoveCondition(client, TFCond_BlastJumping);
+			}
+		}
 	}
 
-	Client[client].Pref[Pref_Hud] = (flags & FF2FLAG_HUDDISABLED) ? 15 : 0;
+	Client[client].DisableHud = (flags & FF2FLAG_HUDDISABLED);
 }
 
 public any Native_GetQueuePoints(Handle plugin, int numParams)
 {
-	return QueuePoints[GetNativeCell(1)];
+	int client = GetNativeCell(1);
+	if(client<0 || client>=MAXTF2PLAYERS)
+		return 0;
+
+	return Client[client].Queue;
 }
 
 public any Native_SetQueuePoints(Handle plugin, int numParams)
 {
-	QueuePoints[GetNativeCell(1)] = GetNativeCell(2);
+	int client = GetNativeCell(1);
+	if(client>=0 && client<MAXTF2PLAYERS)
+		Client[client].Queue = GetNativeCell(1);
 }
 
 public any Native_GetSpecialKV(Handle plugin, int numParams)
 {
 	int index = GetNativeCell(1);
-	bool isNumOfSpecial = view_as<bool>(GetNativeCell(2));
-	if(isNumOfSpecial)
-	{
-		if(index!=-1 && index<Specials)
-		{
-			if(BossKV[index] != INVALID_HANDLE)
-				KvRewind(BossKV[index]);
+	if(index < 0)
+		return INVALID_HANDLE;
 
-			return view_as<int>(BossKV[index]);
-		}
+	if(GetNativeCell(2))
+	{
+		if(index >= MAXSPECIALS)
+			return INVALID_HANDLE;
 	}
 	else
 	{
-		if(index!=-1 && index<=MaxClients && Special[index]!=-1 && Special[index]<MAXSPECIALS)
+		if(!index)
 		{
-			if(BossKV[Special[index]] != INVALID_HANDLE)
-				KvRewind(BossKV[Special[index]]);
-
-			return view_as<int>(BossKV[Special[index]]);
+			index = GetZeroBoss();
+			if(index < 1)
+				return INVALID_HANDLE;
 		}
+		else if(index>=MAXTF2PLAYERS || !Boss[index].Active)
+		{
+			return INVALID_HANDLE;
+		}
+
+		index = Boss[index].Special;
 	}
-	return view_as<int>(INVALID_HANDLE);
+
+	return view_as<Handle>(Special[index].Kv);
 }
 
 public any Native_StartMusic(Handle plugin, int numParams)
 {
-	StartMusic(GetNativeCell(1));
+	int client = GetNativeCell(1);
+	if(IsValidClient(client))
+		Music_Play(client, GetEngineTime(), -1);
 }
 
 public any Native_StopMusic(Handle plugin, int numParams)
 {
-	StopMusic(GetNativeCell(1));
+	int client = GetNativeCell(1);
+	if(IsValidClient(client))
+		Music_Stop(client);
 }
 
 public any Native_RandomSound(Handle plugin, int numParams)
 {
+	int client = BossToClient(GetNativeCell(4));
+	if(client == -1)
+		return false;
+
 	int length = GetNativeCell(3)+1;
-	int boss = GetNativeCell(4);
-	int slot = GetNativeCell(5);
 	char[] sound = new char[length];
+
 	int kvLength;
-
 	GetNativeStringLength(1, kvLength);
-	kvLength++;
 
-	char[] keyvalue = new char[kvLength];
+	char[] keyvalue = new char[++kvLength];
 	GetNativeString(1, keyvalue, kvLength);
 
 	bool soundExists;
 	if(!StrContains(keyvalue, "sound_ability", false))
 	{
+		int slot = GetNativeCell(5);
 		soundExists = RandomSoundAbility(keyvalue, sound, length, boss, slot);
 	}
 	else
@@ -667,24 +696,34 @@ public any Native_EmitVoiceToAll(Handle plugin, int numParams)
 public any Native_GetClientGlow(Handle plugin, int numParams)
 {
 	int client = GetNativeCell(1);
-	if(IsValidClient(client))
-	{
-		return view_as<int>(GlowTimer[client]);
-	}
-	else
-	{
-		return view_as<int>(-1.0);
-	}
+	if(client<0 || client>=MAXTF2PLAYERS)
+		return -1.0;
+
+	float time = Client[client].GlowFor-GetGameTime();
+	return time>0 ? time : 0.0;
 }
 
 public any Native_SetClientGlow(Handle plugin, int numParams)
 {
-	SetClientGlow(GetNativeCell(1), GetNativeCell(2), GetNativeCell(3));
+	int client = GetNativeCell(1);
+	if(client<0 || client>=MAXTF2PLAYERS)
+		return;
+
+	float time = GetNativeCell(3);
+	if(time >= 0)
+	{	
+		Client[client].GlowFor = time+GetGameTime();
+		return;
+	}
+
+	time = GetNativeCell(2);
+	float gameTime = GetGameTime();
+	Client[client].GlowFor = Client[client].GlowFor>gameTime ? Client[client].GlowFor+time : gameTime+time);
 }
 
 public any Native_GetClientShield(Handle plugin, int numParams)
 {
-	int client = GetNativeCell(1);
+	/*int client = GetNativeCell(1);
 	if(IsValidClient(client) && hadshield[client])
 	{
 		if(shield[client])
@@ -700,12 +739,12 @@ public any Native_GetClientShield(Handle plugin, int numParams)
 		}
 		return 0;
 	}
-	return -1;
+	return -1;*/
 }
 
 public any Native_SetClientShield(Handle plugin, int numParams)
 {
-	int client = GetNativeCell(1);
+	/*int client = GetNativeCell(1);
 	if(IsValidClient(client))
 	{
 		if(GetNativeCell(2) > 0)
@@ -722,18 +761,18 @@ public any Native_SetClientShield(Handle plugin, int numParams)
 		{
 			shDmgReduction[client] = shieldHP[client]/cvarShieldHealth.FloatValue*(1.0-cvarShieldResist.FloatValue);
 		}
-	}
+	}*/
 }
 
 public any Native_RemoveClientShield(Handle plugin, int numParams)
 {
-	int client = GetNativeCell(1);
+	/*int client = GetNativeCell(1);
 	if(IsValidClient(client))
 	{
 		TF2_RemoveWearable(client, shield[client]);
 		shieldHP[client] = 0.0;
 		shield[client] = 0;
-	}
+	}*/
 }
 
 public any Native_LogError(Handle plugin, int numParams)
@@ -745,27 +784,27 @@ public any Native_LogError(Handle plugin, int numParams)
 		ThrowNativeError(error, "Failed to format");
 		return;
 	}
-	LogToFile(eLog, buffer);
+	LogError2(buffer);
 }
 
 public any Native_Debug(Handle plugin, int numParams)
 {
-	return cvarDebug.BoolValue;
+	return CvarDebug.BoolValue;
 }
 
 public any Native_SetCheats(Handle plugin, int numParams)
 {
-	CheatsUsed = GetNativeCell(1);
+	//CheatsUsed = GetNativeCell(1);
 }
 
 public any Native_GetCheats(Handle plugin, int numParams)
 {
-	return (CheatsUsed || SpecialRound);
+	//return (CheatsUsed || SpecialRound);
 }
 
 public any Native_MakeBoss(Handle plugin, int numParams)
 {
-	int client = GetNativeCell(1);
+	/*int client = GetNativeCell(1);
 	if(!IsValidClient(client))
 		return;
 
@@ -790,21 +829,33 @@ public any Native_MakeBoss(Handle plugin, int numParams)
 	HasEquipped[boss] = false;
 	BossSwitched[boss] = GetNativeCell(4);
 	PickCharacter(boss, boss);
-	CreateTimer(0.1, Timer_MakeBoss, boss, TIMER_FLAG_NO_MAPCHANGE);
+	CreateTimer(0.1, Timer_MakeBoss, boss, TIMER_FLAG_NO_MAPCHANGE);*/
 }
 
 public any Native_ChooseBoss(Handle plugin, int numParams)
 {
 	int client = GetNativeCell(1);
-	if(client<1 || client>=MAXTF2PLAYERS)
-	{
-		GetNativeString(2, xIncoming[0], sizeof(xIncoming[]));
-		return CheckValidBoss(0, xIncoming[0]);
-	}
+	if(client<0 || client>=MAXTF2PLAYERS)
+		return false;
 
-	GetNativeString(2, xIncoming[client], sizeof(xIncoming[]));
-	IgnoreValid[client] = GetNativeCell(3);
-	return CheckValidBoss(client, xIncoming[client]);
+	static char buffer[64];
+	GetNativeString(2, buffer, sizeof(buffer));
+
+	for(int i; i<Specials; i++)
+	{
+		if(Special[i].Charset != Charset)
+			continue;
+
+		static char buffer2[64];
+		Special[i].Kv.GetString(buffer2, sizeof(buffer2));
+		if(!StrEqual(buffer, buffer2))
+			continue;
+
+		Client[client].Selection = i;
+		return KvGetBossAccess(Special[i].Kv, client)>=0;
+	}
+	Client[client].Selection = -1;
+	return false;
 }
 
 static int BossToClient(int boss)
@@ -825,4 +876,5 @@ static int GetZeroBoss()
 		if(Boss[client].Active && Boss[client].Leader)
 			return client;
 	}
+	return -1;
 }
