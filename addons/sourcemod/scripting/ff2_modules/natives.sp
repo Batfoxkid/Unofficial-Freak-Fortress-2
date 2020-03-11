@@ -4,6 +4,65 @@
 
 #define FF2_NATIVES
 
+void Native_Setup()
+{
+	// Official Natives
+	CreateNative("FF2_IsFF2Enabled", Native_IsEnabled);
+	CreateNative("FF2_GetFF2Version", Native_FF2Version);
+	CreateNative("FF2_GetBossUserId", Native_GetBoss);
+	CreateNative("FF2_GetBossIndex", Native_GetIndex);
+	CreateNative("FF2_GetBossTeam", Native_GetTeam);
+	CreateNative("FF2_GetBossSpecial", Native_GetSpecial);
+	CreateNative("FF2_GetBossHealth", Native_GetBossHealth);
+	CreateNative("FF2_SetBossHealth", Native_SetBossHealth);
+	CreateNative("FF2_GetBossMaxHealth", Native_GetBossMaxHealth);
+	CreateNative("FF2_SetBossMaxHealth", Native_SetBossMaxHealth);
+	CreateNative("FF2_GetBossLives", Native_GetBossLives);
+	CreateNative("FF2_SetBossLives", Native_SetBossLives);
+	CreateNative("FF2_GetBossMaxLives", Native_GetBossMaxLives);
+	CreateNative("FF2_SetBossMaxLives", Native_SetBossMaxLives);
+	CreateNative("FF2_GetBossCharge", Native_GetBossCharge);
+	CreateNative("FF2_SetBossCharge", Native_SetBossCharge);
+	CreateNative("FF2_GetBossRageDamage", Native_GetBossRageDamage);
+	CreateNative("FF2_SetBossRageDamage", Native_SetBossRageDamage);
+	CreateNative("FF2_GetClientDamage", Native_GetDamage);
+	CreateNative("FF2_GetRoundState", Native_GetRoundState);
+	CreateNative("FF2_GetSpecialKV", Native_GetSpecialKV);
+	CreateNative("FF2_StartMusic", Native_StartMusic);
+	CreateNative("FF2_StopMusic", Native_StopMusic);
+	CreateNative("FF2_GetRageDist", Native_GetRageDist);
+	CreateNative("FF2_HasAbility", Native_HasAbility);
+	CreateNative("FF2_DoAbility", Native_DoAbility);
+	CreateNative("FF2_GetAbilityArgument", Native_GetAbilityArgument);
+	CreateNative("FF2_GetAbilityArgumentFloat", Native_GetAbilityArgumentFloat);
+	CreateNative("FF2_GetAbilityArgumentString", Native_GetAbilityArgumentString);
+	CreateNative("FF2_GetArgNamedI", Native_GetArgNamedI);
+	CreateNative("FF2_GetArgNamedF", Native_GetArgNamedF);
+	CreateNative("FF2_GetArgNamedS", Native_GetArgNamedS);
+	CreateNative("FF2_RandomSound", Native_RandomSound);
+	CreateNative("FF2_GetFF2flags", Native_GetFF2flags);
+	CreateNative("FF2_SetFF2flags", Native_SetFF2flags);
+	CreateNative("FF2_GetQueuePoints", Native_GetQueuePoints);
+	CreateNative("FF2_SetQueuePoints", Native_SetQueuePoints);
+	CreateNative("FF2_GetClientGlow", Native_GetClientGlow);
+	CreateNative("FF2_SetClientGlow", Native_SetClientGlow);
+
+	// Unofficial Natives
+	CreateNative("FF2_IsBossVsBoss", Native_IsVersus);
+	CreateNative("FF2_GetForkVersion", Native_ForkVersion);
+	CreateNative("FF2_GetBossName", Native_GetName);
+	CreateNative("FF2_EmitVoiceToAll", Native_EmitVoiceToAll);
+	CreateNative("FF2_GetClientShield", Native_GetClientShield);
+	CreateNative("FF2_SetClientShield", Native_SetClientShield);
+	CreateNative("FF2_RemoveClientShield", Native_RemoveClientShield);
+	CreateNative("FF2_LogError", Native_LogError);
+	CreateNative("FF2_Debug", Native_Debug);
+	CreateNative("FF2_SetCheats", Native_SetCheats);
+	CreateNative("FF2_GetCheats", Native_GetCheats);
+	CreateNative("FF2_MakeBoss", Native_MakeBoss);
+	CreateNative("FF2_SelectBoss", Native_ChooseBoss);
+}
+
 public any Native_IsEnabled(Handle plugin, int numParams)
 {
 	return Enabled;
@@ -445,10 +504,6 @@ public any Native_GetFF2flags(Handle plugin, int numParams)
 		return 0;
 
 	int flags = FF2FLAG_CLASSHELPED|FF2FLAG_HASONGIVED;
-
-	if(TF2_IsPlayerInCondition(client, TFCond_DefenseBuffed))
-		flags |= FF2FLAG_ISBUFFED;
-
 	if(Client[client].Minion)
 	{
 		flags |= FF2FLAG_CLASSTIMERDISABLED|FF2FLAG_ALLOWSPAWNINBOSSTEAM;
@@ -457,10 +512,19 @@ public any Native_GetFF2flags(Handle plugin, int numParams)
 	{
 		if(IsFakeClient(client) && Boss[client].Charge[0]>=Boss[client].RageMin)
 			flags |= FF2FLAG_BOTRAGE;
+
+		if(Boss[client].HealthKits)
+			flags |= FF2FLAG_ALLOW_HEALTH_PICKUPS;
+
+		if(Boss[client].AmmoKits)
+			flags |= FF2FLAG_ALLOW_AMMO_PICKUPS;
+
+		if(Boss[client].Cosmetics)
+			flags |= FF2FLAG_ALLOW_BOSS_WEARABLES;
 	}
 	else
 	{
-		char buffer[64];
+		static char buffer[64];
 		int i = GetPlayerWeaponSlot(client, TFWeaponSlot_Secondary);
 		if(IsValidEntity(i))
 		{
@@ -470,23 +534,45 @@ public any Native_GetFF2flags(Handle plugin, int numParams)
 					flags |= FF2FLAG_UBERREADY;
 			}
 		}
+
+		flags |= FF2FLAG_ALLOW_HEALTH_PICKUPS|FF2FLAG_ALLOW_AMMO_PICKUPS|FF2FLAG_ALLOW_BOSS_WEARABLES;
 	}
 
-	if(Client[client].Pref[Pref_Hud] & HUD_DAMAGE)
+	if(TF2_IsPlayerInCondition(client, TFCond_DefenseBuffed))
+		flags |= FF2FLAG_ISBUFFED;
+
+	if(Client[client].Pref[Pref_Hud] == 15)
 		flags |= FF2FLAG_HUDDISABLED;
 
-	//if(Client is is living more than X seconds)
-		//flags |= FF2FLAG_CLASSHELPED;
+	if(TF2_IsPlayerInCondition(client, TFCond_BlastJumping))
+		flags |= FF2FLAG_ROCKET_JUMPING;
 
-	if(!Client[client].Minion && )
-		flags |= FF2FLAG_HASONGIVED;
-
-	return FF2flags[GetNativeCell(1)];
+	return flags;
 }
 
 public any Native_SetFF2flags(Handle plugin, int numParams)
 {
-	FF2flags[GetNativeCell(1)] = GetNativeCell(2);
+	int client = GetNativeCell(1);
+	if(!IsValidClient(client))
+		return 0;
+
+	int flags = GetNativeCell(2);
+	if(Boss[client].Active)
+	{
+		Boss[client].HealthKits = (flags & FF2FLAG_ALLOW_HEALTH_PICKUPS);
+		Boss[client].AmmoKits = (flags & FF2FLAG_ALLOW_AMMO_PICKUPS);
+		Boss[client].Cosmetics = (flags & FF2FLAG_ALLOW_BOSS_WEARABLES);
+	}
+	else if(flags & FF2FLAG_ALLOWSPAWNINBOSSTEAM)
+	{
+		Client[client].Minion = true;
+	}
+	else if(!(flags & FF2FLAG_CLASSTIMERDISABLED) && !(flags & FF2FLAG_ALLOWSPAWNINBOSSTEAM))
+	{
+		Client[client].Minion = false;
+	}
+
+	Client[client].Pref[Pref_Hud] = (flags & FF2FLAG_HUDDISABLED) ? 15 : 0;
 }
 
 public any Native_GetQueuePoints(Handle plugin, int numParams)
