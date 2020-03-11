@@ -120,6 +120,7 @@ enum struct BossEnum
 {
 	bool Active;
 	bool Leader;
+	int Special;
 	char Name[MAX_TARGET_LENGTH];
 	TFClassType Class;
 	TFTeam Team;
@@ -188,6 +189,7 @@ SpecialEnum Special[MAXSPECIALS];
 ArrayList BossList;
 int Specials;
 
+bool Enabled;
 ArrayList Charsets;
 int Charset;
 
