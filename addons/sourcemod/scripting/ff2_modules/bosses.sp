@@ -23,7 +23,6 @@
 #define DEFAULT_HEALTH		""
 #define MAX_CLASSNAME_LENGTH	36
 #define MAX_CHARSET_LENGTH	42
-#define MAXSPECIALS		1024
 
 ConVar CvarCharset;
 static ConVar CvarTriple;
@@ -340,83 +339,84 @@ static KeyValues LoadCharacter(const char[] character, int charset)
 	char key[PLATFORM_MAX_PATH];
 	while(Special[Specials].Kv.GotoNextKey())
 	{
-		KvGetSectionName(Special[Specials].Kv, section, sizeof(section));
-		if(StrEqual(section, "download"))
+		static char section[16];
+		SectionType type = KvGetSectionType(Special[Specials].Kv, section, sizeof(section));
+		switch(type)
 		{
-			for(int i=1; ; i++)
+			case Section_Download:
 			{
-				IntToString(i, key, sizeof(key));
-				Special[Specials].Kv.GetString(key, config, sizeof(config));
-				if(!config[0])
-					break;
+				for(int i=1; ; i++)
+				{
+					IntToString(i, key, sizeof(key));
+					Special[Specials].Kv.GetString(key, config, sizeof(config));
+					if(!config[0])
+						break;
 
-				if(FileExists(config, true))
-				{
-					AddFileToDownloadsTable(config);
-				}
-				else
-				{
+					if(FileExists(config, true))
+					{
+						AddFileToDownloadsTable(config);
+						continue;
+					}
+
 					LogError2("[Boss] Character %s is missing file '%s' in section '%s'!", character, config, section);
 				}
 			}
-		}
-		else if(StrEqual(section, "mod_download"))
-		{
-			for(int i=1; ; i++)
+			case Section_Model:
 			{
-				IntToString(i, key, sizeof(key));
-				Special[Specials].Kv.GetString(key, config, sizeof(config));
-				if(!config[0])
-					break;
-
-				static const char extensions[][] = {".mdl", ".dx80.vtx", ".dx90.vtx", ".sw.vtx", ".vvd", ".phy"};
-				for(int extension; extension<sizeof(extensions); extension++)
+				for(int i=1; ; i++)
 				{
-					FormatEx(key, PLATFORM_MAX_PATH, "%s%s", config, extensions[extension]);
+					IntToString(i, key, sizeof(key));
+					Special[Specials].Kv.GetString(key, config, sizeof(config));
+					if(!config[0])
+						break;
+
+					static const char extensions[][] = {".mdl", ".dx80.vtx", ".dx90.vtx", ".sw.vtx", ".vvd", ".phy"};
+					for(int extension; extension<sizeof(extensions); extension++)
+					{
+						FormatEx(key, PLATFORM_MAX_PATH, "%s%s", config, extensions[extension]);
+						if(FileExists(key, true))
+						{
+							AddFileToDownloadsTable(key);
+						}
+						else if(StrContains(key, ".phy") == -1)
+						{
+							LogError2("[Boss] Character %s is missing file '%s' in section '%s'!", character, key, section);
+						}
+					}
+				}
+			}
+			case Section_Material:
+			{
+				for(int i=1; ; i++)
+				{
+					IntToString(i, key, sizeof(key));
+					Special[Specials].Kv.GetString(key, config, sizeof(config));
+					if(!config[0])
+						break;
+
+					FormatEx(key, sizeof(key), "%s.vtf", config);
 					if(FileExists(key, true))
 					{
 						AddFileToDownloadsTable(key);
 					}
-					else if(StrContains(key, ".phy") == -1)
+					else
 					{
 						LogError2("[Boss] Character %s is missing file '%s' in section '%s'!", character, key, section);
 					}
-				}
-			}
-		}
-		else if(StrEqual(section, "mat_download"))
-		{
-			for(int i=1; ; i++)
-			{
-				IntToString(i, key, sizeof(key));
-				Special[Specials].Kv.GetString(key, config, sizeof(config));
-				if(!config[0])
-					break;
 
-				FormatEx(key, sizeof(key), "%s.vtf", config);
-				if(FileExists(key, true))
-				{
-					AddFileToDownloadsTable(key);
-				}
-				else
-				{
-					LogError2("[Boss] Character %s is missing file '%s' in section '%s'!", character, key, section);
-				}
-
-				FormatEx(key, sizeof(key), "%s.vmt", config);
-				if(FileExists(key, true))
-				{
-					AddFileToDownloadsTable(key);
-				}
-				else
-				{
+					FormatEx(key, sizeof(key), "%s.vmt", config);
+					if(FileExists(key, true))
+					{
+						AddFileToDownloadsTable(key);
+						continue;
+					}
+					
 					LogError2("[Boss] Character %s is missing file '%s' in section '%s'!", character, key, section);
 				}
 			}
 		}
 	}
-	Specials++;
-	return Special[Specials-1].Kv;
+	return Special[Specials++].Kv;
 }
 
 void Bosses_Prepare(int boss)
@@ -429,68 +429,55 @@ void Bosses_Prepare(int boss)
 	char filePath[PLATFORM_MAX_PATH], key[8];
 	while(Special[boss].Kv.GotoNextKey())
 	{
-		static char file[PLATFORM_MAX_PATH], section[16]
-		Special[boss].Kv.GetSectionName(section, sizeof(section));
-		if(StrEqual(section, "sound_bgm"))
+		static char file[PLATFORM_MAX_PATH], section[16];
+		SectionType type = KvGetSectionType(Special[Specials].Kv, section, sizeof(section));
+		switch(type)
 		{
-			for(int i=1; ; i++)
+			case Section_Sound:
 			{
-				FormatEx(key, sizeof(key), "path%d", i);
-				Special[boss].Kv.GetString(key, file, sizeof(file));
-				if(!file[0])
-					break;
-
-				FormatEx(filePath, sizeof(filePath), "sound/%s", file);
-				if(FileExists(filePath, true))
+				for(int i=1; ; i++)
 				{
-					PrecacheSound(file);
-					continue;
-				}
+					IntToString(i, key, sizeof(key));
+					Special[boss].Kv.GetString(key, file, sizeof(file));
+					if(!file[0])
+					{
+						FormatEx(key, sizeof(key), "path%d", i);
+						Special[boss].Kv.GetString(key, file, sizeof(file));
+						if(!file[0])
+							break;
+					}
 
-				char bossName[MAX_TARGET_LENGTH];
-				Special[boss].Kv.GetString("filename", bossName, sizeof(bossName));
-				LogError2("[Boss] Character %s is missing file '%s' in section '%s'!", bossName, filePath, section);
+					FormatEx(filePath, sizeof(filePath), "sound/%s", file);
+					if(FileExists(filePath, true))
+					{
+						PrecacheSound(file);
+						continue;
+					}
+
+					char bossName[MAX_TARGET_LENGTH];
+					Special[boss].Kv.GetString("filename", bossName, sizeof(bossName));
+					LogError2("[Boss] Character %s is missing file '%s' in section '%s'!", bossName, filePath, section);
+				}
 			}
-		}
-		else if(StrEqual(section, "mod_precache"))
-		{
-			for(int i=1; ; i++)
+			case Section_Precache:
 			{
-				IntToString(i, key, sizeof(key));
-				Special[boss].Kv.GetString(key, file, sizeof(file));
-				if(!file[0])
-					break;
-
-				if(FileExists(file, true))
+				for(int i=1; ; i++)
 				{
-					PrecacheModel(file);
-					continue;
+					IntToString(i, key, sizeof(key));
+					Special[boss].Kv.GetString(key, file, sizeof(file));
+					if(!file[0])
+						break;
+
+					if(FileExists(file, true))
+					{
+						PrecacheModel(file);
+						continue;
+					}
+
+					char bossName[MAX_TARGET_LENGTH];
+					Special[boss].Kv.GetString("filename", bossName, sizeof(bossName));
+					LogError2("[Boss] Character %s is missing file '%s' in section '%s'!", bossName, filePath, section);
 				}
-
-				char bossName[MAX_TARGET_LENGTH];
-				Special[boss].Kv.GetString("filename", bossName, sizeof(bossName));
-				LogError2("[Boss] Character %s is missing file '%s' in section '%s'!", bossName, filePath, section);
-			}
-		}
-		else if(!StrContains(section, "sound_") || !StrContains(section, "catch_"))
-		{
-			for(int i=1; ; i++)
-			{
-				IntToString(i, key, sizeof(key));
-				Special[boss].Kv.GetString(key, file, sizeof(file));
-				if(!file[0])
-					break;
-
-				FormatEx(filePath, sizeof(filePath), "sound/%s", file);
-				if(FileExists(filePath, true))
-				{
-					PrecacheSound(file);
-					continue;
-				}
-
-				char bossName[MAX_TARGET_LENGTH];
-				Special[boss].Kv.GetString("filename", bossName, sizeof(bossName));
-				LogError2("[Boss] Character %s is missing file '%s' in section '%s'!", bossName, filePath, section);
 			}
 		}
 	}
@@ -602,7 +589,7 @@ void Bosses_Create(int client, int boss)
 
 	Bosses_Equip(client, boss);
 
-	bool var = false;
+	bool var;
 	for(int target=1; target<=MaxClients; target++)
 	{
 		if(!Boss[target].Active || !Boss[target].Leader)
@@ -620,7 +607,7 @@ void Bosses_Equip(int client, int boss)
 	TF2_RemoveAllWeapons(client);
 	Special[boss].Kv.Rewind();
 	Special[boss].Kv.GotoFirstSubKey();
-	char attributes[256];
+	char attributes[PLATFORM_MAX_PATH];
 	do
 	{
 		static char classname[MAX_CLASSNAME_LENGTH];
@@ -641,7 +628,7 @@ void Bosses_Equip(int client, int boss)
 			Special[boss].Kv.GetString("name", classname, sizeof(classname), wearable ? "tf_wearable" : "saxxy");
 		}
 
-		MultiClassname(classname, sizeof(classname));
+		MultiClassname(TF2_GetPlayerClass(client), classname, sizeof(classname));
 		wearable = view_as<bool>(StrContains(classname, "tf_weap"));
 
 		if(wearable && SDKEquipWearable==null)
@@ -661,7 +648,7 @@ void Bosses_Equip(int client, int boss)
 		{
 			if(attributes[0])
 			{
-				if(overridewep)
+				if(override)
 				{
 					Format(attributes, sizeof(attributes), "214 ; %f ; %s", view_as<float>(kills), attributes);
 				}
@@ -672,7 +659,7 @@ void Bosses_Equip(int client, int boss)
 			}
 			else
 			{
-				if(overridewep)
+				if(override)
 				{
 					FormatEx(attributes, sizeof(attributes), "214 ; %f", view_as<float>(kills));
 				}
@@ -682,7 +669,7 @@ void Bosses_Equip(int client, int boss)
 				}
 			}
 		}
-		else if(!overridewep)
+		else if(!override)
 		{
 			if(attributes[0])
 			{
@@ -757,49 +744,6 @@ void Bosses_Equip(int client, int boss)
 
 		SetEntPropEnt(client, Prop_Send, "m_hActiveWeapon", index);
 	} while(Special[boss].Kv.GotoNextKey());
-}
-
-static bool ConfigureWorldModelOverride(int entity, const char[] model, bool wearable=false)
-{
-	if(!FileExists(model, true))
-		return false;
-
-	int index = PrecacheModel(model);
-	SetEntProp(entity, Prop_Send, "m_nModelIndex", index);
-	SetEntProp(entity, Prop_Send, "m_nModelIndexOverrides", index, _, 1);
-	SetEntProp(entity, Prop_Send, "m_nModelIndexOverrides", index, _, 2);
-	SetEntProp(entity, Prop_Send, "m_nModelIndexOverrides", index, _, 3);
-	SetEntProp(entity, Prop_Send, "m_nModelIndexOverrides", (wearable ? index : GetEntProp(entity, Prop_Send, "m_iWorldModelIndex")), _, 0);
-	return true;
-}
-
-static void MultiClassname(char[] name, int length)
-{
-	if(StrEqual(name, "saxxy"))
-	{ 
-		switch(TF2_GetPlayerClass(client))
-		{
-			case TFClass_Scout:	strcopy(name, length, "tf_weapon_bat");
-			case TFClass_Pyro:	strcopy(name, length, "tf_weapon_fireaxe");
-			case TFClass_DemoMan:	strcopy(name, length, "tf_weapon_bottle");
-			case TFClass_Heavy:	strcopy(name, length, "tf_weapon_fists");
-			case TFClass_Engineer:	strcopy(name, length, "tf_weapon_wrench");
-			case TFClass_Medic:	strcopy(name, length, "tf_weapon_bonesaw");
-			case TFClass_Sniper:	strcopy(name, length, "tf_weapon_club");
-			case TFClass_Spy:	strcopy(name, length, "tf_weapon_knife");
-			default:		strcopy(name, length, "tf_weapon_shovel");
-		}
-	}
-	else if(StrEqual(name, "tf_weapon_shotgun"))
-	{
-		switch(TF2_GetPlayerClass(client))
-		{
-			case TFClass_Pyro:	strcopy(name, length, "tf_weapon_shotgun_pyro");
-			case TFClass_Heavy:	strcopy(name, length, "tf_weapon_shotgun_hwg");
-			case TFClass_Engineer:	strcopy(name, length, "tf_weapon_shotgun_primary");
-			default:		strcopy(name, length, "tf_weapon_shotgun_soldier");
-		}
-	}
 }
 
 static int GetRankingKills(int rank, int index, bool wearable)
