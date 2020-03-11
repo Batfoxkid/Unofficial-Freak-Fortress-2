@@ -26,6 +26,22 @@ static const TFCond MiniCritConditions[] =
 	TFCond_MiniCritOnKill
 };
 
+enum SectionType
+{
+	Section_Unknown = 0,
+	Section_Ability,	// ability | Ability Name
+	Section_Map,		// map_exclude
+	Section_Blacklist,	// map_blacklist
+	Section_Whitelist,	// map_whitelist
+	Section_Weapon,		// tf_ | saxxy
+	Section_Sound,		// sound_ | catch_
+	Section_Download,	// download
+	Section_Model,		// mod_download
+	Section_Material,	// mat_download
+	Section_PrecacheSound,	// sound_precache
+	Section_PrecacheModel	// mod_precache
+};
+
 stock int OnlyScoutsLeft(int team)
 {
 	int scouts;
@@ -238,4 +254,42 @@ stock void RandomlyDisguise(int client)	//Original code was mecha's, but the ori
 			SetEntProp(client, Prop_Send, "m_iDisguiseHealth", 200);
 		}
 	}
+}
+
+stock SectionType KvGetSectionType(Handle kv, char[] buffer="", int length=16)
+{
+	if(!KvGetSectionName(kv, buffer, length))
+		return Section_Unknown;
+
+	if(StrEqual(buffer, "sound_precache"))
+		return Section_PrecacheSound;
+
+	if(!StrContains(buffer, "sound_") || !StrContains(buffer, "catch_"))
+		return Section_Sound;
+
+	if(StrEqual(buffer, "mod_download"))
+		return Section_Model;
+
+	if(StrEqual(buffer, "mod_precache"))
+		return Section_PrecacheModel;
+
+	if(StrEqual(buffer, "mat_download"))
+		return Section_Material;
+
+	if(StrEqual(buffer, "download"))
+		return Section_Download;
+
+	if(StrEqual(buffer, "map_exclude"))
+		return Section_Map;
+
+	if(StrEqual(buffer, "map_blacklist"))
+		return Section_Blacklist;
+
+	if(StrEqual(buffer, "map_whitelist"))
+		return Section_Whitelist;
+
+	if(!StrContains(buffer, "tf_") || StrEqual(buffer, "saxxy"))
+		return Section_Weapon;
+
+	return Section_Ability;
 }
