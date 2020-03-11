@@ -93,9 +93,9 @@ stock int GetClientCloakIndex(int client)
 	if(!IsValidEntity(weapon))
 		return -1;
 
-	static char classname[64];
+	static char classname[8];
 	GetEntityClassname(weapon, classname, sizeof(classname));
-	if(strncmp(classname, "tf_wea", 6, false))
+	if(!StrContains(classname, "tf_wea", false))
 		return -1;
 
 	return GetEntProp(weapon, Prop_Send, "m_iItemDefinitionIndex");
@@ -224,39 +224,40 @@ stock void AssignTeam(int client, int team)
 
 stock void RandomlyDisguise(int client)
 {
-	int disguiseTarget = -1;
+	int target = client;
 	int team = GetClientTeam(client);
 
-	ArrayList disguiseArray = new ArrayList();
-	for(int clientcheck=1; clientcheck<=MaxClients; clientcheck++)
+	ArrayList list = new ArrayList();
+	for(int victim=1; victim<=MaxClients; victim++)
 	{
-		if(IsValidClient(clientcheck) && GetClientTeam(clientcheck)==team && clientcheck!=client)
-			disguiseArray.Push(clientcheck);
+		if(victim!=client && IsValidClient(victim) && GetClientTeam(victim)==team)
+			list.Push(victim);
 	}
 
-	if(disguiseArray.Length < 1)
+	if(disguiseArray.Length > 0)
 	{
-		disguiseTarget = client;
-	}
-	else
-	{
-		disguiseTarget = disguiseArray.Get(GetRandomInt(0, disguiseArray.Length-1));
-		if(!IsValidClient(disguiseTarget))
-			disguiseTarget = client;
+		int victim = list.Get(GetRandomInt(0, list.Length-1));
+		if(!IsValidClient(victim))
+			target = victim;
 	}
 	delete disguiseArray;
 
+	TFClassType class = TF2_GetPlayerClass(target);
+	if(class == TFClass_Unknown)
+		class = GetRandomInt(0, 1) ? TFClass_Medic : TFClass_Scout;
+
 	if(TF2_GetPlayerClass(client) == TFClass_Spy)
 	{
-		TF2_DisguisePlayer(client, view_as<TFTeam>(team), GetRandomInt(0, 1) ? TFClass_Medic : TFClass_Scout, disguiseTarget);
+		TF2_DisguisePlayer(client, view_as<TFTeam>(team), class, target);
+		SetEntPropFloat(client, Prop_Data, "m_flMaxspeed", 320.0);
 	}
 	else
 	{
 		TF2_AddCondition(client, TFCond_Disguised, -1.0);
 		SetEntProp(client, Prop_Send, "m_nDisguiseTeam", team);
-		SetEntProp(client, Prop_Send, "m_nDisguiseClass", GetRandomInt(0, 1) ? view_as<int>(TFClass_Medic) : view_as<int>(TFClass_Scout));
-		SetEntProp(client, Prop_Send, "m_iDisguiseTargetIndex", disguiseTarget);
-		SetEntProp(client, Prop_Send, "m_iDisguiseHealth", 200);
+		SetEntProp(client, Prop_Send, "m_nDisguiseClass", class);
+		SetEntProp(client, Prop_Send, "m_iDisguiseTargetIndex", target);
+		SetEntProp(client, Prop_Send, "m_iDisguiseHealth", GetRandomInt(1, 300));
 	}
 }
 
