@@ -86,6 +86,7 @@
 #define CHANGELOG_URL	"https://batfoxkid.github.io/Unofficial-Freak-Fortress-2"
 
 #define MAXENTITIES	2048
+#define MAXSPECIALS	1024
 #define MAXTF2PLAYERS	36
 
 #define HUD_DAMAGE	(1 << 0)
@@ -173,6 +174,7 @@ enum struct ClientEnum
 	int Damage;
 	int Queue;
 	int Pref[Pref_MAX];
+	bool DisableHud;
 
 	int Crit[3];
 	int Stale[3];
