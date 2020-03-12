@@ -1,6 +1,11 @@
 /*
-	Optional:
+	Required:
 	weapons.sp
+
+	Functions:
+	void TF2Items_Pre()
+	void TF2Items_Setup()
+	int TF2Items_SpawnWeapon(int client, const char[] name, int index, int level, int qual, const char[] att)
 */
 
 #if !defined _tf2items_included
@@ -47,44 +52,42 @@ public Action TF2Items_OnGiveNamedItem(int client, char[] classname, int index, 
 
 		static char names[8][MAX_CLASSNAME_LENGTH];
 		int num = ExplodeString(attrib, " ; ", names, sizeof(names), sizeof(names[]));
-		bool mode;
+		bool found;
 		for(int i; i<num; i++)
 		{
 			if(StrContains(names[i], "tf_") == -1)
 			{
 				if(StringToInt(names[i]) != index)
 					continue;
-
-				mode = true;
-				break;
 			}
-
-			if(StrContains(names[i], "*") == -1)
+			else if(StrContains(names[i], "*") == -1)
 			{
 				if(!StrEqual(names[i], classname))
 					continue;
-
-				mode = true;
-				break;
 			}
-
-			bool full = ReplaceString(names[i], 36, "*", "")>1;
-			if((full && StrContains(names[i], classname)==-1) || (!full && !StrContains(names[i], classname)))
+			else if(ReplaceString(names[i], sizeof(names[]), "*", "") > 1)
+			{
+				if(StrContains(names[i], classname) == -1)
+					continue;
+			}
+			else if(!StrContains(names[i], classname))
+			{
 				continue;
-
+				
+			}
 			mode = true;
 			break;
 		}
 
-		if(!mode)
+		if(!found)
 			continue;
 
-		mode = view_as<bool>(WeaponKV.GetNum("preserve"));
+		found = view_as<bool>(WeaponKV.GetNum("preserve"));
 		num = WeaponKV.GetNum("index", index, -1);
 		WeaponKV.GetString("classname", names[0], sizeof(names[]));
 		WeaponKV.GetString("attributes", attrib, sizeof(attrib));
 
-		Handle itemOverride = PrepareItemHandle(item, names[0], num, attrib, mode);
+		Handle itemOverride = PrepareItemHandle(item, names[0], num, attrib, found);
 		if(itemOverride == null)
 			break;
 
@@ -98,7 +101,7 @@ static Handle PrepareItemHandle(Handle item, char[] name="", int index=-1, const
 	int addattribs;
 
 	static char weaponAttribsArray[32][32];
-	int attribCount = ExplodeString(att, ";", weaponAttribsArray, 32, 32);
+	int attribCount = ExplodeString(att, " ; ", weaponAttribsArray, sizeof(weaponAttribsArray), sizeof(weaponAttribsArray[]));
 
 	if(attribCount % 2)
 		--attribCount;
@@ -128,8 +131,8 @@ static Handle PrepareItemHandle(Handle item, char[] name="", int index=-1, const
 
 				if(!dontAdd)
 				{
-					IntToString(attribIndex, weaponAttribsArray[i+attribCount], 32);
-					FloatToString(TF2Items_GetAttributeValue(item, i), weaponAttribsArray[i+1+attribCount], 32);
+					IntToString(attribIndex, weaponAttribsArray[i+attribCount], sizeof(weaponAttribsArray[]));
+					FloatToString(TF2Items_GetAttributeValue(item, i), weaponAttribsArray[i+1+attribCount], sizeof(weaponAttribsArray[]));
 				}
 			}
 			attribCount += 2*addattribs;
@@ -177,7 +180,7 @@ static Handle PrepareItemHandle(Handle item, char[] name="", int index=-1, const
 	return weapon;
 }
 
-stock int TF2Items_SpawnWeapon(int client, char[] name, int index, int level, int qual, const char[] att)
+stock int TF2Items_SpawnWeapon(int client, const char[] name, int index, int level, int qual, const char[] att)
 {
 	Handle weapon = TF2Items_CreateItem(OVERRIDE_ALL|FORCE_GENERATION);
 	if(weapon == INVALID_HANDLE)
