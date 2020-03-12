@@ -28,32 +28,6 @@ void SDK_Setup()
 
 stock int SDK_SpawnWeapon(int client, const char[] name, int index, int level, int quality, char[] attributes)
 {
-	if(StrEqual(name, "saxxy"))
-	{ 
-		switch(TF2_GetPlayerClass(client))
-		{
-			case TFClass_Scout:	strcopy(name, 64, "tf_weapon_bat");
-			case TFClass_Pyro:	strcopy(name, 64, "tf_weapon_fireaxe");
-			case TFClass_DemoMan:	strcopy(name, 64, "tf_weapon_bottle");
-			case TFClass_Heavy:	strcopy(name, 64, "tf_weapon_fists");
-			case TFClass_Engineer:	strcopy(name, 64, "tf_weapon_wrench");
-			case TFClass_Medic:	strcopy(name, 64, "tf_weapon_bonesaw");
-			case TFClass_Sniper:	strcopy(name, 64, "tf_weapon_club");
-			case TFClass_Spy:	strcopy(name, 64, "tf_weapon_knife");
-			default:		strcopy(name, 64, "tf_weapon_shovel");
-		}
-	}
-	else if(StrEqual(name, "tf_weapon_shotgun"))
-	{
-		switch(TF2_GetPlayerClass(client))
-		{
-			case TFClass_Pyro:	strcopy(name, 64, "tf_weapon_shotgun_pyro");
-			case TFClass_Heavy:	strcopy(name, 64, "tf_weapon_shotgun_hwg");
-			case TFClass_Engineer:	strcopy(name, 64, "tf_weapon_shotgun_primary");
-			default:		strcopy(name, 64, "tf_weapon_shotgun_soldier");
-		}
-	}
-
 	int entity = CreateEntityByName(name);
 	if(!IsValidEntity(entity))
 		return -1;
@@ -72,8 +46,8 @@ stock int SDK_SpawnWeapon(int client, const char[] name, int index, int level, i
 	#if defined FF2_TF2ATTRIBUTES
 	if(attributes[0] && TF2Attributes)
 	{
-		char atts[32][32];
-		int count = ExplodeString(attributes, " ; ", atts, 32, 32);
+		static char atts[32][16];
+		int count = ExplodeString(attributes, " ; ", atts, sizeof(atts), sizeof(atts[]));
 		if(count > 1)
 		{
 			for(int i; i<count; i+=2)
@@ -103,14 +77,9 @@ public Action OnTakeDamage(int client, int &attacker, int &inflictor, float &dam
 		return Plugin_Continue;
 
 	if((attacker<1 || client==attacker) && Boss[client].Active && Boss[client].Knockback<2)
-		return (damagetype & DMG_FALL) ? Boss[client].Knockback==1 ? Plugin_Continue : Plugin_Handled : Plugin_Handled;
+		return (damagetype & DMG_FALL) ? Plugin_Handled : Boss[client].Knockback==1 ? Plugin_Continue : Plugin_Handled;
 
-	if(IsInvuln(client))
-		return Plugin_Continue;
-
-	float position[3];
 	static char buffer[PLATFORM_MAX_PATH];
-	GetEntPropVector(attacker, Prop_Send, "m_vecOrigin", position);
 	if(!IsValidClient(attacker) && IsValidEntity(attacker))
 	{
 		if(GetEntityClassname(attacker, buffer, sizeof(buffer)) && StrEqual(buffer, "trigger_hurt", false))
@@ -155,6 +124,9 @@ public Action OnTakeDamage(int client, int &attacker, int &inflictor, float &dam
 				return action;
 			}
 		}
+	}
+	else if(IsInvuln(client))
+	{
 	}
 	else if(!Boss[client].Active)
 	{
@@ -210,6 +182,9 @@ public Action OnTakeDamage(int client, int &attacker, int &inflictor, float &dam
 				damagecustom = TF_CUSTOM_TELEFRAG;
 			}
 		}
+
+		static float position[3];
+		GetEntPropVector(attacker, Prop_Send, "m_vecOrigin", position);
 
 		if(damagecustom == TF_CUSTOM_BACKSTAB)
 		{
@@ -378,7 +353,7 @@ public Action OnTakeDamage(int client, int &attacker, int &inflictor, float &dam
 			if(!(Client[attacker].Hud & HUD_MESSAGE))
 			{
 				KvGetLang(Special[Boss[client].Special].Kv, "name", buffer, sizeof(buffer));
-				CreateAttachedAnnotation(attacker, client, true, 5.0, "%t", "Player Telefrag", spcl);
+				CreateAttachedAnnotation(attacker, client, true, 5.0, "%t", "Player Telefrag", buffer);
 			}
 
 			if(!(Client[attacker].Hud & HUD_MESSAGE))
@@ -470,7 +445,7 @@ public Action OnTakeDamage(int client, int &attacker, int &inflictor, float &dam
 
 		if(Weapon[attacker][slot].Uber)
 		{
-			int[] healers = new int[MaxClients+1];
+			int[] healers = new int[MaxClients];
 			int count;
 			for(int target=1; target<=MaxClients; target++)
 			{
@@ -568,6 +543,8 @@ public Action OnTakeDamage(int client, int &attacker, int &inflictor, float &dam
 			}
 		}
 
+		if(Weapon[attacker][slot].Special)
+		{
 		switch(index)
 		{
 			case 132, 266, 482, 1082:  //Eyelander, HHHH, Nessie's Nine Iron, Festive Eyelander
@@ -578,19 +555,9 @@ public Action OnTakeDamage(int client, int &attacker, int &inflictor, float &dam
 					IncrementHeadCount(attacker, Weapon[attacker][slot].Special);
 				}
 			}
-			case 214:  //Powerjack
-			{
-				if(kvWeaponMods == null || cvarHardcodeWep.IntValue>0)
-				{
-					int health = GetClientHealth(attacker);
-					int newhealth = health+25;
-					if(newhealth <= GetEntProp(attacker, Prop_Data, "m_iMaxHealth"))  //No overheal allowed
-						SetEntityHealth(attacker, newhealth);
-				}
-			}
 			case 307:  //Ullapool Caber
 			{
-				if(!GetEntProp(weapon, Prop_Send, "m_iDetonated") && allowedDetonations<4)	// If using ullapool caber, only trigger if bomb hasn't been detonated
+				if(Weapon[attacker][slot].Stab && Weapon[attacker][slot].Special<4 && !GetEntProp(weapon, Prop_Send, "m_iDetonated"))
 				{
 					if(TimesTen)
 					{
@@ -606,21 +573,12 @@ public Action OnTakeDamage(int client, int &attacker, int &inflictor, float &dam
 					}
 					damagetype |= DMG_CRIT;
 
-					if(Cabered[client] < 5)
-						Cabered[client]++;
-
-					if(allowedDetonations < 3)
+					if(Weapon[attacker][slot].Special < 3)
 					{
 						if(!HudSettings[attacker][2] && !(FF2flags[attacker] & FF2FLAG_HUDDISABLED))
 						{
-							if(TellName)
-							{
-								static char spcl[64];
-								GetBossSpecial(Special[boss], spcl, sizeof(spcl), attacker);
-								switch(Annotations)
-								{
-				case 1:
-					CreateAttachedAnnotation(attacker, client, true, 3.0, "%t", "Caber Player", spcl);
+							GetBossSpecial(Special[boss], spcl, sizeof(spcl), attacker);
+							CreateAttachedAnnotation(attacker, client, true, 3.0, "%t", "Player Caber", spcl);
 
 				case 2:
 					ShowGameText(attacker, "ico_notify_flag_moving_alt", _, "%t", "Caber Player", spcl);
