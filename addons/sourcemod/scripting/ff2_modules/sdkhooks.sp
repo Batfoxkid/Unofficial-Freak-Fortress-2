@@ -76,90 +76,102 @@ public Action OnTakeDamage(int client, int &attacker, int &inflictor, float &dam
 	if(!Enabled || damage<=0 || !IsValidClient(client))
 		return Plugin_Continue;
 
-	if((attacker<1 || client==attacker) && Boss[client].Active && Boss[client].Knockback<2)
-		return (damagetype & DMG_FALL) ? Plugin_Handled : Boss[client].Knockback==1 ? Plugin_Continue : Plugin_Handled;
+	if((attacker<1 || client==attacker))
+	{
+		if(Boss[client].Active)
+		{
+			if(Boss[client].Knockback < 2)
+				return (damagetype & DMG_FALL) ? Plugin_Handled : Boss[client].Knockback==1 ? Plugin_Continue : Plugin_Handled;
+		}
+		else if(damagetype & DMG_FALL)
+		{
+			bool changed;
+			for(int i; i<3; i++)
+			{
+				if(Weapon[client][i].Fall == 1)
+					continue;
+
+				damage *= Weapon[client][i].Fall;
+				changed = true;
+			}
+			return changed ? Plugin_Changed : Plugin_Continue;
+		}
+	}
 
 	static char buffer[PLATFORM_MAX_PATH];
 	if(!IsValidClient(attacker) && IsValidEntity(attacker))
 	{
-		if(GetEntityClassname(attacker, buffer, sizeof(buffer)) && StrEqual(buffer, "trigger_hurt", false))
+		if(!Boss[client].Active || !GetEntityClassname(attacker, buffer, sizeof(buffer)) || !StrEqual(buffer, "trigger_hurt", false))
+			return Plugin_Continue;
+
+		Action action = Plugin_Continue;
+		Call_StartForward(OnTriggerHurt);
+		Call_PushCell(Boss[client].Leader ? 0 : client);
+		Call_PushCell(attacker);
+		float damage2 = damage;
+		Call_PushFloatRef(damage2);
+		Call_Finish(action);
+		if(action==Plugin_Stop || action==Plugin_Handled)
+			return action;
+
+		if(action == Plugin_Changed)
+			damage = damage2;
+
+		if(damage > 600.0)
+			damage = 600.0;
+
+		if(SpawnTeleOnTriggerHurt && IsBoss(client) && CheckRoundState()==1)
 		{
-			if(SpawnTeleOnTriggerHurt && IsBoss(client) && CheckRoundState()==1)
+			Boss[client].Hazard += damage;
+			if(Boss[client].Hazard >= CvarDamageToTele.FloatValue)
 			{
-				HazardDamage[client] += damage;
-				if(HazardDamage[client] >= cvarDamageToTele.FloatValue)
-				{
-					TeleportToMultiMapSpawn(client);
-					HazardDamage[client] = 0.0;
-				}
-			}
-
-			Action action = Plugin_Continue;
-			Call_StartForward(OnTriggerHurt);
-			Call_PushCell(boss);
-			Call_PushCell(attacker);
-			float damage2 = damage;
-			Call_PushFloatRef(damage2);
-			Call_Finish(action);
-			if(action!=Plugin_Stop && action!=Plugin_Handled)
-			{
-				if(action == Plugin_Changed)
-					damage = damage2;
-
-				if(damage > 600.0)
-					damage = 600.0;
-
-				BossHealth[boss] -= RoundFloat(damage);
-				BossCharge[boss][0] += damage*100.0/BossRageDamage[boss];
-				if(BossHealth[boss] < 1)
-					damage *= 5;
-
-				if(BossCharge[boss][0] > rageMax[client])
-					BossCharge[boss][0] = rageMax[client];
-
-				return Plugin_Changed;
-			}
-			else
-			{
-				return action;
+				TeleportToMultiMapSpawn(client);
+				Boss[client].Hazard = 0.0;
 			}
 		}
+
+		Boss[client].Charge[0] += damage*100.0/Boss[client].RageDamage;
+		if(Boss[client].Charge[0] > Boss[client].RageMax)
+			Boss[client].Charge[0] = Boss[client].RageMax;
+
+		return Plugin_Changed;
 	}
-	else if(IsInvuln(client))
+
+	if(IsInvuln(client))
+		return Plugin_Continue;
+
+	if(!Boss[client].Active)
 	{
-	}
-	else if(!Boss[client].Active)
-	{
-		if(Boss[attacker].Active && !TF2_IsPlayerInCondition(client, TFCond_Bonked))
+		if(!Boss[attacker].Active || TF2_IsPlayerInCondition(client, TFCond_Bonked))
+			return Plugin_Continue;
+
+		if(shield[client] && cvarShieldType.IntValue==1)
 		{
-			if(shield[client] && cvarShieldType.IntValue==1)
-			{
-				RemoveShield(client, attacker);
-				return Plugin_Handled;
-			}
-
-			if(TF2_IsPlayerInCondition(client, TFCond_DefenseBuffed))
-			{
-				ScaleVector(damageForce, 9.0);
-				damage /= 2.0;
-				return Plugin_Changed;
-			}
-
-			if(TF2_IsPlayerInCondition(client, TFCond_CritMmmph))
-			{
-				damage /= 3.0;
-				return Plugin_Changed;
-			}
-
-			if(damage<=160.0 && Boss[attacker].Triple)
-			{
-				damage *= 3;
-				return Plugin_Changed;
-			}
+			RemoveShield(client, attacker);
+			return Plugin_Handled;
 		}
+
+		if(TF2_IsPlayerInCondition(client, TFCond_DefenseBuffed))
+		{
+			ScaleVector(damageForce, 9.0);
+			damage /= 2.0;
+			return Plugin_Changed;
+		}
+
+		if(TF2_IsPlayerInCondition(client, TFCond_CritMmmph))
+		{
+			damage /= 3.0;
+			return Plugin_Changed;
+		}
+
+		if(damage<=160.0 && Boss[attacker].Triple)
+		{
+			damage *= 3;
+			return Plugin_Changed;
+		}
+		return Plugin_Continue;
 	}
-	else
-	{
+
 		int index = -1;
 		if(weapon>MaxClients && IsValidEntity(weapon) && HasEntProp(weapon, Prop_Send, "m_iItemDefinitionIndex"))
 		{
@@ -356,7 +368,7 @@ public Action OnTakeDamage(int client, int &attacker, int &inflictor, float &dam
 				CreateAttachedAnnotation(attacker, client, true, 5.0, "%t", "Player Telefrag", buffer);
 			}
 
-			if(!(Client[attacker].Hud & HUD_MESSAGE))
+			if(!(Client[client].Hud & HUD_MESSAGE))
 			{
 				if(Boss[attacker].Active)
 				{
@@ -474,80 +486,34 @@ public Action OnTakeDamage(int client, int &attacker, int &inflictor, float &dam
 		if(Weapon[attacker][slot].HealthKit)
 		{
 			stale = true;
-			SpawnSmallHealthPackAt(client, GetClientTeam(attacker), attacker);
+			SpawnSmallHealthPackAt(client, GetClientTeam(attacker), attacker, Weapon[attacker][slot].Stale);
 		}
 
-		if(!StrContains(buffer, "tf_weapon_sniperrifle"))
+		if(damagetype & DMG_CRIT)
 		{
-			if(CheckRoundState() == 1)
+			if(Weapon[attacker][slot].Damage[2] != 1)
 			{
-				if(index == 752)  //Hitman's Heatmaker
-				{
-					float focus = 10+(GetEntPropFloat(weapon, Prop_Send, "m_flChargedDamage")/10);
-					if(TF2_IsPlayerInCondition(attacker, TFCond_FocusBuff))
-						focus /= 3;
-
-					float rage = GetEntPropFloat(attacker, Prop_Send, "m_flRageMeter");
-					SetEntPropFloat(attacker, Prop_Send, "m_flRageMeter", (rage+focus>100) ? 100.0 : rage+focus);
-				}
-				else if(index!=230 && index!=402 && index!=526 && index!=30665)  //Sydney Sleeper, Bazaar Bargain, Machina, Shooting Star
-				{
-					float gameTime = GetGameTime();
-					float time = (Client[client].GlowFor>10+gameTime ? 1.0 : 2.0);
-					time += (time==1 ? (Client[client].GlowFor>20 ? 1.0 : 2.0) : 4.0)*(GetEntPropFloat(weapon, Prop_Send, "m_flChargedDamage")/100.0);
-					Client[client].GlowFor = GetGameTime()+time;
-					if(time > 25.0)
-						time = 25.0;
-				}
-
-				if(!(damagetype & DMG_CRIT))
-				{
-					if(TF2_IsPlayerInCondition(attacker, TFCond_CritCola) || TF2_IsPlayerInCondition(attacker, TFCond_Buffed))
-					{
-						damage *= SniperMiniDamage;
-					}
-					else if(index!=230 || BossCharge[boss][0]>90.0)  //Sydney Sleeper
-					{
-						damage *= SniperDamage;
-					}
-					else
-					{
-						damage *= (SniperDamage*0.8);
-					}
-					return Plugin_Changed;
-				}
+				damage *= Weapon[attacker][slot].Damage[2];
+				changed = true;
 			}
 		}
-		else if(!StrContains(buffer, "tf_weapon_compound_bow"))
+		else if(IsPlayerMiniCritBuffed(client))
 		{
-			if(CheckRoundState() != 2)
+			if(Weapon[attacker][slot].Damage[1] != 1)
 			{
-				if((damagetype & DMG_CRIT))
-				{
-					damage *= BowDamage;
-					return Plugin_Changed;
-				}
-				else if(TF2_IsPlayerInCondition(attacker, TFCond_CritCola) || TF2_IsPlayerInCondition(attacker, TFCond_Buffed))
-				{
-					if(BowDamageMini > 0)
-					{
-						damage *= BowDamageMini;
-						return Plugin_Changed;
-					}
-				}
-				else if(BowDamageNon>0)
-				{
-					damage *= BowDamageNon;
-					return Plugin_Changed;
-				}
+				damage *= Weapon[attacker][slot].Damage[1];
+				changed = true;
 			}
 		}
-
-		if(Weapon[attacker][slot].Special)
+		else if(Weapon[attacker][slot].Damage[0] != 1)
 		{
+			damage *= Weapon[attacker][slot].Damage[0];
+			changed = true;
+		}
+
 		switch(index)
 		{
-			case 132, 266, 482, 1082:  //Eyelander, HHHH, Nessie's Nine Iron, Festive Eyelander
+			case 132, 266, 482, 1082:
 			{
 				if(Weapon[attacker][slot].Special)
 				{
@@ -555,414 +521,198 @@ public Action OnTakeDamage(int client, int &attacker, int &inflictor, float &dam
 					IncrementHeadCount(attacker, Weapon[attacker][slot].Special);
 				}
 			}
-			case 307:  //Ullapool Caber
+			case 307:
 			{
-				if(Weapon[attacker][slot].Stab && Weapon[attacker][slot].Special<4 && !GetEntProp(weapon, Prop_Send, "m_iDetonated"))
+				if(Weapon[attacker][slot].Special < 1)
+					Weapon[attacker][slot].Special = 1;
+
+				// TODO: Move this into a timer
+				stale = true;
+				if(Weapon[attacker][slot].Special > Weapon[attacker][2].Stale)
 				{
-					if(TimesTen)
+					SetEntProp(weapon, Prop_Send, "m_bBroken", 0);
+					SetEntProp(weapon, Prop_Send, "m_iDetonated", 0);
+				}
+
+				if(Weapon[attacker][slot].Stab && Weapon[attacker][slot].Special<3 && !GetEntProp(weapon, Prop_Send, "m_iDetonated"))
+				{
+					int health;
+					int team = GetClientTeam(client);
+					for(int i=1; i<=MaxClients; i++)
 					{
-						damage = ((Pow(float(BossHealthMax[boss]), 0.74074)-(Cabered[client]/128.0*float(BossHealthMax[boss])))/(3+(cvarTimesTen.FloatValue*allowedDetonations*3)))*bosses;
+						if(i==client || (Boss[i].Active && GetClientTeam(i)==team))
+							health += Boss[i].MaxHealth*Boss[i].MaxLives;
 					}
-					else if(cvarLowStab.BoolValue)
-					{
-						damage = ((Pow(float(BossHealthMax[boss]), 0.74074)+(2000.0/float(playing))+206.0-(Cabered[client]/128.0*float(BossHealthMax[boss])))/(3+(allowedDetonations*3)))*bosses;
-					}
-					else
-					{
-						damage = ((Pow(float(BossHealthMax[boss]), 0.74074)+512.0-(Cabered[client]/128.0*float(BossHealthMax[boss])))/(3+(allowedDetonations*3)))*bosses;
-					}
+
+					#if defined FF2_TIMESTEN
+					damage = Pow(health, 0.67-(Weapon[attacker][2].Stale*0.02)-(Weapon[attacker][slot].Special*0.5))*Weapon[attacker][slot].Stab*(1.0+(0.5*(TimesTen_Value()-1.0)));
+					#else
+					damage = Pow(health, 0.67-(Weapon[attacker][2].Stale*0.02)-(Weapon[attacker][slot].Special*0.5))*Weapon[attacker][slot].Stab;
+					#endif
 					damagetype |= DMG_CRIT;
 
-					if(Weapon[attacker][slot].Special < 3)
+					if(!(Client[attacker].Hud & HUD_MESSAGE))
 					{
-						if(!HudSettings[attacker][2] && !(FF2flags[attacker] & FF2FLAG_HUDDISABLED))
+						KvGetLang(Special[Boss[client].Special].Kv, "name", buffer, sizeof(buffer));
+						CreateAttachedAnnotation(attacker, client, true, 3.0, "%t", "Player Caber", buffer);
+					}
+
+					if(!(Client[client].Hud & HUD_MESSAGE))
+					{
+						if(Boss[attacker].Active)
 						{
-							GetBossSpecial(Special[boss], spcl, sizeof(spcl), attacker);
-							CreateAttachedAnnotation(attacker, client, true, 3.0, "%t", "Player Caber", spcl);
-
-				case 2:
-					ShowGameText(attacker, "ico_notify_flag_moving_alt", _, "%t", "Caber Player", spcl);
-
-				default:
-					PrintHintText(attacker, "%t", "Caber Player", spcl);
-								}
-							}
-							else
-							{
-								switch(Annotations)
-								{
-				case 1:
-					CreateAttachedAnnotation(attacker, client, true, 3.0, "%t", "Caber");
-
-				case 2:
-					ShowGameText(attacker, "ico_notify_flag_moving_alt", _, "%t", "Caber");
-
-				default:
-					PrintHintText(attacker, "%t", "Caber");
-								}
-							}
-						}
-						if(!HudSettings[client][2] && !(FF2flags[client] & FF2FLAG_HUDDISABLED))
-						{
-							if(TellName)
-							{
-								switch(Annotations)
-								{
-				case 1:
-					CreateAttachedAnnotation(client, attacker, true, 3.0, "%t", "Cabered Player", attacker);
-
-				case 2:
-					ShowGameText(client, "ico_notify_flag_moving_alt", _, "%t", "Cabered Player", attacker);
-
-				default:
-					PrintHintText(client, "%t", "Cabered Player", attacker);
-								}
-							}
-							else
-							{
-								switch(Annotations)
-								{
-				case 1:
-					CreateAttachedAnnotation(client, attacker, true, 3.0, "%t", "Cabered");
-
-				case 2:
-					ShowGameText(client, "ico_notify_flag_moving_alt", _, "%t", "Cabered");
-
-				default:
-					PrintHintText(client, "%t", "Cabered");
-								}
-							}
-						}
-
-						EmitSoundToClient(attacker, "ambient/lightsoff.wav", _, _, _, _, 0.6, _, _, position, _, false);
-						EmitSoundToClient(client, "ambient/lightson.wav", _, _, _, _, 0.6, _, _, position, _, false);
-
-						if(BossHealth[boss]-BossHealthMax[boss]*(BossLives[boss]-1) > damage*3)
-						{
-							static char sound[PLATFORM_MAX_PATH];
-							if(RandomSound("sound_cabered", sound, sizeof(sound)))
-								EmitSoundToAllExcept(sound);
-						}
-
-						HealthBarMode = true;
-						CreateTimer(1.5, Timer_HealthBarMode, false, TIMER_FLAG_NO_MAPCHANGE);
-					}
-					return Plugin_Changed;
-				}
-			}
-			case 310:  //Warrior's Spirit
-			{
-				if(kvWeaponMods == null || cvarHardcodeWep.IntValue>0)
-				{
-					int health = GetClientHealth(attacker);
-					int newhealth = health+50;
-					if(newhealth <= GetEntProp(attacker, Prop_Data, "m_iMaxHealth"))  //No overheal allowed
-						SetEntityHealth(attacker, newhealth);
-				}
-			}
-			case 317:  //Candycane
-			{
-				SpawnSmallHealthPackAt(client, GetClientTeam(attacker), attacker);
-			}
-			case 327:  //Claidheamh Mor
-			{
-				if(kvWeaponMods == null || cvarHardcodeWep.IntValue>0)
-				{
-					float charge=GetEntPropFloat(attacker, Prop_Send, "m_flChargeMeter");
-					if(charge+25.0 >= 100.0)
-					{
-						SetEntPropFloat(attacker, Prop_Send, "m_flChargeMeter", 100.0);
-					}
-					else
-					{
-						SetEntPropFloat(attacker, Prop_Send, "m_flChargeMeter", charge+25.0);
-					}
-				}
-			}
-			case 348:  //Sharpened Volcano Fragment
-			{
-				if(kvWeaponMods == null || cvarHardcodeWep.IntValue>0)
-				{
-					int health = GetClientHealth(attacker);
-					int max = GetEntProp(attacker, Prop_Data, "m_iMaxHealth");
-					int newhealth = health+5;
-					if(health < max+60)
-					{
-						if(newhealth > max+60)
-							newhealth=max+60;
-
-						SetEntityHealth(attacker, newhealth);
-					}
-				}
-			}
-			case 357:  //Half-Zatoichi
-			{
-				int health = GetClientHealth(attacker);
-				int max = GetEntProp(attacker, Prop_Data, "m_iMaxHealth");
-				int max2 = RoundToFloor(max*2.0);
-				int newhealth;
-				if(GetEntProp(weapon, Prop_Send, "m_bIsBloody"))	// Less effective used more than once
-				{
-					newhealth = health+25;
-					if(health < max2)
-					{
-						if(newhealth > max2)
-							newhealth = max2;
-
-						SetEntityHealth(attacker, newhealth);
-					}
-				}
-				else	// Most effective on first hit
-				{
-					newhealth = health + RoundToFloor(max/2.0);
-					if(health < max2)
-					{
-						if(newhealth > max2)
-							newhealth = max2;
-
-						SetEntityHealth(attacker, newhealth);
-					}
-					if(TF2_IsPlayerInCondition(attacker, TFCond_OnFire))
-						TF2_RemoveCondition(attacker, TFCond_OnFire);
-				}
-				SetEntProp(weapon, Prop_Send, "m_bIsBloody", 1);
-				if(GetEntProp(attacker, Prop_Send, "m_iKillCountSinceLastDeploy") < 1)
-					SetEntProp(attacker, Prop_Send, "m_iKillCountSinceLastDeploy", 1);
-			}
-			case 416:  //Market Gardener (courtesy of Chdata)
-			{
-				if(RemoveCond(attacker, TFCond_BlastJumping) && cvarMarket.FloatValue)	// New way to check explosive jumping status
-				//if((FF2flags[attacker] & FF2FLAG_ROCKET_JUMPING) && cvarMarket.FloatValue)
-				{
-					if(TimesTen)
-					{
-						damage = ((Pow(float(BossHealthMax[boss]), 0.74074)-(Marketed[client]/128.0*float(BossHealthMax[boss])))/(cvarTimesTen.FloatValue*3))*bosses*cvarMarket.FloatValue;
-					}
-					else if(cvarLowStab.BoolValue)
-					{
-						damage = ((Pow(float(BossHealthMax[boss]), 0.74074)+(1750.0/float(playing))+206.0-(Marketed[client]/128.0*float(BossHealthMax[boss])))/3)*bosses*cvarMarket.FloatValue;
-					}
-					else
-					{
-						damage = ((Pow(float(BossHealthMax[boss]), 0.74074)+512.0-(Marketed[client]/128.0*float(BossHealthMax[boss])))/3)*bosses*cvarMarket.FloatValue;
-					}
-					damagetype |= DMG_CRIT|DMG_PREVENT_PHYSICS_FORCE;
-
-					if(RemoveCond(attacker, TFCond_Parachute))	// If you parachuted to do this, remove your parachute.
-						damage *= 0.8;	// And nerf your damage
-
-					if(Marketed[client] < 5)
-						Marketed[client]++;
-
-					if(!(FF2flags[attacker] & FF2FLAG_HUDDISABLED))
-					{
-						if(TellName)
-						{
-							static char spcl[64];
-							GetBossSpecial(Special[boss], spcl, sizeof(spcl), attacker);
-							switch(Annotations)
-							{
-								case 1:
-				CreateAttachedAnnotation(attacker, client, true, 5.0, "%t", "Market Gardener Player", spcl);
-
-								case 2:
-				ShowGameText(attacker, "ico_notify_flag_moving_alt", _, "%t", "Market Gardener Player", spcl);
-
-								default:
-				PrintHintText(attacker, "%t", "Market Gardener Player", spcl);
-							}
+							KvGetLang(Special[Boss[attacker].Special].Kv, "name", buffer, sizeof(buffer));
 						}
 						else
 						{
-							switch(Annotations)
-							{
-								case 1:
-				CreateAttachedAnnotation(attacker, client, true, 3.0, "%t", "Market Gardener");
-
-								case 2:
-				ShowGameText(attacker, "ico_notify_flag_moving_alt", _, "%t", "Market Gardener");
-
-								default:
-				PrintHintText(attacker, "%t", "Market Gardener");
-							}
+							GetClientName(attacker, buffer, sizeof(buffer));
 						}
+
+						CreateAttachedAnnotation(client, attacker, true, 5.0, "%t", "Player Cabered", buffer);
 					}
 
-					if(!(FF2flags[client] & FF2FLAG_HUDDISABLED))
+					EmitSoundToClient(attacker, "ambient/lightsoff.wav", _, _, _, _, 0.6, _, _, position, _, false);
+					EmitSoundToClient(client, "ambient/lightson.wav", _, _, _, _, 0.6, _, _, position, _, false);
+
+					if(Boss[client].Health() > damage*3)
 					{
-						if(TellName)
+						if(RandomSound("sound_cabered", buffer, sizeof(buffer)))
+							EmitSoundToAllExcept(buffer);
+					}
+
+					HealthBarFor = GetGameTime()+2.0;
+					changed = true;
+				}
+			}
+			case 357:
+			{
+				if(Weapon[attacker][slot].Special > 0)
+				{
+					int health = GetClientHealth(attacker);
+					int max = GetEntProp(attacker, Prop_Data, "m_iMaxHealth")*2;
+					if(Weapon[attacker][2].Stale>24 || GetEntProp(weapon, Prop_Send, "m_bIsBloody"))
+					{
+						if(health < max)
 						{
-							switch(Annotations)
-							{
-								case 1:
-				CreateAttachedAnnotation(client, attacker, true, 3.0, "%t", "Market Gardened Player", attacker);
+							int add = Weapon[attacker][slot].Special;
+							if(health+add > max)
+								add = max-health;
 
-								case 2:
-				ShowGameText(client, "ico_notify_flag_moving_alt", _, "%t", "Market Gardened Player", attacker);
+							SetEntityHealth(attacker, health+add);
+							HealMessage(attacker, attacker, add);
+						}
+					}
+					else
+					{
+						if(health < max)
+						{
+							int add = RoundToFloor(max/(4+Weapon[attacker][2].Stale));
+							if(health+add > max)
+								add = max-health;
 
-								default:
-				PrintHintText(client, "%t", "Market Gardened Player", attacker);
-							}
+							SetEntityHealth(attacker, health+add);
+							HealMessage(attacker, attacker, add);
+						}
+
+						stale = true;
+						if(TF2_IsPlayerInCondition(attacker, TFCond_OnFire))
+							TF2_RemoveCondition(attacker, TFCond_OnFire);
+					}
+
+					SetEntProp(weapon, Prop_Send, "m_bIsBloody", 1);
+					if(GetEntProp(attacker, Prop_Send, "m_iKillCountSinceLastDeploy") < 1)
+						SetEntProp(attacker, Prop_Send, "m_iKillCountSinceLastDeploy", 1);
+				}
+			}
+			case 416:
+			{
+				if(Weapon[attacker][slot].Stab && RemoveCond(attacker, TFCond_BlastJumping))
+				{
+					int health;
+					int team = GetClientTeam(client);
+					for(int i=1; i<=MaxClients; i++)
+					{
+						if(i==client || (Boss[i].Active && GetClientTeam(i)==team))
+							health += Boss[i].MaxHealth*Boss[i].MaxLives;
+					}
+
+					#if defined FF2_TIMESTEN
+					damage = Pow(health, 0.625-(Weapon[attacker][2].Stale*0.015))*Weapon[attacker][slot].Stab*(1.0+(0.5*(TimesTen_Value()-1.0)));
+					#else
+					damage = Pow(health, 0.625-(Weapon[attacker][2].Stale*0.015))*Weapon[attacker][slot].Stab;
+					#endif
+					damagetype |= DMG_CRIT;
+
+					if(RemoveCond(attacker, TFCond_Parachute))
+						damage *= 0.85;
+
+					if(!(Client[attacker].Hud & HUD_MESSAGE))
+					{
+						KvGetLang(Special[Boss[client].Special].Kv, "name", buffer, sizeof(buffer));
+						CreateAttachedAnnotation(attacker, client, true, 3.0, "%t", "Player Market", buffer);
+					}
+
+					if(!(Client[client].Hud & HUD_MESSAGE))
+					{
+						if(Boss[attacker].Active)
+						{
+							KvGetLang(Special[Boss[attacker].Special].Kv, "name", buffer, sizeof(buffer));
 						}
 						else
 						{
-							switch(Annotations)
-							{
-								case 1:
-				CreateAttachedAnnotation(client, attacker, true, 3.0, "%t", "Market Gardened");
-
-								case 2:
-				ShowGameText(client, "ico_notify_flag_moving_alt", _, "%t", "Market Gardened");
-
-								default:
-				PrintHintText(client, "%t", "Market Gardened");
-							}
+							GetClientName(attacker, buffer, sizeof(buffer));
 						}
+
+						CreateAttachedAnnotation(client, attacker, true, 5.0, "%t", "Player Marketed", buffer);
 					}
 
 					EmitSoundToClient(attacker, "player/doubledonk.wav", _, _, _, _, 0.6, _, _, position, _, false);
 					EmitSoundToClient(client, "player/doubledonk.wav", _, _, _, _, 0.6, _, _, position, _, false);
 
-					if(BossHealth[boss]-BossHealthMax[boss]*(BossLives[boss]-1) > damage*3)
+					if(Boss[client].Health() > damage*3)
 					{
-						static char sound[PLATFORM_MAX_PATH];
-						if(RandomSound("sound_marketed", sound, sizeof(sound)))
-							EmitSoundToAllExcept(sound);
+						if(RandomSound("sound_marketed", buffer, sizeof(buffer)))
+							EmitSoundToAllExcept(buffer);
 					}
 
-					ActivateAbilitySlot(boss, 7);
-					HealthBarMode = true;
-					CreateTimer(1.5, Timer_HealthBarMode, false, TIMER_FLAG_NO_MAPCHANGE);
-					return Plugin_Changed;
+					ActivateAbilitySlot(client, 7);
+					HealthBarFor = GetGameTime()+2.0;
+					changed = true;
+					stale = true;
 				}
 			}
 			case 525, 595:  //Diamondback, Manmelter
 			{
-				if(kvWeaponMods == null || cvarHardcodeWep.IntValue>0)
+				if(Weapon[attacker][slot].Special && GetEntProp(attacker, Prop_Send, "m_iRevengeCrits"))
 				{
-					if(GetEntProp(attacker, Prop_Send, "m_iRevengeCrits"))  //If a revenge crit was used, give a damage bonus
-					{
-						damage = 85.0;  //255 final damage
-						return Plugin_Changed;
-					}
-				}
-			}
-			case 528:  //Short Circuit
-			{
-				if(circuitStun)
-				{
-					TF2_StunPlayer(client, circuitStun, 0.0, TF_STUNFLAGS_SMALLBONK|TF_STUNFLAG_NOSOUNDOREFFECT, attacker);
-					EmitSoundToAll("weapons/barret_arm_zap.wav", client);
-					EmitSoundToClient(client, "weapons/barret_arm_zap.wav");
-				}
-			}
-			case 593:  //Third Degree
-			{
-				int healers[MAXTF2PLAYERS];
-				int healerCount;
-				for(int healer; healer<=MaxClients; healer++)
-				{
-					if(IsValidClient(healer) && IsPlayerAlive(healer) && (GetHealingTarget(healer, true)==attacker))
-					{
-						healers[healerCount]=healer;
-						healerCount++;
-					}
-				}
-
-				for(int healer; healer<healerCount; healer++)
-				{
-					if(IsValidClient(healers[healer]) && IsPlayerAlive(healers[healer]))
-					{
-						int medigun = GetPlayerWeaponSlot(healers[healer], TFWeaponSlot_Secondary);
-						if(IsValidEntity(medigun))
-						{
-							static char medigunClassname[64];
-							GetEntityClassname(medigun, medigunClassname, sizeof(medigunClassname));
-							if(StrEqual(medigunClassname, "tf_weapon_medigun", false))
-							{
-								float uber = GetEntPropFloat(medigun, Prop_Send, "m_flChargeLevel")+(0.1/healerCount);
-								if(uber > 1.0)
-				uber = 1.0;
-
-								SetEntPropFloat(medigun, Prop_Send, "m_flChargeLevel", uber);
-							}
-						}
-					}
+					damage *= Weapon[attacker][slot].Special;
+					changed = true;
 				}
 			}
 			case 594:  //Phlogistinator
 			{
-				if(kvWeaponMods == null || cvarHardcodeWep.IntValue>0)
+				if(Weapon[attacker][slot].Special && !TF2_IsPlayerInCondition(attacker, TFCond_CritMmmph))
 				{
-					if(!TF2_IsPlayerInCondition(attacker, TFCond_CritMmmph))
-					{
-						damage/=2.0;
-						return Plugin_Changed;
-					}
+					damage *= Weapon[attacker][slot].Special;
+					changed = true;
+				}
+			}
+			case 752:
+			{
+				if(Weapon[attacker][slot].Special > 0)
+				{
+					float focus = (10+(GetEntPropFloat(weapon, Prop_Send, "m_flChargedDamage")/10))*Weapon[attacker][slot].Special;
+					if(TF2_IsPlayerInCondition(attacker, TFCond_FocusBuff))
+						focus /= 3;
+
+					float rage = GetEntPropFloat(attacker, Prop_Send, "m_flRageMeter");
+					SetEntPropFloat(attacker, Prop_Send, "m_flRageMeter", (rage+focus>100) ? 100.0 : rage+focus);
 				}
 			}
 		}
 
-		if((damagetype & DMG_CLUB) && CritBoosted[client][2]!=0 && CritBoosted[client][2]!=1 && (TF2_GetPlayerClass(attacker)!=TFClass_Spy || CritBoosted[client][2]>1))
-		{
-			int melee = GetIndexOfWeaponSlot(attacker, TFWeaponSlot_Melee);
-			if(CritBoosted[client][2]>1 || (melee!=416 && melee!=307 && melee!=44))
-			{
-				damagetype |= DMG_CRIT|DMG_PREVENT_PHYSICS_FORCE;
-				return Plugin_Changed;
-			}
-		}
+		if(stale)
+			Weapon[attacker][slot]++;
 
-		if(
-	}
-	else
-	{
-		char classname[64];
-	}
-	if(BossCharge[boss][0] > rageMax[client])
-		BossCharge[boss][0] = rageMax[client];
-		}
-		else
-		{
-			if(allowedDetonations != 1)
-			{
-				int index = (IsValidEntity(weapon) && HasEntProp(weapon, Prop_Send, "m_iItemDefinitionIndex") && attacker<=MaxClients) ? GetEntProp(weapon, Prop_Send, "m_iItemDefinitionIndex") : -1;
-				if(index == 307)  //Ullapool Caber
-				{
-					if(allowedDetonations<1 || allowedDetonations-detonations[attacker]>1)
-					{
-						detonations[attacker]++;
-						if(allowedDetonations > 1)
-							PrintHintText(attacker, "%t", "Detonations Left", allowedDetonations-detonations[attacker]);
-	
-						SetEntProp(weapon, Prop_Send, "m_bBroken", 0);
-						SetEntProp(weapon, Prop_Send, "m_iDetonated", 0);
-					}
-				}
-			}
-
-			if(IsValidClient(client, false) && TF2_GetPlayerClass(client)==TFClass_Soldier)  //TODO: LOOK AT THIS
-			{
-				if(damagetype & DMG_FALL)
-				{
-					int secondary = GetPlayerWeaponSlot(client, TFWeaponSlot_Secondary);
-					if(secondary<1 || !IsValidEntity(secondary))
-					{
-						damage /= 10.0;
-						return Plugin_Changed;
-					}
-				}
-			}
-
-			if(Enabled3 && cvarBvBMerc.FloatValue!=1 && RedAliveBosses && BlueAliveBosses)
-			{
-				if(IsValidClient(client) && IsValidClient(attacker) && GetClientTeam(attacker)!=GetClientTeam(client))
-				{
-					damage *= cvarBvBMerc.FloatValue;
-					return Plugin_Changed;
-				}
-			}
-		}
-	}
-	return Plugin_Continue;
+		return changed ? Plugin_Changed : Plugin_Continue;
 }
