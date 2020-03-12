@@ -21,7 +21,7 @@ public bool BossTargetFilter(const char[] pattern, Handle clients)
 		if(!IsValidClient(client) || FindValueInArray(clients, client)!=-1)
 			continue;
 
-		if(IsBoss(client))
+		if(Boss[client].Active)
 		{
 			if(!non)
 				PushArrayCell(clients, client);
