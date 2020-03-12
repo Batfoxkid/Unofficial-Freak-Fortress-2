@@ -32,7 +32,6 @@ void TF2Items_Setup()
 	TF2Items = LibraryExists("TF2Items");
 }
 
-#if defined FF2_WEAPONS
 public Action TF2Items_OnGiveNamedItem(int client, char[] classname, int index, Handle &item)
 {
 	if(!Enabled || WeaponKV==null)
@@ -80,7 +79,7 @@ public Action TF2Items_OnGiveNamedItem(int client, char[] classname, int index, 
 		if(!mode)
 			continue;
 
-		mode = WeaponKV.GetNum("preserve");
+		mode = view_as<bool>(WeaponKV.GetNum("preserve"));
 		num = WeaponKV.GetNum("index", index, -1);
 		WeaponKV.GetString("classname", names[0], sizeof(names[]));
 		WeaponKV.GetString("attributes", attrib, sizeof(attrib));
@@ -136,8 +135,8 @@ static Handle PrepareItemHandle(Handle item, char[] name="", int index=-1, const
 			attribCount += 2*addattribs;
 		}
 
-		if(weapon != item)  //FlaminSarge: Item might be equal to weapon, so closing item's handle would also close weapon's
-			delete item;  //probably returns false but whatever (rswallen-apparently not)
+		if(weapon != item)
+			delete item;
 	}
 
 	if(name[0])
@@ -177,36 +176,9 @@ static Handle PrepareItemHandle(Handle item, char[] name="", int index=-1, const
 	TF2Items_SetFlags(weapon, flags);
 	return weapon;
 }
-#endif
 
 stock int TF2Items_SpawnWeapon(int client, char[] name, int index, int level, int qual, const char[] att)
 {
-	if(StrEqual(name, "saxxy"))
-	{ 
-		switch(TF2_GetPlayerClass(client))
-		{
-			case TFClass_Scout:	strcopy(name, 64, "tf_weapon_bat");
-			case TFClass_Pyro:	strcopy(name, 64, "tf_weapon_fireaxe");
-			case TFClass_DemoMan:	strcopy(name, 64, "tf_weapon_bottle");
-			case TFClass_Heavy:	strcopy(name, 64, "tf_weapon_fists");
-			case TFClass_Engineer:	strcopy(name, 64, "tf_weapon_wrench");
-			case TFClass_Medic:	strcopy(name, 64, "tf_weapon_bonesaw");
-			case TFClass_Sniper:	strcopy(name, 64, "tf_weapon_club");
-			case TFClass_Spy:	strcopy(name, 64, "tf_weapon_knife");
-			default:		strcopy(name, 64, "tf_weapon_shovel");
-		}
-	}
-	else if(StrEqual(name, "tf_weapon_shotgun"))
-	{
-		switch(TF2_GetPlayerClass(client))
-		{
-			case TFClass_Pyro:	strcopy(name, 64, "tf_weapon_shotgun_pyro");
-			case TFClass_Heavy:	strcopy(name, 64, "tf_weapon_shotgun_hwg");
-			case TFClass_Engineer:	strcopy(name, 64, "tf_weapon_shotgun_primary");
-			default:		strcopy(name, 64, "tf_weapon_shotgun_soldier");
-		}
-	}
-
 	Handle weapon = TF2Items_CreateItem(OVERRIDE_ALL|FORCE_GENERATION);
 	if(weapon == INVALID_HANDLE)
 		return -1;
