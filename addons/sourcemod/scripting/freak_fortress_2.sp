@@ -344,9 +344,61 @@ public Action MainMenuC(int client, int args)
 		return Plugin_Handled;
 	}
 
+	bool statusCheck;
+	#if defined FF2_TF2ATTRIBUTES
+	statusCheck = TF2Attributes;
+	#endif
+	#if defined FF2_TF2ITEMS
+	statusCheck = (statusCheck || TF2Items);
+	#endif
+
 	PrintToServer("%s Freak Fortress 2", FORK_SUB_REVISION);
 	PrintToServer("Version: %s", PLUGIN_VERSION);
 	PrintToServer("Build: %s", BUILD_NUMBER);
+	PrintToServer("Date: %s", FORK_DATE_REVISION);
+	PrintToServer("Status: %s", Enabled ? (!statusCheck || SDKEquipWearable==null) ? "Warning" : "Running" : "Disabled");
+
+	PrintToServer("");
+
+	#if defined FF2_STEAMWORKS
+	PrintToServer("SteamWorks: %s", SteamWorks ? "Enabled" : "Library Not Found");
+	#elseif defined _SteamWorks_Included
+	PrintToServer("SteamWorks: Module Not Compiled");
+	#else
+	PrintToServer("SteamWorks: Include Not Compiled");
+	#endif
+
+	#if defined FF2_TARGETFILTER
+	PrintToServer("Target Filter: Enabled");
+	#else
+	PrintToServer("Target Filter: Module Not Compiled");
+	#endif
+
+	#if defined FF2_TF2ATTRIBUTES
+	PrintToServer("TF2Attributes: %s", TF2Attributes ? "Enabled" : "Library Not Found");
+	#elseif defined _tf2attributes_included
+	PrintToServer("TF2Attributes: Module Not Compiled");
+	#else
+	PrintToServer("TF2Attributes: Include Not Compiled");
+	#endif
+
+	#if defined FF2_TF2ITEMS
+	PrintToServer("TF2Items: %s", TF2Items ? "Enabled" : "Library Not Found");
+	#elseif defined _tf2items_included
+	PrintToServer("TF2Items: Module Not Compiled");
+	#else
+	PrintToServer("TF2Items: Include Not Compiled");
+	#endif
+
+	#if defined FF2_TIMESTEN
+	PrintToServer("TF2x10: %s", TimesTen ? "Enabled" : "Library Not Found"));
+	#else
+	PrintToServer("TF2x10: Module Not Compiled");
+	#endif
+
+	PrintToServer("");
+	PrintToServer("Weapon Attributes: %s", statusCheck ? "OK" : "TF2Attributes nor TF2Items are available");
+	PrintToServer("Wearable Weapons: %s", SDKEquipWearable==null ? "Failed to create call via Gamedata" : "OK");
 }
 
 void MainMenu(int client)
@@ -358,21 +410,58 @@ void MainMenu(int client)
 	menu.SetTitle(buffer);
 
 	FormatEx(buffer, sizeof(buffer), "%t", "Menu Pref");
-	menu.AddItem(buffer, buffer);
+	menu.AddItem("1", buffer);
 	FormatEx(buffer, sizeof(buffer), "%t", "Menu Selection");
-	menu.AddItem(buffer, buffer);
+	menu.AddItem("2", buffer);
 	FormatEx(buffer, sizeof(buffer), "%t", "Menu Help");
-	menu.AddItem(buffer, buffer);
+	menu.AddItem("3", buffer);
 	FormatEx(buffer, sizeof(buffer), "%t", "Menu New");
-	menu.AddItem(buffer, buffer);
+	menu.AddItem("4", buffer);
 	FormatEx(buffer, sizeof(buffer), "%t", "Menu Queue");
-	menu.AddItem(buffer, buffer);
+	menu.AddItem("5", buffer);
 	FormatEx(buffer, sizeof(buffer), "%t", "Menu Music");
-	menu.AddItem(buffer, buffer);
+	menu.AddItem("6", buffer);
 
 	menu.Pagination = false;
 	menu.ExitButton = true;
 	menu.Display(client, MENU_TIME_FOREVER);
+}
+
+public int ConfirmBossH(Menu menu, MenuAction action, int client, int selection)
+{
+	switch(action)
+	{
+		case MenuAction_End:
+		{
+			delete menu;
+		}
+		case MenuAction_Select:
+		{
+			char buffer[4];
+			menu.GetItem(selection, buffer, sizeof(buffer));
+			int num = StringToInt(buffer);
+			switch(num)
+			{
+				case 1:
+					Pref_Menu(client);
+
+				case 2:
+					Pref_Bosses(client);
+
+				case 3:
+					// Stuff
+
+				case 4:
+					// Stuff
+
+				case 5:
+					// Stuff
+
+				case 6:
+					Music_Menu(client);
+			}
+		}
+	}
 }
 
 #file "Unofficial Freak Fortress 2"
