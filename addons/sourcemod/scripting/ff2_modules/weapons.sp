@@ -29,6 +29,25 @@ void Weapons_Setup()
 
 void Weapons_Check(int client)
 {
+	if(WeaponKV == null)
+		return;
+
+	static int indexes[6];
+	static char classnames[6][MAX_CLASSNAME_LENGTH];
+	for(int i; i<6; i++)
+	{
+		int weapon = GetPlayerWeaponSlot(client, i);
+		if(weapon<MaxClients || !IsValidEntity(weapon))
+		{
+			indexes[i] = -1;
+			classnames[i][0] = 0;
+			continue;
+		}
+
+		indexes[i] = GetEntProp(weapon, Prop_Send, "m_iItemDefinitionIndex");
+		
+	}
+
 	WeaponKV.Rewind();
 	WeaponKv.GotoFirstSubKey();
 	do
@@ -39,41 +58,59 @@ void Weapons_Check(int client)
 
 		static char names[8][MAX_CLASSNAME_LENGTH];
 		int num = ExplodeString(attrib, " ; ", names, sizeof(names), sizeof(names[]));
-		bool mode;
+		int slot = -1;
 		for(int i; i<num; i++)
 		{
 			if(StrContains(names[i], "tf_") == -1)
 			{
+				int index = StringToInt(names[i]);
 				for(int a; a<6; a++)
 				{
-					if(StringToInt(names[i]) != index)
+					if(index != indexes[a])
 						continue;
 
-					mode = true;
+					slot = a;
 					break;
 				}
-
-				if(mode)
-					break;
-
-				continue;
 			}
-
-			if(StrContains(names[i], "*") == -1)
+			else if(StrContains(names[i], "*") == -1)
 			{
-				if(!StrEqual(names[i], classname))
-					continue;
+				for(int a; a<6; a++)
+				{
+					if(!StrEqual(names[i], classnames[a]))
+						continue;
 
-				mode = true;
-				break;
+					slot = a;
+					break;
+				}
+			}
+			else if(ReplaceString(names[i], sizeof(names[]), "*", "") > 1)
+			{
+				for(int a; a<6; a++)
+				{
+					if(StrContains(names[i], classnames[a]) == -1)
+						continue;
+
+					slot = a;
+					break;
+				}
+			}
+			else
+			{
+				for(int a; a<6; a++)
+				{
+					if(!StrContains(names[i], classnames[a]))
+						continue;
+
+					slot = a;
+					break;
+				}
 			}
 
-			bool full = ReplaceString(names[i], 36, "*", "")>1;
-			if((full && StrContains(names[i], classname)==-1) || (!full && !StrContains(names[i], classname)))
-				continue;
+			if(slot != -1)
+				break;
 
-			mode = true;
-			break;
+			continue;
 		}
 
 		if(!mode)
