@@ -175,9 +175,21 @@ enum struct ClientEnum
 	int Queue;
 	int Pref[Pref_MAX];
 	bool DisableHud;
+}
 
-	int Crit[3];
-	int Stale[3];
+enum struct WeaponEnum
+{
+	int Crit;
+	int Stale;
+	int Special;	// Eyelander, Zatoichi, Caber, Sandman, Heatmaker
+	float Damage[3];
+	float Outline;
+	float Stab;
+	float Stun;
+	float Uber;
+	float Fall;
+	bool HealthKit;
+	bool NoForce;
 }
 
 enum struct SpecialEnum
@@ -195,6 +207,7 @@ bool Enabled;
 ArrayList Charsets;
 int Charset;
 
+WeaponEnum Weapon[MAXTF2PLAYERS][3];
 ClientEnum Client[MAXTF2PLAYERS];
 BossEnum Boss[MAXTF2PLAYERS];
 

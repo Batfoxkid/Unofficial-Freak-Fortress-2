@@ -103,10 +103,10 @@ stock int GetClientCloakIndex(int client)
 
 stock void SpawnSmallHealthPackAt(int client, int team=0, int attacker)
 {
-	if(++Client[attacker].Stale[2] > 20))
+	if(Weapon[attacker][2].Stale > 14)
 		return;
 
-	int entity = CreateEntityByName(Client[attacker].Stale[2]==1 ? "item_healthkit_medium" : "item_healthkit_small");
+	int entity = CreateEntityByName(Weapon[attacker][2].Stale ? "item_healthkit_small" : "item_healthkit_medium");
 	if(!IsValidEntity(entity))
 		return;
 
@@ -125,7 +125,7 @@ stock void SpawnSmallHealthPackAt(int client, int team=0, int attacker)
 	SetEntPropEnt(entity, Prop_Send, "m_hOwnerEntity", attacker);
 }
 
-stock void IncrementHeadCount(int client)
+stock void IncrementHeadCount(int client, int amount)
 {
 	if(!TF2_IsPlayerInCondition(client, TFCond_DemoBuff))
 		TF2_AddCondition(client, TFCond_DemoBuff, -1.0);
@@ -133,19 +133,30 @@ stock void IncrementHeadCount(int client)
 	SetEntProp(client, Prop_Send, "m_iDecapitations", GetEntProp(client, Prop_Send, "m_iDecapitations")+1);
 	TF2_AddCondition(client, TFCond_SpeedBuffAlly, 0.01);
 
-	if(++Client[client].Stale[2] > 20))
-		return;
-
 	int health = GetClientHealth(client);
 	int max = GetEntProp(client, Prop_Data, "m_iMaxHealth")*2;
 	if(health >= max)
 		return;
 
-	health += (21-Client[client].Stale[2]);
-	if(health > max)
-		health = max;
+	int add = amount-Weapon[client][2].Stale;
+	if(add < 5)
+		add = 5;
+
+	if(health+add > max)
+		add = max-health;
 
 	SetEntityHealth(client, health);
+	HealMessage(client, client, add);
+}
+
+stock void HealMessage(int patient, int healer, int amount)
+{
+	Event event = CreateEvent("player_healed", true);
+	event.SetInt("patient", patient);
+	event.SetInt("healer", healer);
+	event.SetInt("amount", amount);
+	event.FireToClient(client);
+	event.Cancel();
 }
 
 stock int FindTeleOwner(int client)
@@ -331,4 +342,28 @@ stock void MultiClassname(TFClassType class, char[] name, int length)
 			default:		strcopy(name, length, "tf_weapon_shotgun_soldier");
 		}
 	}
+}
+
+stock int GetHealingTarget(int client, bool checkgun=false)
+{
+	int medigun = GetPlayerWeaponSlot(client, TFWeaponSlot_Secondary);
+	if(!checkgun)
+	{
+		if(GetEntProp(medigun, Prop_Send, "m_bHealing"))
+			return GetEntPropEnt(medigun, Prop_Send, "m_hHealingTarget");
+
+		return -1;
+	}
+
+	if(IsValidEntity(medigun))
+	{
+		static char classname[64];
+		GetEntityClassname(medigun, classname, sizeof(classname));
+		if(StrEqual(classname, "tf_weapon_medigun", false))
+		{
+			if(GetEntProp(medigun, Prop_Send, "m_bHealing"))
+				return GetEntPropEnt(medigun, Prop_Send, "m_hHealingTarget");
+		}
+	}
+	return -1;
 }
