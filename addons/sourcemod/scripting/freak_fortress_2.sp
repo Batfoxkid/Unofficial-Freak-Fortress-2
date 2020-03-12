@@ -181,13 +181,13 @@ enum struct WeaponEnum
 {
 	int Crit;
 	int Stale;
-	int Special;	// Eyelander, Zatoichi, Caber, Sandman, Heatmaker
-	float Damage[3];
-	float Outline;
-	float Stab;
 	float Stun;
 	float Uber;
+	float Stab;
 	float Fall;
+	float Special;
+	float Outline;
+	float Damage[3];
 	bool HealthKit;
 	bool NoForce;
 }
@@ -224,10 +224,9 @@ GlobalForward OnAlivePlayersChanged;
 GlobalForward OnBackstabbed;
 
 // First-Load (No module dependencies)
-#tryinclude "ff2_modules/convars.sp"
 #tryinclude "ff2_modules/tf2x10.sp"
 #tryinclude "ff2_modules/tf2attributes.sp"
-#tryinclude "ff2_modules/weapons.sp"
+#include "ff2_modules/weapons.sp"
 
 // Second-Load
 #tryinclude "ff2_modules/tf2items.sp"	// weapons.sp
@@ -271,58 +270,7 @@ public APLRes AskPluginLoad2(Handle myself, bool late, char[] error, int err_max
 		return APLRes_Failure;
 	}
 
-	/*CreateNative("FF2_IsFF2Enabled", Native_IsEnabled);
-	CreateNative("FF2_GetFF2Version", Native_FF2Version);
-	CreateNative("FF2_IsBossVsBoss", Native_IsVersus);
-	CreateNative("FF2_GetForkVersion", Native_ForkVersion);
-	CreateNative("FF2_GetBossUserId", Native_GetBoss);
-	CreateNative("FF2_GetBossIndex", Native_GetIndex);
-	CreateNative("FF2_GetBossTeam", Native_GetTeam);
-	CreateNative("FF2_GetBossSpecial", Native_GetSpecial);
-	CreateNative("FF2_GetBossName", Native_GetName);
-	CreateNative("FF2_GetBossHealth", Native_GetBossHealth);
-	CreateNative("FF2_SetBossHealth", Native_SetBossHealth);
-	CreateNative("FF2_GetBossMaxHealth", Native_GetBossMaxHealth);
-	CreateNative("FF2_SetBossMaxHealth", Native_SetBossMaxHealth);
-	CreateNative("FF2_GetBossLives", Native_GetBossLives);
-	CreateNative("FF2_SetBossLives", Native_SetBossLives);
-	CreateNative("FF2_GetBossMaxLives", Native_GetBossMaxLives);
-	CreateNative("FF2_SetBossMaxLives", Native_SetBossMaxLives);
-	CreateNative("FF2_GetBossCharge", Native_GetBossCharge);
-	CreateNative("FF2_SetBossCharge", Native_SetBossCharge);
-	CreateNative("FF2_GetBossRageDamage", Native_GetBossRageDamage);
-	CreateNative("FF2_SetBossRageDamage", Native_SetBossRageDamage);
-	CreateNative("FF2_GetClientDamage", Native_GetDamage);
-	CreateNative("FF2_GetRoundState", Native_GetRoundState);
-	CreateNative("FF2_GetSpecialKV", Native_GetSpecialKV);
-	CreateNative("FF2_StartMusic", Native_StartMusic);
-	CreateNative("FF2_StopMusic", Native_StopMusic);
-	CreateNative("FF2_GetRageDist", Native_GetRageDist);
-	CreateNative("FF2_HasAbility", Native_HasAbility);
-	CreateNative("FF2_DoAbility", Native_DoAbility);
-	CreateNative("FF2_GetAbilityArgument", Native_GetAbilityArgument);
-	CreateNative("FF2_GetAbilityArgumentFloat", Native_GetAbilityArgumentFloat);
-	CreateNative("FF2_GetAbilityArgumentString", Native_GetAbilityArgumentString);
-	CreateNative("FF2_GetArgNamedI", Native_GetArgNamedI);
-	CreateNative("FF2_GetArgNamedF", Native_GetArgNamedF);
-	CreateNative("FF2_GetArgNamedS", Native_GetArgNamedS);
-	CreateNative("FF2_RandomSound", Native_RandomSound);
-	CreateNative("FF2_EmitVoiceToAll", Native_EmitVoiceToAll);
-	CreateNative("FF2_GetFF2flags", Native_GetFF2flags);
-	CreateNative("FF2_SetFF2flags", Native_SetFF2flags);
-	CreateNative("FF2_GetQueuePoints", Native_GetQueuePoints);
-	CreateNative("FF2_SetQueuePoints", Native_SetQueuePoints);
-	CreateNative("FF2_GetClientGlow", Native_GetClientGlow);
-	CreateNative("FF2_SetClientGlow", Native_SetClientGlow);
-	CreateNative("FF2_GetClientShield", Native_GetClientShield);
-	CreateNative("FF2_SetClientShield", Native_SetClientShield);
-	CreateNative("FF2_RemoveClientShield", Native_RemoveClientShield);
-	CreateNative("FF2_LogError", Native_LogError);
-	CreateNative("FF2_Debug", Native_Debug);
-	CreateNative("FF2_SetCheats", Native_SetCheats);
-	CreateNative("FF2_GetCheats", Native_GetCheats);
-	CreateNative("FF2_MakeBoss", Native_MakeBoss);
-	CreateNative("FF2_SelectBoss", Native_ChooseBoss);*/
+	Native_Setup();
 
 	PreAbility = GlobalForward("FF2_PreAbility", ET_Hook, Param_Cell, Param_String, Param_String, Param_Cell, Param_CellByRef);  //Boss, plugin name, ability name, slot, enabled
 	OnAbility = GlobalForward("FF2_OnAbility", ET_Hook, Param_Cell, Param_String, Param_String, Param_Cell);  //Boss, plugin name, ability name, status
@@ -373,21 +321,58 @@ public void OnPluginStart()
 	#endif
 
 	SDK_Setup();
-
 	Bosses_Setup();
 
 	#if defined FF2_TARGETFILTER
 	TargetFilter_Setup();
 	#endif
+
+	AutoExecConfig(true, "FreakFortress2");
 }
 
 public void OnConfigsExecuted()
 {
-	#if defined FF2_WEAPONS
 	Weapons_Setup();
-	#endif
-
 	Bosses_Config();
+}
+
+public Action MainMenuC(int client, int args)
+{
+	if(client)
+	{
+		MainMenu(client);
+		return Plugin_Handled;
+	}
+
+	PrintToServer("%s Freak Fortress 2", FORK_SUB_REVISION);
+	PrintToServer("Version: %s", PLUGIN_VERSION);
+	PrintToServer("Build: %s", BUILD_NUMBER);
+}
+
+void MainMenu(int client)
+{
+	Menu menu = new Menu(MainMenuH);
+	char buffer[256];
+	SetGlobalTransTarget(client);
+	FormatEx(buffer, sizeof(buffer), "%t", "Menu Title");
+	menu.SetTitle(buffer);
+
+	FormatEx(buffer, sizeof(buffer), "%t", "Menu Pref");
+	menu.AddItem(buffer, buffer);
+	FormatEx(buffer, sizeof(buffer), "%t", "Menu Selection");
+	menu.AddItem(buffer, buffer);
+	FormatEx(buffer, sizeof(buffer), "%t", "Menu Help");
+	menu.AddItem(buffer, buffer);
+	FormatEx(buffer, sizeof(buffer), "%t", "Menu New");
+	menu.AddItem(buffer, buffer);
+	FormatEx(buffer, sizeof(buffer), "%t", "Menu Queue");
+	menu.AddItem(buffer, buffer);
+	FormatEx(buffer, sizeof(buffer), "%t", "Menu Music");
+	menu.AddItem(buffer, buffer);
+
+	menu.Pagination = false;
+	menu.ExitButton = true;
+	menu.Display(client, MENU_TIME_FOREVER);
 }
 
 #file "Unofficial Freak Fortress 2"
