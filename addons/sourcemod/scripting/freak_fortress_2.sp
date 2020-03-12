@@ -255,7 +255,7 @@ public Plugin myinfo =
 {
 	name		=	"Freak Fortress 2",
 	author		=	"Many many people",
-	description	=	"RUUUUNN!! COWAAAARRDSS!",
+	description	=	"It's like Christmas Morning",
 	version		=	PLUGIN_VERSION,
 	url		=	"https://forums.alliedmods.net/forumdisplay.php?f=154",
 };
@@ -344,19 +344,22 @@ public Action MainMenuC(int client, int args)
 		return Plugin_Handled;
 	}
 
-	bool statusCheck;
-	#if defined FF2_TF2ATTRIBUTES
-	statusCheck = TF2Attributes;
+	PrintToServer("Freak Fortress 2");
+	#if defined DEV_REVISION
+	PrintToServer("Version: %s.%s.%s %s", MAJOR_REVISION, MINOR_REVISION, STABLE_REVISION, DEV_REVISION);
+	#else
+	PrintToServer("Version: %s.%s.%s", MAJOR_REVISION, MINOR_REVISION, STABLE_REVISION);
 	#endif
-	#if defined FF2_TF2ITEMS
-	statusCheck = (statusCheck || TF2Items);
+	#if defined FORK_SUB_REVISION
+	  #if defined FORK_DEV_REVISION
+	  PrintToServer("Fork: %s %s.%s.%s %s", FORK_SUB_REVISION, FORK_MAJOR_REVISION, FORK_MINOR_REVISION, FORK_STABLE_REVISION, FORK_DEV_REVISION);
+	  #else
+	  PrintToServer("Fork: %s %s.%s.%s", FORK_SUB_REVISION, FORK_MAJOR_REVISION, FORK_MINOR_REVISION, FORK_STABLE_REVISION);
+	  #endif
 	#endif
-
-	PrintToServer("%s Freak Fortress 2", FORK_SUB_REVISION);
-	PrintToServer("Version: %s", PLUGIN_VERSION);
 	PrintToServer("Build: %s", BUILD_NUMBER);
 	PrintToServer("Date: %s", FORK_DATE_REVISION);
-	PrintToServer("Status: %s", Enabled ? (!statusCheck || SDKEquipWearable==null) ? "Warning" : "Running" : "Disabled");
+	PrintToServer("Status: %s", Enabled ? "Enabled" : "Disabled");
 
 	PrintToServer("");
 
@@ -375,14 +378,18 @@ public Action MainMenuC(int client, int args)
 	#endif
 
 	#if defined FF2_TF2ATTRIBUTES
+	bool statusCheck = TF2Attributes;
 	PrintToServer("TF2Attributes: %s", TF2Attributes ? "Enabled" : "Library Not Found");
 	#elseif defined _tf2attributes_included
+	bool statusCheck;
 	PrintToServer("TF2Attributes: Module Not Compiled");
 	#else
+	bool statusCheck;
 	PrintToServer("TF2Attributes: Include Not Compiled");
 	#endif
 
 	#if defined FF2_TF2ITEMS
+	statusCheck = (statusCheck || TF2Items);
 	PrintToServer("TF2Items: %s", TF2Items ? "Enabled" : "Library Not Found");
 	#elseif defined _tf2items_included
 	PrintToServer("TF2Items: Module Not Compiled");
@@ -399,6 +406,9 @@ public Action MainMenuC(int client, int args)
 	PrintToServer("");
 	PrintToServer("Weapon Attributes: %s", statusCheck ? "OK" : "TF2Attributes nor TF2Items are available");
 	PrintToServer("Wearable Weapons: %s", SDKEquipWearable==null ? "Failed to create call via Gamedata" : "OK");
+	PrintToServer("Boss KeyValues: %s", Enabled ? Special[0].Kv==INVALID_HANDLE ? "Failed to create boss KeyValues" : "OK" : "N/A");
+	PrintToServer("Weapon KeyValues: %s", Enabled ? WeaponKV==null ? "Failed to create weapon KeyValues" : "OK" : "N/A");
+	return Plugin_Handled;
 }
 
 void MainMenu(int client)
@@ -427,7 +437,7 @@ void MainMenu(int client)
 	menu.Display(client, MENU_TIME_FOREVER);
 }
 
-public int ConfirmBossH(Menu menu, MenuAction action, int client, int selection)
+public int MainMenuH(Menu menu, MenuAction action, int client, int selection)
 {
 	switch(action)
 	{
