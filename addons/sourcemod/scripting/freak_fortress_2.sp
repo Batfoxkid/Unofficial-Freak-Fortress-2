@@ -337,35 +337,113 @@ public void OnConfigsExecuted()
 	Bosses_Config();
 }
 
-public void OnGameFrame()
+public Action GlobalTimer(Handle timer)
 {
 	if(!Enabled)
-		return;
+		return Plugin_Stop;
 
-	static int update;
-	if(++update < 6)	// 1/11 seconds
-		return;
-
-	update = 0;
-	if(CheckRoundState() != 1)
-		return;
-
-	static bool hud;
-	hud = !hud;
+	if(CheckRoundState() == 2)
+		return Plugin_Stop;
 
 	float engineTime = GetEngineTime();
 	float gameTime = GetGameTime();
-	for(int client=1; client<=MaxClients; client++)
+
+	bool sappers;
+	int max;
+	int best[10];
+	int[] clients = new int[MaxClients];
+	for(int i=1; i<=MaxClients; i++)
 	{
-		if(!IsClientInGame(client) || GetEntProp(client, Prop_Send, "m_bIsCoaching"))
+		if(!IsValidClient(i))
 			continue;
 
-		bool alive = IsPlayerAlive(client);
-		ClientThink(client, engineTime, gameTime, alive);
-		if(hud)
+		clients[max++] = i;
+		if(Boss[i].Active)
+		{
+			if(!sappers)
+				sappers = Boss[i].Sapper;
+
+			continue;
+		}
+
+		if(Damage[client] < 1)
 			continue;
 
-		
+		for(int a; a<10; a++)
+		{
+			if(best[a] && Client[i].Damage<Client[best[a]].Damage)
+				continue;
+
+			int b = 9;
+			while(b > a)
+			{
+				best[b] = best[--b];
+			}
+			best[a] = b;
+			break;
+		}
+	}
+
+	char bestHud[10][48];
+	for(int i; i<10; i++)
+	{
+		if(!best[i])
+			break;
+
+		FormatEx(bestHud[i], sizeof(bestHud[]), "[%i] %N: %i", i+1, best[i], Client[best[index]].Damage);
+	}
+
+	for(int i; i<max; i++)
+	{
+		bool alive = IsPlayerAlive(clients[i]);
+		int buttons = GetClientButtons(clients[i]);
+		ClientThink(clients[i], engineTime, gameTime, alive);
+		static char buffer[64];
+		if(!(Client[clients[i]] & HUD_DAMAGE) && !(buttons & IN_SCORE) && (alive || IsClientObserver(clients[i]))
+		{
+			SetHudTextParams(-1.0, 0.88, 0.35, 90, 255, 90, 255, 0, 0.35, 0.0, 0.1);
+			int observer;
+			if(alive)
+			{
+				observer = GetClientAimTarget(clients[i], true);
+				if(observer!=client && IsValidClient(observer))
+				{
+					TFTeam team = TF2_GetClientTeam(clients[i]);
+					if(TF2_GetClientTeam(observer) != team)
+					{
+						if(TF2_IsPlayerInCondition(observer, TFCond_Cloaked))
+						{
+							observer = 0;
+						}
+						else if(TF2_IsPlayerInCondition(observer, TFCond_Disguised))
+						{
+							observer = GetEntProp(observer, Prop_Send, "m_iDisguiseTargetIndex");
+							if(!IsValidClient(observer) || TF2_GetClientTeam(observer)!=team)
+								observer = 0;
+						}
+					}
+
+					if(observer)
+					{
+						static float position[3], position2[3];
+						GetEntPropVector(client, Prop_Send, "m_vecOrigin", position);
+						GetEntPropVector(observer, Prop_Send, "m_vecOrigin", position2);
+						if(GetVectorDistance(position, position2) > 400)
+							observer = 0;
+					}
+				}
+				else
+				{
+					observer = 0;
+				}
+			}
+			else
+			{
+				observer = GetEntPropEnt(client, Prop_Send, "m_hObserverTarget");
+				if(observer==client || !IsValidClient(observer))
+					observer = 0;
+			}
+		}
 	}
 }
 
@@ -373,6 +451,13 @@ void ClientThink(int client, float engineTime, float gameTime, bool alive)
 {
 	if(Client[client].BGMAt < engineTime)
 		Music_Play(client, engineTime, -1);
+
+	if(Client[client].PopUpAt < engineTime)
+	{
+		Client[client].PopUpAt = FAR_FUTURE;
+		if(Client[client].Pref[Pref_Boss] == Pref_Undef)
+			Pref_QuickToggle(client, -2);
+	}
 
 	if(!Client[client].GlowFor || !alive)
 	{
@@ -385,13 +470,6 @@ void ClientThink(int client, float engineTime, float gameTime, bool alive)
 	else
 	{
 		SetEntProp(client, Prop_Send, "m_bGlowEnabled", 1);
-	}
-
-	if(Client[client].PopUpAt < engineTime)
-	{
-		Client[client].PopUpAt = FAR_FUTURE;
-		if(Client[client].Pref[Pref_Boss] == Pref_Undef)
-			Pref_QuickToggle(client, -2);
 	}
 }
 
