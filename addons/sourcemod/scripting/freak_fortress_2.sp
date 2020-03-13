@@ -337,6 +337,64 @@ public void OnConfigsExecuted()
 	Bosses_Config();
 }
 
+public void OnGameFrame()
+{
+	if(!Enabled)
+		return;
+
+	static int update;
+	if(++update < 6)	// 1/11 seconds
+		return;
+
+	update = 0;
+	if(CheckRoundState() != 1)
+		return;
+
+	static bool hud;
+	hud = !hud;
+
+	float engineTime = GetEngineTime();
+	float gameTime = GetGameTime();
+	for(int client=1; client<=MaxClients; client++)
+	{
+		if(!IsClientInGame(client) || GetEntProp(client, Prop_Send, "m_bIsCoaching"))
+			continue;
+
+		bool alive = IsPlayerAlive(client);
+		ClientThink(client, engineTime, gameTime, alive);
+		if(hud)
+			continue;
+
+		
+	}
+}
+
+void ClientThink(int client, float engineTime, float gameTime, bool alive)
+{
+	if(Client[client].BGMAt < engineTime)
+		Music_Play(client, engineTime, -1);
+
+	if(!Client[client].GlowFor || !alive)
+	{
+	}
+	else if(Client[client].GlowFor < gameTime)
+	{
+		Client[client].GlowFor = 0.0;
+		SetEntProp(client, Prop_Send, "m_bGlowEnabled", 0);
+	}
+	else
+	{
+		SetEntProp(client, Prop_Send, "m_bGlowEnabled", 1);
+	}
+
+	if(Client[client].PopUpAt < engineTime)
+	{
+		Client[client].PopUpAt = FAR_FUTURE;
+		if(Client[client].Pref[Pref_Boss] == Pref_Undef)
+			Pref_QuickToggle(client, -2);
+	}
+}
+
 public Action MainMenuC(int client, int args)
 {
 	if(client)
