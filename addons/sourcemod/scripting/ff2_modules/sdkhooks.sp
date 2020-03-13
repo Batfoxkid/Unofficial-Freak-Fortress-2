@@ -5,7 +5,7 @@
 
 #define FF2_SDKHOOKS
 
-static Handle SDKEquipWearable;
+Handle SDKEquipWearable;
 
 void SDK_Setup()
 {
@@ -59,7 +59,7 @@ stock int SDK_SpawnWeapon(int client, const char[] name, int index, int level, i
 	#endif
 
 	DispatchSpawn(entity);
-	if(!StrContains(name, "tf_weap"))
+	if(!StrContains(name, "tf_weap", false))
 	{
 		EquipPlayerWeapon(client, entity);
 		return entity;
@@ -98,46 +98,7 @@ public Action OnTakeDamage(int client, int &attacker, int &inflictor, float &dam
 		}
 	}
 
-	static char buffer[PLATFORM_MAX_PATH];
-	if(!IsValidClient(attacker) && IsValidEntity(attacker))
-	{
-		if(!Boss[client].Active || !GetEntityClassname(attacker, buffer, sizeof(buffer)) || !StrEqual(buffer, "trigger_hurt", false))
-			return Plugin_Continue;
-
-		Action action = Plugin_Continue;
-		Call_StartForward(OnTriggerHurt);
-		Call_PushCell(Boss[client].Leader ? 0 : client);
-		Call_PushCell(attacker);
-		float damage2 = damage;
-		Call_PushFloatRef(damage2);
-		Call_Finish(action);
-		if(action==Plugin_Stop || action==Plugin_Handled)
-			return action;
-
-		if(action == Plugin_Changed)
-			damage = damage2;
-
-		if(damage > 600.0)
-			damage = 600.0;
-
-		if(SpawnTeleOnTriggerHurt && IsBoss(client) && CheckRoundState()==1)
-		{
-			Boss[client].Hazard += damage;
-			if(Boss[client].Hazard >= CvarDamageToTele.FloatValue)
-			{
-				TeleportToMultiMapSpawn(client);
-				Boss[client].Hazard = 0.0;
-			}
-		}
-
-		Boss[client].Charge[0] += damage*100.0/Boss[client].RageDamage;
-		if(Boss[client].Charge[0] > Boss[client].RageMax)
-			Boss[client].Charge[0] = Boss[client].RageMax;
-
-		return Plugin_Changed;
-	}
-
-	if(IsInvuln(client))
+	if(!IsValidClient(attacker) || IsInvuln(client))
 		return Plugin_Continue;
 
 	if(!Boss[client].Active)
@@ -145,15 +106,8 @@ public Action OnTakeDamage(int client, int &attacker, int &inflictor, float &dam
 		if(!Boss[attacker].Active || TF2_IsPlayerInCondition(client, TFCond_Bonked))
 			return Plugin_Continue;
 
-		if(shield[client] && cvarShieldType.IntValue==1)
-		{
-			RemoveShield(client, attacker);
-			return Plugin_Handled;
-		}
-
 		if(TF2_IsPlayerInCondition(client, TFCond_DefenseBuffed))
 		{
-			ScaleVector(damageForce, 9.0);
 			damage /= 2.0;
 			return Plugin_Changed;
 		}
@@ -172,6 +126,7 @@ public Action OnTakeDamage(int client, int &attacker, int &inflictor, float &dam
 		return Plugin_Continue;
 	}
 
+	static char buffer[PLATFORM_MAX_PATH];
 		int index = -1;
 		if(weapon>MaxClients && IsValidEntity(weapon) && HasEntProp(weapon, Prop_Send, "m_iItemDefinitionIndex"))
 		{
@@ -197,7 +152,6 @@ public Action OnTakeDamage(int client, int &attacker, int &inflictor, float &dam
 
 		static float position[3];
 		GetEntPropVector(attacker, Prop_Send, "m_vecOrigin", position);
-
 		if(damagecustom == TF_CUSTOM_BACKSTAB)
 		{
 			int health;
@@ -255,7 +209,7 @@ public Action OnTakeDamage(int client, int &attacker, int &inflictor, float &dam
 				CreateAttachedAnnotation(attacker, client, true, 5.0, "%t", "Player Backstab", buffer);
 			}
 
-			if(index!=225 && index!=574)  //Your Eternal Reward, Wanga Prick
+			if(Boss[attacker].Active || (index!=225 && index!=574))  //Your Eternal Reward, Wanga Prick
 			{
 				EmitSoundToClient(client, "player/spy_shield_break.wav", _, _, _, _, 0.7, _, _, position, _, false);
 				EmitSoundToClient(attacker, "player/spy_shield_break.wav", _, _, _, _, 0.7, _, _, position, _, false);
@@ -283,43 +237,41 @@ public Action OnTakeDamage(int client, int &attacker, int &inflictor, float &dam
 				HealthBarFor = delay;
 			}
 
-			switch(index)
+			if(!Boss[attacker].Active)
 			{
-				case 225, 574:	//Your Eternal Reward, Wanga Prick
+				switch(index)
 				{
-					CreateTimer(0.3, Timer_DisguiseBackstab, GetClientUserId(attacker), TIMER_FLAG_NO_MAPCHANGE);
-				}
-				case 356:	//Conniver's Kunai
-				{
-					int health = GetClientHealth(attacker);
-					if(health < 600)
+					case 225, 574:
 					{
-						health += Weapon[attacker][2].Stale<6 ? 100 : 225-(Weapon[attacker][2].Stale*25);
-						if(health > 600)
-							health = 600;
+						CreateTimer(0.3, Timer_DisguiseBackstab, GetClientUserId(attacker), TIMER_FLAG_NO_MAPCHANGE);
+					}
+					case 356:
+					{
+						int health = GetClientHealth(attacker);
+						if(health < 600)
+						{
+							int add = Weapon[attacker][2].Stale<6 ? 100 : 225-(Weapon[attacker][2].Stale*25);
+							if(health+add > 600)
+								add = health-add;
 
-						SetEntityHealth(attacker, health);
+							SetEntityHealth(attacker, health+add);
+							HealMessage(attacker, attacker, add);
+						}
+					}
+					case 461:
+					{
+						SetEntPropFloat(attacker, Prop_Send, "m_flCloakMeter", 100.0);
+						if(Weapon[attacker][2].Stale < 11)
+							TF2_AddCondition(attacker, TFCond_SpeedBuffAlly, 3.0-(Weapon[attacker][2].Stale*0.25));
 					}
 				}
-				case 461:	//Big Earner
-				{
-					SetEntPropFloat(attacker, Prop_Send, "m_flCloakMeter", 100.0);
-					if(Weapon[attacker][2].Stale < 11)
-						TF2_AddCondition(attacker, TFCond_SpeedBuffAlly, 3.0-(Weapon[attacker][2].Stale*0.25));
-				}
-			}
 
-			if(GetIndexOfWeaponSlot(attacker, TFWeaponSlot_Primary) == 525)  //Diamondback
-				SetEntProp(attacker, Prop_Send, "m_iRevengeCrits", GetEntProp(attacker, Prop_Send, "m_iRevengeCrits")+2);
+				if(GetIndexOfWeaponSlot(attacker, TFWeaponSlot_Primary) == 525)
+					SetEntProp(attacker, Prop_Send, "m_iRevengeCrits", GetEntProp(attacker, Prop_Send, "m_iRevengeCrits")+2);
+			}
 
 			ActivateAbilitySlot(boss, 6);
-
-			if(action == Plugin_Handled)
-			{
-				damage = 0.0;
-				return Plugin_Handled;
-			}
-			return Plugin_Changed;
+			return (action == Plugin_Stop) ? Plugin_Handled : Plugin_Changed;
 		}
 		else if(damagecustom == TF_CUSTOM_TELEFRAG)
 		{
@@ -350,7 +302,7 @@ public Action OnTakeDamage(int client, int &attacker, int &inflictor, float &dam
 				}
 
 				if(GetClientTeam(owner) == GetClientTeam(attacker))
-					Damage[owner] += damage*2;
+					Client[owner].Damage += RoundFloat(damage*2);
 			}
 			else
 			{
@@ -379,7 +331,7 @@ public Action OnTakeDamage(int client, int &attacker, int &inflictor, float &dam
 					GetClientName(attacker, buffer, sizeof(buffer));
 				}
 
-				CreateAttachedAnnotation(client, attacker, true, 5.0, "%t", "Player Telefraged", buffer);
+				CreateAttachedAnnotation(client, attacker, true, 3.0, "%t", "Player Telefraged", buffer);
 			}
 
 			if(RandomSound("sound_telefraged", buffer, sizeof(buffer), client))
@@ -389,7 +341,7 @@ public Action OnTakeDamage(int client, int &attacker, int &inflictor, float &dam
 			return Plugin_Changed;
 		}
 
-		if(Boss[attacker].Active)
+		if(Boss[attacker].Active || Client[attacker].Minion)
 			return Plugin_Continue;
 
 		int slot = GetPlayerWeaponSlot(client, TFWeaponSlot_Primary)==weapon ? TFWeaponSlot_Primary : GetPlayerWeaponSlot(client, TFWeaponSlot_Secondary)==weapon ? TFWeaponSlot_Secondary : GetPlayerWeaponSlot(client, TFWeaponSlot_Melee)==weapon ? TFWeaponSlot_Melee : -1;
@@ -413,22 +365,6 @@ public Action OnTakeDamage(int client, int &attacker, int &inflictor, float &dam
 		{
 			damagetype |= DMG_PREVENT_PHYSICS_FORCE;
 			changed = true;
-		}
-
-		if(Weapon[attacker][slot].Outline)
-		{
-			float gameTime = GetGameTime();
-			if(gameTime > Client[client].GlowFor)
-			{
-				Client[client].GlowFor = (damage/100*Weapon[attacker][slot].Outline)+gameTime;
-			}
-			else
-			{
-				Client[client].GlowFor += (damage/100*Weapon[attacker][slot].Outline);
-			}
-
-			if(Client[client].GlowFor > gameTime+30.0)
-				Client[client].GlowFor = gameTime+30.0;
 		}
 
 		if(Weapon[attacker][slot].Stun>0 && !TF2_IsPlayerInCondition(client, TFCond_Dazed))
@@ -526,14 +462,7 @@ public Action OnTakeDamage(int client, int &attacker, int &inflictor, float &dam
 				if(Weapon[attacker][slot].Special < 1)
 					Weapon[attacker][slot].Special = 1;
 
-				// TODO: Move this into a timer
 				stale = true;
-				if(Weapon[attacker][slot].Special > Weapon[attacker][2].Stale)
-				{
-					SetEntProp(weapon, Prop_Send, "m_bBroken", 0);
-					SetEntProp(weapon, Prop_Send, "m_iDetonated", 0);
-				}
-
 				if(Weapon[attacker][slot].Stab && Weapon[attacker][slot].Special<3 && !GetEntProp(weapon, Prop_Send, "m_iDetonated"))
 				{
 					int health;
@@ -545,9 +474,9 @@ public Action OnTakeDamage(int client, int &attacker, int &inflictor, float &dam
 					}
 
 					#if defined FF2_TIMESTEN
-					damage = Pow(health, 0.67-(Weapon[attacker][2].Stale*0.02)-(Weapon[attacker][slot].Special*0.5))*Weapon[attacker][slot].Stab*(1.0+(0.5*(TimesTen_Value()-1.0)));
+					damage = Pow(health, 0.67-(Weapon[attacker][slot].Stale*0.02)-(Weapon[attacker][slot].Special*0.5))*Weapon[attacker][slot].Stab*(1.0+(0.5*(TimesTen_Value()-1.0)));
 					#else
-					damage = Pow(health, 0.67-(Weapon[attacker][2].Stale*0.02)-(Weapon[attacker][slot].Special*0.5))*Weapon[attacker][slot].Stab;
+					damage = Pow(health, 0.67-(Weapon[attacker][slot].Stale*0.02)-(Weapon[attacker][slot].Special*0.5))*Weapon[attacker][slot].Stab;
 					#endif
 					damagetype |= DMG_CRIT;
 
@@ -590,7 +519,7 @@ public Action OnTakeDamage(int client, int &attacker, int &inflictor, float &dam
 				{
 					int health = GetClientHealth(attacker);
 					int max = GetEntProp(attacker, Prop_Data, "m_iMaxHealth")*2;
-					if(Weapon[attacker][2].Stale>24 || GetEntProp(weapon, Prop_Send, "m_bIsBloody"))
+					if(Weapon[attacker][slot].Stale>24 || GetEntProp(weapon, Prop_Send, "m_bIsBloody"))
 					{
 						if(health < max)
 						{
@@ -606,7 +535,7 @@ public Action OnTakeDamage(int client, int &attacker, int &inflictor, float &dam
 					{
 						if(health < max)
 						{
-							int add = RoundToFloor(max/(4+Weapon[attacker][2].Stale));
+							int add = RoundToFloor(max/(4+Weapon[attacker][slot].Stale));
 							if(health+add > max)
 								add = max-health;
 
@@ -637,9 +566,9 @@ public Action OnTakeDamage(int client, int &attacker, int &inflictor, float &dam
 					}
 
 					#if defined FF2_TIMESTEN
-					damage = Pow(health, 0.625-(Weapon[attacker][2].Stale*0.015))*Weapon[attacker][slot].Stab*(1.0+(0.5*(TimesTen_Value()-1.0)));
+					damage = Pow(health, 0.625-(Weapon[attacker][slot].Stale*0.015))*Weapon[attacker][slot].Stab*(1.0+(0.5*(TimesTen_Value()-1.0)));
 					#else
-					damage = Pow(health, 0.625-(Weapon[attacker][2].Stale*0.015))*Weapon[attacker][slot].Stab;
+					damage = Pow(health, 0.625-(Weapon[attacker][slot].Stale*0.015))*Weapon[attacker][slot].Stab;
 					#endif
 					damagetype |= DMG_CRIT;
 
@@ -715,4 +644,90 @@ public Action OnTakeDamage(int client, int &attacker, int &inflictor, float &dam
 			Weapon[attacker][slot]++;
 
 		return changed ? Plugin_Changed : Plugin_Continue;
+}
+
+public Action OnTakeDamageAlive(int client, int &attacker, int &inflictor, float &damage, int &damagetype, int &weapon, float damageForce[3], float damagePosition[3], int damagecustom)
+{
+	if(!Enabled || damage<=0 || !IsValidClient(client))
+		return Plugin_Continue;
+
+	static char buffer[64];
+	if(!IsValidClient(attacker))
+	{
+		if(!IsValidEntity(attacker) || !Boss[client].Active || !GetEntityClassname(attacker, buffer, sizeof(buffer)) || !StrEqual(buffer, "trigger_hurt", false))
+			return Plugin_Continue;
+
+		Action action = Plugin_Continue;
+		Call_StartForward(OnTriggerHurt);
+		Call_PushCell(Boss[client].Leader ? 0 : client);
+		Call_PushCell(attacker);
+		float damage2 = damage;
+		Call_PushFloatRef(damage2);
+		Call_Finish(action);
+		if(action==Plugin_Stop || action==Plugin_Handled)
+			return action;
+
+		if(action == Plugin_Changed)
+			damage = damage2;
+
+		if(damage > 600.0)
+			damage = 600.0;
+
+		if(SpawnTeleOnTriggerHurt && CheckRoundState()==1)
+		{
+			Boss[client].Hazard += damage;
+			if(Boss[client].Hazard >= CvarDamageToTele.FloatValue)
+			{
+				TeleportToMultiMapSpawn(client);
+				Boss[client].Hazard = 0.0;
+			}
+		}
+
+		Boss[client].Charge[0] += damage*100.0/Boss[client].RageDamage;
+		if(Boss[client].Charge[0] > Boss[client].RageMax)
+			Boss[client].Charge[0] = Boss[client].RageMax;
+
+		return Plugin_Changed;
+	}
+
+	for(int i; i<3; i++)
+	{
+		if(!Weapon[client][i].Shield)
+			continue;
+
+		if(GetClientHealth(client) > damage*1.15)
+			break;
+
+		RemoveShield(client, attacker);
+		return Plugin_Handled;
+	}
+
+	if(!Boss[client].Active || Boss[attacker].Active || Client[attacker].Minion || weapon<=MaxClients || !IsValidEntity(weapon) || !HasEntProp(weapon, Prop_Send, "m_iItemDefinitionIndex"))
+		return Plugin_Continue;
+
+	int slot = GetPlayerWeaponSlot(client, TFWeaponSlot_Primary)==weapon ? TFWeaponSlot_Primary : GetPlayerWeaponSlot(client, TFWeaponSlot_Secondary)==weapon ? TFWeaponSlot_Secondary : GetPlayerWeaponSlot(client, TFWeaponSlot_Melee)==weapon ? TFWeaponSlot_Melee : -1;
+	if(slot == -1)
+		return Plugin_Continue;
+
+	if(!IsInvuln(client) && Boss[client].Active && Weapon[attacker][slot].Outline)
+	{
+		float gameTime = GetGameTime();
+		if(gameTime > Client[client].GlowFor)
+		{
+			Client[client].GlowFor = (damage/100*Weapon[attacker][slot].Outline)+gameTime;
+		}
+		else
+		{
+			Client[client].GlowFor += (damage/100*Weapon[attacker][slot].Outline);
+		}
+
+		if(Client[client].GlowFor > gameTime+30.0)
+			Client[client].GlowFor = gameTime+30.0;
+	}
+
+	if(GetEntProp(weapon, Prop_Send, "m_iItemDefinitionIndex")==307 && Weapon[attacker][slot].Special>Weapon[attacker][slot].Stale)
+	{
+		SetEntProp(weapon, Prop_Send, "m_bBroken", 0);
+		SetEntProp(weapon, Prop_Send, "m_iDetonated", 0);
+	}
 }
