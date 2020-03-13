@@ -38,11 +38,45 @@ void Weapons_Check(int client)
 
 	for(int slot; slot<4; slot++)
 	{
+		static char classname[MAX_CLASSNAME_LENGTH];
 		int weapon = GetPlayerWeaponSlot(client, slot);
-		if(weapon>MaxClients && IsValidEntity(weapon))
+		if(weapon<=MaxClients || !IsValidEntity(weapon))
+		{
+			if(slot < 2)
+			{
+				weapon = MaxClients+1;
+				bool found;
+				while((weapon=FindEntityByClassname2(weapon, "tf_wearable*")) != -1)
+				{
+					if(!GetEntityNetClass(weapon, classname, sizeof(classname)) || StrContains(classname, "CTFWearable")==-1 || GetEntPropEnt(weapon, Prop_Send, "m_hOwnerEntity")!=client || GetEntProp(weapon, Prop_Send, "m_bDisguiseWearable"))
+						continue;
+
+					int index = GetEntProp(weapon, Prop_Send, "m_iItemDefinitionIndex");
+					if(slot)
+					{
+						found = (index==57 || index==131 || index==231 || index==406 || index==642 || index==1099 || index==1144);
+					}
+					else
+					{
+						found = (index==405 || index==608);
+					}
+
+					if(found)
+						break;
+				}
+
+				if(!found)
+					weapon == -1;
+			}
+			else
+			{
+				weapon == -1;
+			}
+		}
+
+		if(weapon != -1)
 		{
 			int index = GetEntProp(weapon, Prop_Send, "m_iItemDefinitionIndex");
-			static char classname[MAX_CLASSNAME_LENGTH];
 			GetEntityClassname(weapon, classname, sizeof(classname));
 
 			bool found;
@@ -93,6 +127,7 @@ void Weapons_Check(int client)
 				}
 
 				Weapon[client][i].Stale = WeaponKv.GetNum("stale");
+				Weapon[client][i].Shield = view_as<bool>(WeaponKv.GetNum("shield")) ? weapon : 0;
 				Weapon[client][i].Crit = WeaponKv.GetNum("crits", -1);
 				Weapon[client][i].Special = WeaponKv.GetFloat("special");
 				Weapon[client][i].Outline = WeaponKv.GetFloat("outline");
@@ -105,7 +140,6 @@ void Weapons_Check(int client)
 				Weapon[client][i].Damage[2] = WeaponKv.GetFloat("damage crit", 1.0);
 				Weapon[client][i].HealthKit = view_as<bool>(WeaponKv.GetNum("kit"));
 				Weapon[client][i].NoForce = !WeaponKv.GetNum("knockback", 1);
-				Weapon[client][i].Shield = view_as<bool>(WeaponKv.GetNum("shield"));
 				break;
 			}
 
@@ -117,6 +151,7 @@ void Weapons_Check(int client)
 			continue;
 
 		Weapon[client][slot].Stale = 0;
+		Weapon[client][slot].Shield = 0;
 		Weapon[client][slot].Crit = -1;
 		Weapon[client][slot].Special = 0.0;
 		Weapon[client][slot].Outline = 0.0;
@@ -129,6 +164,5 @@ void Weapons_Check(int client)
 		Weapon[client][slot].Damage[2] = 1.0;
 		Weapon[client][slot].HealthKit = false;
 		Weapon[client][slot].NoForce = false;
-		Weapon[client][slot].Shield = false;
 	}
 }
