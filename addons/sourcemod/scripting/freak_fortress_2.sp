@@ -393,15 +393,15 @@ public Action GlobalTimer(Handle timer)
 		FormatEx(bestHud[i], sizeof(bestHud[]), "[%i] %N: %i", i+1, best[i], Client[best[index]].Damage);
 	}
 
+	int stattrack = CvarStatTrak.IntValue;
+	char buffer[256];
 	for(int i; i<max; i++)
 	{
 		bool alive = IsPlayerAlive(clients[i]);
 		int buttons = GetClientButtons(clients[i]);
 		ClientThink(clients[i], engineTime, gameTime, alive);
-		static char buffer[64];
-		if(!(Client[clients[i]] & HUD_DAMAGE) && !(buttons & IN_SCORE) && (alive || IsClientObserver(clients[i]))
+		if(!Client[clients[i]].DisableHud && !(Client[clients[i]] & HUD_DAMAGE) && !(buttons & IN_SCORE) && (alive || IsClientObserver(clients[i]))
 		{
-			SetHudTextParams(-1.0, 0.88, 0.35, 90, 255, 90, 255, 0, 0.35, 0.0, 0.1);
 			int observer;
 			if(alive)
 			{
@@ -443,33 +443,45 @@ public Action GlobalTimer(Handle timer)
 				if(observer==client || !IsValidClient(observer))
 					observer = 0;
 			}
+
+			SetGlobalTransTarget(client);
+			SetHudTextParams(-1.0, 0.88, 0.35, 90, 255, 90, 255, 0, 0.35, 0.0, 0.1);
+
+			if(stattrack)
+			{
+				FormatEx(buffer, sizeof(buffer), "%t", "Hud Stats", Client[client].Damage, Client[client].Healing, Client[client].Assist);
+			}
+			else
+			{
+				FormatEx(buffer, sizeof(buffer), "%t", "Hud StatTrak", Damage[client], Healing[client], PlayerKills[client], PlayerMVPs[client]);
+			}
 		}
-	}
-}
 
-void ClientThink(int client, float engineTime, float gameTime, bool alive)
-{
-	if(Client[client].BGMAt < engineTime)
-		Music_Play(client, engineTime, -1);
+		if(Client[client].BGMAt < engineTime)
+			Music_Play(client, engineTime, -1);
 
-	if(Client[client].PopUpAt < engineTime)
-	{
-		Client[client].PopUpAt = FAR_FUTURE;
-		if(Client[client].Pref[Pref_Boss] == Pref_Undef)
-			Pref_QuickToggle(client, -2);
-	}
+		if(Client[client].PopUpAt < engineTime)
+		{
+			Client[client].PopUpAt = FAR_FUTURE;
+			if(Client[client].Pref[Pref_Boss] == Pref_Undef)
+				Pref_QuickToggle(client, -2);
+		}
 
-	if(!Client[client].GlowFor || !alive)
-	{
-	}
-	else if(Client[client].GlowFor < gameTime)
-	{
-		Client[client].GlowFor = 0.0;
-		SetEntProp(client, Prop_Send, "m_bGlowEnabled", 0);
-	}
-	else
-	{
-		SetEntProp(client, Prop_Send, "m_bGlowEnabled", 1);
+		if(!alive)
+			continue;
+
+		if(!Client[client].GlowFor)
+		{
+		}
+		else if(Client[client].GlowFor < gameTime)
+		{
+			Client[client].GlowFor = 0.0;
+			SetEntProp(client, Prop_Send, "m_bGlowEnabled", 0);
+		}
+		else
+		{
+			SetEntProp(client, Prop_Send, "m_bGlowEnabled", 1);
+		}
 	}
 }
 
