@@ -158,7 +158,7 @@ enum struct BossEnum
 
 	float Speed(int client)
 	{
-		return this.MaxSpeed+0.7*(100.0-Health(client)*100.0/this.MaxLives/this.MaxHealth));
+		return this.MaxSpeed+(0.7*(100.0-this.Health(client)*100.0/this.MaxLives/this.MaxHealth));
 	}
 }
 
@@ -224,6 +224,7 @@ GlobalForward OnAlivePlayersChanged;
 GlobalForward OnBackstabbed;
 
 // First-Load (No module dependencies)
+#include "ff2_modules/stocks.sp"
 #tryinclude "ff2_modules/tf2x10.sp"
 #tryinclude "ff2_modules/tf2attributes.sp"
 #include "ff2_modules/weapons.sp"

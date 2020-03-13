@@ -56,6 +56,25 @@ enum SectionType
 	Section_Precache	// mod_precache
 };
 
+stock bool IsValidClient(int client, bool replaycheck=true)
+{
+	if(client<1 || client>MaxClients)
+		return false;
+
+	if(!IsClientInGame(client))
+		return false;
+
+	if(GetEntProp(client, Prop_Send, "m_bIsCoaching"))
+		return false;
+
+	if(replaycheck)
+	{
+		if(IsClientSourceTV(client) || IsClientReplay(client))
+			return false;
+	}
+	return true;
+}
+
 stock int OnlyScoutsLeft(int team)
 {
 	int scouts;
@@ -155,7 +174,7 @@ stock void HealMessage(int patient, int healer, int amount)
 	event.SetInt("patient", patient);
 	event.SetInt("healer", healer);
 	event.SetInt("amount", amount);
-	event.FireToClient(client);
+	event.FireToClient(patient);
 	event.Cancel();
 }
 
@@ -245,13 +264,13 @@ stock void RandomlyDisguise(int client)
 			list.Push(victim);
 	}
 
-	if(disguiseArray.Length > 0)
+	if(list.Length > 0)
 	{
 		int victim = list.Get(GetRandomInt(0, list.Length-1));
 		if(!IsValidClient(victim))
 			target = victim;
 	}
-	delete disguiseArray;
+	delete list;
 
 	TFClassType class = TF2_GetPlayerClass(target);
 	if(class == TFClass_Unknown)
@@ -366,4 +385,26 @@ stock int GetHealingTarget(int client, bool checkgun=false)
 		}
 	}
 	return -1;
+}
+
+stock void LogError2(const char[] buffer, any ...)
+{
+	char message[192];
+	VFormat(message, sizeof(message), buffer, 2);
+
+	static File file;
+	if(file==null || file==INVALID_HANDLE)
+	{
+		char path[PLATFORM_MAX_PATH];
+		BuildPath(Path_SM, path, sizeof(path), "logs/freak_fortress_2/ff2_errors.log");
+		file = OpenFile(path, "a+");
+		if(file == null)
+		{
+			LogError(message);
+			return;
+		}
+	}
+
+	LogToOpenFileEx(file, message);
+	PrintToServer(message);
 }
