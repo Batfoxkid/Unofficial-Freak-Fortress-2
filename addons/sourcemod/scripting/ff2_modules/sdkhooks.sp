@@ -683,33 +683,62 @@ public Action OnTakeDamageAlive(int client, int &attacker, int &inflictor, float
 			}
 		}
 
-		Boss[client].Charge[0] += damage*100.0/Boss[client].RageDamage;
+		Boss[client].Charge[0] += damage*90.0/Boss[client].RageDamage;
 		if(Boss[client].Charge[0] > Boss[client].RageMax)
 			Boss[client].Charge[0] = Boss[client].RageMax;
 
 		return Plugin_Changed;
 	}
 
-	for(int i; i<3; i++)
+	bool invuln = IsInvuln(client);
+	if(!Boss[client].Active)
 	{
-		if(!Weapon[client][i].Shield)
-			continue;
+		if(!invuln && !Client[attacker].Minion)
+		{
+			for(int i; i<3; i++)
+			{
+				if(!Weapon[client][i].Shield)
+					continue;
 
-		if(GetClientHealth(client) > damage*1.15)
-			break;
+				if(GetClientHealth(client) > damage*1.15)
+					break;
 
-		RemoveShield(client, attacker);
-		return Plugin_Handled;
+				RemoveShield(client, attacker, Weapon[client][i].Shield);
+				return Plugin_Handled;
+			}
+		}
+		return Plugin_Continue;
 	}
 
-	if(!Boss[client].Active || Boss[attacker].Active || Client[attacker].Minion || weapon<=MaxClients || !IsValidEntity(weapon) || !HasEntProp(weapon, Prop_Send, "m_iItemDefinitionIndex"))
+	if(!invuln)
+	{
+		Boss[client].Charge[0] += damage*100.0/Boss[client].RageDamage;
+		if(Boss[client].Charge[0] > Boss[client].RageMax)
+			Boss[client].Charge[0] = Boss[client].RageMax;
+	}
+
+	if(Boss[attacker].Active || Client[attacker].Minion)
+		return Plugin_Continue;
+
+	if(!invuln)
+	{
+		int add = RoundToFloor(damage/500.0);
+		if((damage%500)+(Client[attacker].Damage%500) >= 500)
+			add++;
+
+		Client[attacker].Damage += RoundFloat(damage);
+		if(add)
+			SetEntProp(attacker, Prop_Send, "m_nStreaks", GetEntProp(attacker, Prop_Send, "m_nStreaks")+add);
+	}
+
+	if(weapon<=MaxClients || !IsValidEntity(weapon) || !HasEntProp(weapon, Prop_Send, "m_iItemDefinitionIndex"))
 		return Plugin_Continue;
 
 	int slot = GetPlayerWeaponSlot(client, TFWeaponSlot_Primary)==weapon ? TFWeaponSlot_Primary : GetPlayerWeaponSlot(client, TFWeaponSlot_Secondary)==weapon ? TFWeaponSlot_Secondary : GetPlayerWeaponSlot(client, TFWeaponSlot_Melee)==weapon ? TFWeaponSlot_Melee : -1;
 	if(slot == -1)
 		return Plugin_Continue;
 
-	if(!IsInvuln(client) && Boss[client].Active && Weapon[attacker][slot].Outline)
+	if(!invuln && Boss[client].Active && Weapon[attacker][slot].Outline)
 	{
 		float gameTime = GetGameTime();
 		if(gameTime > Client[client].GlowFor)
@@ -725,9 +754,33 @@ public Action OnTakeDamageAlive(int client, int &attacker, int &inflictor, float
 			Client[client].GlowFor = gameTime+30.0;
 	}
 
-	if(GetEntProp(weapon, Prop_Send, "m_iItemDefinitionIndex")==307 && Weapon[attacker][slot].Special>Weapon[attacker][slot].Stale)
+	int index = GetEntProp(weapon, Prop_Send, "m_iItemDefinitionIndex");
+	switch(index)
 	{
-		SetEntProp(weapon, Prop_Send, "m_bBroken", 0);
-		SetEntProp(weapon, Prop_Send, "m_iDetonated", 0);
+		case 306:
+		{
+			if(Weapon[attacker][slot].Special > Weapon[attacker][slot].Stale)
+			{
+				SetEntProp(weapon, Prop_Send, "m_bBroken", 0);
+				SetEntProp(weapon, Prop_Send, "m_iDetonated", 0);
+			}
+		}
+		case 1104:
+		{
+			if(!invuln && Weapon[attacker][slot].Special>0)
+			{
+				Weapon[attacker][slot].Stab += damage;
+
+				int i;
+				while(i<5 && Weapon[attacker][slot].Stab>Weapon[attacker][slot].Special)
+				{
+					Weapon[attacker][slot].Stab -= Weapon[attacker][slot].Special;
+					i++;
+				}
+
+				if(i)
+					SetEntProp(attacker, Prop_Send, "m_iDecapitations", GetEntProp(attacker, Prop_Send, "m_iDecapitations")+i);
+			}
+		}
 	}
 }
