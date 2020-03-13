@@ -105,6 +105,7 @@ void Weapons_Check(int client)
 				Weapon[client][i].Damage[2] = WeaponKv.GetFloat("damage crit", 1.0);
 				Weapon[client][i].HealthKit = view_as<bool>(WeaponKv.GetNum("kit"));
 				Weapon[client][i].NoForce = !WeaponKv.GetNum("knockback", 1);
+				Weapon[client][i].Shield = view_as<bool>(WeaponKv.GetNum("shield"));
 				break;
 			}
 
@@ -128,5 +129,6 @@ void Weapons_Check(int client)
 		Weapon[client][slot].Damage[2] = 1.0;
 		Weapon[client][slot].HealthKit = false;
 		Weapon[client][slot].NoForce = false;
+		Weapon[client][slot].Shield = false;
 	}
 }
