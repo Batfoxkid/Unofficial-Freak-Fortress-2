@@ -204,6 +204,10 @@ ArrayList BossList;
 int Specials;
 
 bool Enabled;
+int Players;
+int BossPlayers;
+int MercPlayers;
+TFTeam BossTeam;
 ArrayList Charsets;
 int Charset;
 
