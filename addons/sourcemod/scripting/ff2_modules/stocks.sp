@@ -320,6 +320,76 @@ stock SectionType KvGetSectionType(Handle kv, char[] buffer="", int length=16)
 	return Section_Ability;
 }
 
+// -2: Blocked, -1: No Access, 0: Hidden, 1: Visible
+stock int KvGetBossAccess(Handle kv, int client, bool force=false)
+{
+	if(!force && KvGetNum(kv, "blocked"))
+		return -2;
+
+	bool donator = KvGetNum(kv, "donator");
+	int admin = KvGetNum(kv, "admin");
+	bool owner = KvGetNum(kv, "owner");
+	if(!(donator || admin || owner))
+		return KvGetNum(kv, "hidden") ? 0 : 1;
+
+	if(!((donator && !CheckCommandAccess(client, "ff2_donator_bosses", ADMFLAG_RESERVATION)) ||
+	     (owner && !CheckCommandAccess(client, "ff2_owner_bosses", ADMFLAG_ROOT)) ||
+	     (admin && !CheckCommandAccess(client, "ff2_admin_bosses", admin, true))))
+		return 1;
+
+	return KvGetNum(kv, "hidden", owner ? 1 : 0) ? -2 : -1;
+}
+
+stock bool KvGetBossAccess2(Handle kv, int client, char[] buffer, int length)
+{
+	if(KvGetNum(kv, "blocked"))
+	{
+		FormatEx(buffer, length, "%T", "Deny Unknown", client);
+		return false;
+	}
+
+	bool donator = KvGetNum(kv, "donator");
+	int admin = KvGetNum(kv, "admin");
+	bool owner = KvGetNum(kv, "owner");
+	if(!(donator || admin>0 || owner))
+	{
+		if(!KvGetNum(kv, "hidden"))
+			return true;
+
+		FormatEx(buffer, length, "%T", "Deny Unknown", client);
+		return false;
+	}
+
+	if(!((donator && !CheckCommandAccess(client, "ff2_donator_bosses", ADMFLAG_RESERVATION)) ||
+	     (owner && !CheckCommandAccess(client, "ff2_owner_bosses", ADMFLAG_ROOT)) ||
+	     (admin>0 && !CheckCommandAccess(client, "ff2_admin_bosses", admin, true))))
+		return true;
+
+	FormatEx(buffer, length, "%T", KvGetNum(kv, "hidden", owner ? 1 : 0) ? "Deny Unknown" : "Deny Access", client);
+	return false;
+}
+
+stock void KvGetLang(Handle kv, const char[] key, char[] buffer, int length, int client=0, const char[] default="=Failed name=")
+{
+	static char language[20];
+	GetLanguageInfo(client ? GetClientLanguage(client) : GetServerLanguage(), language, sizeof(language), buffer, sizeof(buffer));
+	Format(language, sizeof(language), "%s_%s", key, language);
+
+	KvGetString(kv, language, buffer, length);
+	if(buffer[0])
+		return;
+
+	if(client)
+	{
+		GetLanguageInfo(GetServerLanguage(), language, sizeof(language), buffer, sizeof(buffer));
+		Format(language, sizeof(language), "%s_%s", key, language);
+		KvGetString(kv, language, buffer, length);
+	}
+
+	if(!buffer[0])
+		KvGetString(kv, key, buffer, length, default);
+}
+
 stock bool ConfigureWorldModelOverride(int entity, const char[] model, bool wearable=false)
 {
 	if(!FileExists(model, true))
@@ -396,8 +466,9 @@ stock void LogError2(const char[] buffer, any ...)
 	if(file==null || file==INVALID_HANDLE)
 	{
 		char path[PLATFORM_MAX_PATH];
-		BuildPath(Path_SM, path, sizeof(path), "logs/freak_fortress_2/ff2_errors.log");
-		file = OpenFile(path, "a+");
+		FormatTime(path, sizeof(path), "%Y%m%d");
+		BuildPath(Path_SM, path, sizeof(path), "logs/freak_fortress_2/errors_%s.log", path);
+		file = OpenFile(path, "a");
 		if(file == null)
 		{
 			LogError(message);

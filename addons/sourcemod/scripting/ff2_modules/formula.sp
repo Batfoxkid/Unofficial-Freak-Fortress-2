@@ -63,14 +63,12 @@ static void OperateString(ArrayList sumArray, int &bracket, char[] value, int si
 	strcopy(value, size, "");
 }
 
-stock float ParseFormula(int boss, const char[] key, const char[] defaultFormula)
+stock float ParseFormula(int boss, const char[] key, const char[] defaultFormula, float players)
 {
 	static char formula[1024], bossName[64];
 	KvRewind(BossKV[boss]);
 	KvGetString(BossKV[boss], "filename", bossName, sizeof(bossName));
 	KvGetString(BossKV[boss], key, formula, sizeof(formula), defaultFormula);
-
-	float players = float(playing+1);
 
 	int size = 1;
 	int matchingBrackets;

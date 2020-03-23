@@ -65,7 +65,7 @@ void Native_Setup()
 
 public any Native_IsEnabled(Handle plugin, int numParams)
 {
-	return Enabled;
+	return Enabled>Game_Disabled;
 }
 
 public any Native_FF2Version(Handle plugin, int numParams)
@@ -738,8 +738,8 @@ public any Native_GetClientShield(Handle plugin, int numParams)
 			}
 		}
 		return 0;
-	}
-	return -1;*/
+	}*/
+	return -1;
 }
 
 public any Native_SetClientShield(Handle plugin, int numParams)
@@ -794,12 +794,18 @@ public any Native_Debug(Handle plugin, int numParams)
 
 public any Native_SetCheats(Handle plugin, int numParams)
 {
-	//CheatsUsed = GetNativeCell(1);
+	#if defined FF2_STATTRAK
+	StatEnabled = GetNativeCell(1);
+	#endif
 }
 
 public any Native_GetCheats(Handle plugin, int numParams)
 {
-	//return (CheatsUsed || SpecialRound);
+	#if defined FF2_STATTRAK
+	return StatEnabled;
+	#else
+	return false;
+	#endif
 }
 
 public any Native_MakeBoss(Handle plugin, int numParams)

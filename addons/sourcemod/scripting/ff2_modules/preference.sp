@@ -1,6 +1,13 @@
  /*
-	Requirement:
-	
+	Functions:
+	void Pref_Setup()
+	void Pref_SetupClient(int client, float engineTime)
+	void Pref_SaveClient(int client)
+	void Pref_Menu(int client)
+	void Pref_QuickToggle(int client, int selection=-1)
+	void Pref_Boss(int client, int pack)
+	void Pref_Bosses(int client)
+	void Pref_SelectBoss(int client, int boss, bool blank=false)
 */
 
 #define FF2_PREF
@@ -10,13 +17,13 @@ static Cookie BossCookie;
 
 void Pref_Setup()
 {
-	CoreCookie = new Cookie("ff2_cookies_mk3", "Player's Preferences", CookieAccess_Protected);
-	BossCookie = new Cookie("ff2_cookies_selection", "Player's Boss Selections", CookieAccess_Protected);
+	CoreCookie = new Cookie("ff2_cookies_mk3", "Your Preferences", CookieAccess_Protected);
+	BossCookie = new Cookie("ff2_cookies_selection", "Your Boss Selections", CookieAccess_Protected);
 }
 
 void Pref_SetupClient(int client, float engineTime)
 {
-	if(IsFakeClient(client) || !AreClientCookiesCached(client))
+	if(IsFakeClient(client) || !Client[client].Cached)
 	{
 		Client[client].Queue = 0;
 		for(int i; i<Pref_MAX; i++)
@@ -79,7 +86,7 @@ void Pref_SetupClient(int client, float engineTime)
 
 void Pref_SaveClient(int client)
 {
-	if(IsFakeClient(client) || !AreClientCookiesCached(client))
+	if(IsFakeClient(client) || !Client[client].Cached)
 		return;
 
 	if(Client[client].Queue > 9999)
@@ -202,7 +209,7 @@ public int Pref_MenuH(Menu menu, MenuAction action, int client, int selection)
 	}
 }
 
-void Pref_QuickToggle(int client, int selection)
+void Pref_QuickToggle(int client, int selection=-1)
 {
 	Menu menu = new Menu(Pref_QuickToggleH);
 	SetGlobalTransTarget(client);
@@ -300,7 +307,7 @@ void Pref_Boss(int client, int pack)
 		{
 			if(Client[client].Pref[Pref_Boss] != Pref_On)
 			{
-				Pref_QuickToggle(client, -1);
+				Pref_QuickToggle(client);
 				return;
 			}
 
@@ -435,7 +442,7 @@ public int Pref_BossH(Menu menu, MenuAction action, int client, int selection)
 
 			if(Client[client].Pref[Pref_Boss] != Pref_On)
 			{
-				Pref_QuickToggle(client, -1);
+				Pref_QuickToggle(client);
 				return;
 			}
 
@@ -524,7 +531,7 @@ void Pref_Bosses(int client)
 	menu.SetTitle("%t", "Pref Selection");
 
 	static char buffer[512];
-	if(AreClientCookiesCached(client))
+	if(Client[client].Cached)
 	{
 		int size = sizeof(buffer)/length;
 		if(size > 64)
@@ -620,7 +627,7 @@ void Pref_SelectBoss(int client, int boss, bool blank=false)
 		Client[client].Selection = blank ? -1 : boss;
 
 	int length = Charsets.Length;
-	if(pack>length || !AreClientCookiesCached(client))
+	if(pack>length || !Client[client].Cached)
 		return;
 
 	static char buffer[512];
@@ -653,74 +660,4 @@ void Pref_SelectBoss(int client, int boss, bool blank=false)
 		Format(buffer, sizeof(buffer), "%s;%s", buffer, buffers[i]);
 	}
 	BossCookie.Set(client, buffer);
-}
-
-// -2: Blocked, -1: No Access, 0: Hidden, 1: Visible
-stock int KvGetBossAccess(Handle kv, int client, bool force=false)
-{
-	if(!force && KvGetNum(kv, "blocked"))
-		return -2;
-
-	bool donator = KvGetNum(kv, "donator");
-	int admin = KvGetNum(kv, "admin");
-	bool owner = KvGetNum(kv, "owner");
-	if(!(donator || admin || owner))
-		return KvGetNum(kv, "hidden") ? 0 : 1;
-
-	if(!((donator && !CheckCommandAccess(client, "ff2_donator_bosses", ADMFLAG_RESERVATION)) ||
-	     (owner && !CheckCommandAccess(client, "ff2_owner_bosses", ADMFLAG_ROOT)) ||
-	     (admin && !CheckCommandAccess(client, "ff2_admin_bosses", admin, true))))
-		return 1;
-
-	return KvGetNum(kv, "hidden", owner ? 1 : 0) ? -2 : -1;
-}
-
-stock bool KvGetBossAccess2(Handle kv, int client, char[] buffer, int length)
-{
-	if(KvGetNum(kv, "blocked"))
-	{
-		FormatEx(buffer, length, "%T", "Deny Unknown", client);
-		return false;
-	}
-
-	bool donator = KvGetNum(kv, "donator");
-	int admin = KvGetNum(kv, "admin");
-	bool owner = KvGetNum(kv, "owner");
-	if(!(donator || admin>0 || owner))
-	{
-		if(!KvGetNum(kv, "hidden"))
-			return true;
-
-		FormatEx(buffer, length, "%T", "Deny Unknown", client);
-		return false;
-	}
-
-	if(!((donator && !CheckCommandAccess(client, "ff2_donator_bosses", ADMFLAG_RESERVATION)) ||
-	     (owner && !CheckCommandAccess(client, "ff2_owner_bosses", ADMFLAG_ROOT)) ||
-	     (admin>0 && !CheckCommandAccess(client, "ff2_admin_bosses", admin, true))))
-		return true;
-
-	FormatEx(buffer, length, "%T", KvGetNum(kv, "hidden", owner ? 1 : 0) ? "Deny Unknown" : "Deny Access", client);
-	return false;
-}
-
-stock void KvGetLang(Handle kv, const char[] key, char[] buffer, int length, int client=0, const char[] default="=Failed name=")
-{
-	static char language[20];
-	GetLanguageInfo(client ? GetClientLanguage(client) : GetServerLanguage(), language, sizeof(language), buffer, sizeof(buffer));
-	Format(language, sizeof(language), "%s_%s", key, language);
-
-	KvGetString(kv, language, buffer, length);
-	if(buffer[0])
-		return;
-
-	if(client)
-	{
-		GetLanguageInfo(GetServerLanguage(), language, sizeof(language), buffer, sizeof(buffer));
-		Format(language, sizeof(language), "%s_%s", key, language);
-		KvGetString(kv, language, buffer, length);
-	}
-
-	if(!buffer[0])
-		KvGetString(kv, key, buffer, length, default);
 }

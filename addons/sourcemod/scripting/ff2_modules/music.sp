@@ -17,7 +17,7 @@ enum struct BGMEnum
 
 int BGMs;
 bool BGMLives;
-BGMEnum BGM[MAXSONGS];
+static BGMEnum BGM[MAXSONGS];
 
 void Music_Start(float engineTime)
 {

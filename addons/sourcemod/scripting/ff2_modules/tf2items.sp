@@ -39,7 +39,7 @@ void TF2Items_Setup()
 
 public Action TF2Items_OnGiveNamedItem(int client, char[] classname, int index, Handle &item)
 {
-	if(!Enabled || WeaponKV==null)
+	if(Enabled!=Game_Arena || WeaponKV==null)
 		return Plugin_Continue;
 
 	WeaponKV.Rewind();

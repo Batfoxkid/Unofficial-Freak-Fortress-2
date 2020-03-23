@@ -41,6 +41,21 @@
           Unofficial Freak Fortress 2 Thread:
   http://forums.alliedmods.net/showthread.php?t=313008
 */
+
+/*
+	Performance Changes
+
+	This is mainly for server
+	specific features that can
+	be changed per community.
+	This can help some low-end
+	machines or high populated
+	servers.
+*/
+#define SETTING_HUDDELAY	0.25	// Interval of clients' HUD
+#define SETTING_TICKMODE	-1	// -1 for OnGameFrame, 0 for OnPlayerRunCmdPost, >0 for a Timer with that duration
+
+
 #pragma semicolon 1
 
 #include <sourcemod>
@@ -53,6 +68,7 @@
 #undef REQUIRE_EXTENSIONS
 #tryinclude <tf2items>
 #tryinclude <SteamWorks>
+#tryinclude <smjansson>
 #define REQUIRE_EXTENSIONS
 #undef REQUIRE_PLUGIN
 #tryinclude <goomba>
@@ -82,8 +98,8 @@
 #define DEV_REVISION	"Beta"
 #define DATE_REVISION	"--Unknown--"
 
-#define DATATABLE	"ff2_stattrak"
 #define CHANGELOG_URL	"https://batfoxkid.github.io/Unofficial-Freak-Fortress-2"
+#define MAP_FILE	"data/freak_fortress_2/maps.cfg"
 
 #define MAXENTITIES	2048
 #define MAXSPECIALS	1024
@@ -114,7 +130,21 @@ enum
 
 	RageMode_Full = 0,
 	RageMode_Part,
-	RageMode_None
+	RageMode_None,
+
+	Stat_Win = 0,
+	Stat_Lose,
+	Stat_Kill
+	Stat_Death,
+	Stat_MAX,
+	Stat_Slain = 4,
+	Stat_Mvp,
+
+	Game_Invalid = 0,
+	Game_Disabled = 1,
+	Game_Fun,
+	Game_Arena,
+	Game_MAX
 }
 
 enum struct BossEnum
@@ -174,7 +204,13 @@ enum struct ClientEnum
 	int Damage;
 	int Queue;
 	int Pref[Pref_MAX];
+	int Kills[view_as<int>(TFClassType)];
+	int Mvps[view_as<int>(TFClassType)];
+	int Stat[Stat_MAX];
 	bool DisableHud;
+
+	bool Private;
+	bool Cached;
 }
 
 enum struct WeaponEnum
@@ -203,7 +239,8 @@ SpecialEnum Special[MAXSPECIALS];
 ArrayList BossList;
 int Specials;
 
-bool Enabled;
+int Enabled;
+int NextGamemode;
 int Players;
 int BossPlayers;
 int MercPlayers;
@@ -229,6 +266,7 @@ GlobalForward OnBackstabbed;
 
 // First-Load (No module dependencies)
 #include "ff2_modules/stocks.sp"
+#tryinclude "ff2_modules/stattrak.sp"
 #tryinclude "ff2_modules/tf2x10.sp"
 #tryinclude "ff2_modules/tf2attributes.sp"
 #include "ff2_modules/weapons.sp"
@@ -264,6 +302,10 @@ public Plugin myinfo =
 	version		=	PLUGIN_VERSION,
 	url		=	"https://forums.alliedmods.net/forumdisplay.php?f=154",
 };
+
+/*
+	SourceMod Events
+*/
 
 public APLRes AskPluginLoad2(Handle myself, bool late, char[] error, int err_max)
 {
@@ -309,6 +351,13 @@ public void OnPluginStart()
 {
 	PrintToServer("%s Freak Fortress %s Loading...", FORK_SUB_REVISION, BUILD_NUMBER);
 
+	CvarVersion = CreateConVar("ff2_version", PLUGIN_VERSION, "Freak Fortress 2 Version", FCVAR_NOTIFY|FCVAR_DONTRECORD);
+	CvarEnabled = CreateConVar("ff2_enabled", "1", "Backwards Compatibility ConVar", FCVAR_DONTRECORD, true, 0.0, true, 2.0);
+
+	CreateConVar("ff2_oldjump", "1", "Backwards Compatibility ConVar", FCVAR_DONTRECORD, true, 0.0, true, 1.0);
+	CreateConVar("ff2_base_jumper_stun", "0", "Backwards Compatibility ConVar", FCVAR_DONTRECORD, true, 0.0, true, 1.0);
+	CreateConVar("ff2_solo_shame", "0", "Backwards Compatibility ConVar", FCVAR_DONTRECORD, true, 0.0, true, 1.0);
+
 	#if defined FF2_TF2ATTRIBUTES
 	TF2Attributes_Setup();
 	#endif
@@ -325,6 +374,10 @@ public void OnPluginStart()
 	SteamWorks_Setup();
 	#endif
 
+	#if defined FF2_STATTRAK
+	StatTrak_Setup();
+	#endif
+
 	SDK_Setup();
 	Bosses_Setup();
 
@@ -332,26 +385,79 @@ public void OnPluginStart()
 	TargetFilter_Setup();
 	#endif
 
+	HookEvent("teamplay_round_start", OnRoundSetup, EventHookMode_PostNoCopy);
+	HookEvent("arena_round_start", OnRoundStart, EventHookMode_PostNoCopy);
+	HookEvent("teamplay_round_win", OnRoundEnd);
+
+	HookEvent("teamplay_point_startcapture", OnStartCapture, EventHookMode_PostNoCopy);
+	HookEvent("teamplay_capture_broken", OnBreakCapture);
+
+	HookEvent("post_inventory_application", OnPostInventoryApplication, EventHookMode_Pre);
+	HookEvent("player_healed", OnPlayerHealed, EventHookMode_Pre);
+	HookEvent("player_spawn", OnPlayerSpawn, EventHookMode_Pre);
+	HookEvent("player_death", OnPlayerDeath, EventHookMode_Pre);
+	HookEvent("player_hurt", OnPlayerHurt, EventHookMode_Pre);
+	HookEvent("player_chargedeployed", OnUberDeployed);
+	HookEvent("object_deflected", OnObjectDeflected, EventHookMode_Pre);
+	HookEvent("rps_taunt_event", OnRPS);
+
 	AutoExecConfig(true, "FreakFortress2");
+
+	LoadTranslations("freak_fortress_2.phrases");
+	LoadTranslations("freak_fortress_2_weapons.phrases");
+	LoadTranslations("common.phrases");
+	LoadTranslations("core.phrases");
 }
 
 public void OnConfigsExecuted()
 {
+	
+
 	Weapons_Setup();
 	Bosses_Config();
 }
 
-public Action GlobalTimer(Handle timer)
+/*
+	Game Events
+*/
+
+public void OnRoundSetup(Event event, const char[] name, bool dontBroadcast)
 {
-	if(!Enabled)
-		return Plugin_Stop;
+	if(NextGamemode != Game_Invalid)
+	{
+		if(Enabled && NextGamemode)
+		NextGamemode = Game_Invalid;
+	}
+}
 
-	if(CheckRoundState() == 2)
-		return Plugin_Stop;
+#if SETTING_TICKMODE>0
+public void OnMapStart()
+{
+	CreateTimer(SETTING_TICKMODE, OnGameTimer, _, TIMER_FLAG_NO_MAPCHANGE);
+}
 
+public Action OnGameTimer(Handle timer)
+#elseif SETTING_TICKMODE<0
+public void OnGameFrame()
+#else
+public void OnPlayerRunCmdPost(int nullVar1, int nullVar2, int nullVar3, const float nullVar4[3], const float nullVar5[3], int nullVar6, int nullVar7, int nullVar8, int nullVar9, int nullVar0, const int nullVar[2])
+#endif
+{
+	if(Enabled != Game_Arena)
+		return;
+
+	int roundState = CheckRoundState();
 	float engineTime = GetEngineTime();
 	float gameTime = GetGameTime();
 
+	static float hudAt;
+	if(roundState != 1)
+		return;
+
+	if(hudAt > engineTime)
+		return;
+
+	hudAt = engineTime+SETTING_HUDDELAY;
 	bool sappers;
 	int max;
 	int best[10];
@@ -489,6 +595,94 @@ public Action GlobalTimer(Handle timer)
 	}
 }
 
+/*
+	Functions
+*/
+
+int CheckGamemode(const char[] map)
+{
+	static char config[PLATFORM_MAX_PATH];
+	BuildPath(Path_SM, config, sizeof(config), MAP_FILE);
+	if(!FileExists(config))
+	{
+		BuildPath(Path_SM, config, sizeof(config), MAP_FILE);
+		if(!FileExists(config))
+		{
+			LogToFile(eLog, "[Maps] Unable to find '%s'", MAP_FILE);
+			return Game_Invalid;
+		}
+	}
+
+	int result = Game_Invalid;
+	KeyValues kv = new KeyValues("maps");
+	if(kv.ImportFromFile(config))
+	{
+		do
+		{
+			kv.GetSectionName(buffer, sizeof(buffer));
+			int amount = ReplaceString(buffer, sizeof(buffer), "*", "");
+			switch(amount)
+			{
+				case 0:
+				{
+					if(!StrEqual(map, buffer, false))
+						continue;
+				}
+				case 1:
+				{
+					if(StrContains(map, buffer, false))
+						continue;
+				}
+				default:
+				{
+					if(StrContains(map, buffer, false) == -1)
+						continue;
+				}
+			}
+
+			result = kv.GetNum("mode", 0)+2;
+			if(result<Game_Disabled || result>=Game_MAX)
+				result = Game_Invalid;
+
+			break;
+		} while(kv.GotoNextKey());
+	}
+	else
+	{
+		File file = OpenFile(config, "r");
+		if(file == INVALID_HANDLE)
+		{
+			LogToFile(eLog, "[Maps] Error reading from '%s'", MAP_FILE);
+		}
+		else
+		{
+			int tries;
+			while(file.ReadLine(config, sizeof(config)))
+			{
+				tries++;
+				if(tries >= 100)
+				{
+					LogToFile(eLog, "[Maps] An infinite loop occurred while trying to check the map");
+					break;
+				}
+
+				strcopy(config, strlen(config)-1, config);
+				if(!strncmp(config, "//", 2, false))
+					continue;
+
+				if(!StrContains(map, config, false) || !StrContains(config, "all", false))
+				{
+					result = Game_Arena;
+					break;
+				}
+			}
+			delete file;
+		}
+	}
+	delete kv;
+	return result;
+}
+
 public Action MainMenuC(int client, int args)
 {
 	if(client)
@@ -512,9 +706,15 @@ public Action MainMenuC(int client, int args)
 	#endif
 	PrintToServer("Build: %s", BUILD_NUMBER);
 	PrintToServer("Date: %s", FORK_DATE_REVISION);
-	PrintToServer("Status: %s", Enabled ? "Enabled" : "Disabled");
+	PrintToServer("Status: %s", Enabled>Game_Disabled ? "Enabled" : "Disabled");
 
 	PrintToServer("");
+
+	#if defined FF2_STATTRAK
+	PrintToServer("StatTrak: Enabled");
+	#else
+	PrintToServer("StatTrak: Module Not Compiled");
+	#endif
 
 	#if defined FF2_STEAMWORKS
 	PrintToServer("SteamWorks: %s", SteamWorks ? "Enabled" : "Library Not Found");
@@ -559,8 +759,8 @@ public Action MainMenuC(int client, int args)
 	PrintToServer("");
 	PrintToServer("Weapon Attributes: %s", statusCheck ? "OK" : "TF2Attributes nor TF2Items are available");
 	PrintToServer("Wearable Weapons: %s", SDKEquipWearable==null ? "Failed to create call via Gamedata" : "OK");
-	PrintToServer("Boss KeyValues: %s", Enabled ? Special[0].Kv==INVALID_HANDLE ? "Failed to create boss KeyValues" : "OK" : "N/A");
-	PrintToServer("Weapon KeyValues: %s", Enabled ? WeaponKV==null ? "Failed to create weapon KeyValues" : "OK" : "N/A");
+	PrintToServer("Boss KeyValues: %s", Enabled>Game_Disabled ? Special[0].Kv==INVALID_HANDLE ? "Failed to create boss KeyValues" : "OK" : "N/A");
+	PrintToServer("Weapon KeyValues: %s", Enabled>Game_Disabled ? WeaponKV==null ? "Failed to create weapon KeyValues" : "OK" : "N/A");
 	return Plugin_Handled;
 }
 
@@ -584,6 +784,11 @@ void MainMenu(int client)
 	menu.AddItem("5", buffer);
 	FormatEx(buffer, sizeof(buffer), "%t", "Menu Music");
 	menu.AddItem("6", buffer);
+
+	#if defined FF2_STATTRAK
+	FormatEx(buffer, sizeof(buffer), "%t", "Menu Stats");
+	menu.AddItem("7", buffer);
+	#endif
 
 	menu.Pagination = false;
 	menu.ExitButton = true;
@@ -622,6 +827,11 @@ public int MainMenuH(Menu menu, MenuAction action, int client, int selection)
 
 				case 6:
 					Music_Menu(client);
+
+				#if defined FF2_STATTRAK
+				case 7:
+					StatTrak_Command(client, 0);
+				#endif
 			}
 		}
 	}

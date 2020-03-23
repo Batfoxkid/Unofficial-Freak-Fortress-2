@@ -3,21 +3,20 @@
 	sdkhooks.sp
 
 	Optional:
-	convars.sp
 	tf2items.sp
 
 	Functions:
 	void Bosses_Setup()
 	void Bosses_Config()
 	void Bosses_Prepare(int boss)
-	void Bosses_Create(int client, int boss)
+	void Bosses_Create(int client, int boss=-1)
 	void Bosses_Equip(int client, int boss)
 */
 
 #define FF2_BOSSES
 
 #define CONFIG_PATH		"config/freak_fortress_2"
-#define CHARSET_PATH		"data/freak_fortress_2/characters.cfg"
+#define CHARSET_FILE		"data/freak_fortress_2/characters.cfg"
 #define DEFAULT_ATTRIBUTES	"2 ; 3.1 ; 68 ; %i ; 275 ; 1"
 #define DEFAULT_RAGEDAMAGE	"1900"
 #define DEFAULT_HEALTH		""
@@ -63,26 +62,45 @@ void Bosses_Config()
 	BossList = new ArrayList(5, 0);
 
 	char filepath[PLATFORM_MAX_PATH];
-	BuildPath(Path_SM, filepath, PLATFORM_MAX_PATH, CHARSET_PATH);
+	BuildPath(Path_SM, filepath, PLATFORM_MAX_PATH, CHARSET_FILE);
 
 	if(!FileExists(filepath))
 	{
 		Charsets.SetString(0, "Freak Fortress 2");
 		BuildPath(Path_SM, filepath, PLATFORM_MAX_PATH, CONFIG_PATH);
+		if(Enabled <= Game_Disabled)
+			Charset = -1;
+
 		ProcessDirectory(filepath, "", "", 0);
 		return;
 	}
 
-	Charset = CvarCharset.IntValue;
-	char config[PLATFORM_MAX_PATH];
-	int i = Charset;
-	Action action = Plugin_Continue;
-	Call_StartForward(OnLoadCharacterSet);
-	Call_PushCellRef(i);
-	Call_PushStringEx(config, sizeof(config), SM_PARAM_STRING_UTF8|SM_PARAM_STRING_COPY, SM_PARAM_COPYBACK);
-	Call_Finish(action);
-	if(action == Plugin_Changed)
-		Charset = i;
+	if(Enabled > Game_Disabled)
+	{
+		Charset = CvarCharset.IntValue;
+		char config[PLATFORM_MAX_PATH];
+		int i = Charset;
+		Action action = Plugin_Continue;
+		Call_StartForward(OnLoadCharacterSet);
+		Call_PushCellRef(i);
+		Call_PushStringEx(config, sizeof(config), SM_PARAM_STRING_UTF8|SM_PARAM_STRING_COPY, SM_PARAM_COPYBACK);
+		Call_Finish(action);
+		if(action == Plugin_Changed)
+		{
+			if(i < 0)
+			{
+				Charset = 0;
+			}
+			else
+			{
+				Charset = i;
+			}
+		}
+	}
+	else
+	{
+		Charset = -1;
+	}
 
 	KeyValues kv = new KeyValues("");
 	kv.ImportFromFile(filepath);
@@ -145,7 +163,7 @@ void Bosses_Config()
 	delete kv;
 
 	#if defined FF2_CONVARS
-	if(CvarNameChange.IntValue == 2)
+	if(Charset!=-1 && CvarNameChange.IntValue==2)
 		Convars_NameSuffix(Charsets.GetString(Charset));
 	#endif
 
@@ -266,7 +284,7 @@ static KeyValues LoadCharacter(const char[] character, int charset)
 		return INVALID_HANDLE;
 	}
 
-	if(Charset != charset)
+	if(Charset!=charset || Enabled<=Game_Disabled)
 	{
 		Special[Specials].Kv.SetString("filename", character);
 		Specials++;
@@ -484,7 +502,7 @@ void Bosses_Prepare(int boss)
 	Special[boss].Precached = true;
 }
 
-void Bosses_Create(int client, int boss)
+void Bosses_Create(int client, int boss=-1)
 {
 	if(boss < 0)
 	{
