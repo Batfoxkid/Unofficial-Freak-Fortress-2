@@ -31,7 +31,7 @@ static ConVar CvarHealing;
 
 void Bosses_Setup()
 {
-	CvarCharset = CreateConVar("ff2_current", "0", "Freak Fortress 2 Current Boss Pack", FCVAR_SPONLY|FCVAR_DONTRECORD);
+	CvarCharset = CreateConVar("ff2_current", "0", "Freak Fortress 2 Next Boss Pack", FCVAR_DONTRECORD);
 
 	CvarTriple = CreateConVar("ff2_boss_triple", "1", "If to triple damage against players if initial damage is less than 160", _, true, 0.0, true, 1.0);
 	CvarKnockback = CreateConVar("ff2_boss_knockback", "0", "If bosses can knockback themselves, 2 to also allow self-damaging", _, true, 0.0, true, 2.0);

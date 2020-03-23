@@ -201,6 +201,7 @@ enum struct ClientEnum
 	float BGMAt;
 	float GlowFor;
 	float PopUpAt;
+	float Hazard;
 	int Damage;
 	int Queue;
 	int Pref[Pref_MAX];
@@ -640,8 +641,18 @@ int CheckGamemode(const char[] map)
 				}
 			}
 
+			#if defined FF2_DOORS
+			result = kv.GetNum("doors", -1);
+			DoorEnabled = result ? result<0 ? Doors_Check(map) : true : false;
+			#endif
+
+			#if defined FF2_TTS
+			result = kv.GetNum("doors", -1);
+			TTSEnabled = result ? result<0 ? TTS_Check(map) : true : false;
+			#endif
+
 			result = kv.GetNum("mode", 0)+2;
-			if(result<Game_Disabled || result>=Game_MAX)
+			if(result<=Game_Invalid || result>=Game_MAX)
 				result = Game_Invalid;
 
 			break;

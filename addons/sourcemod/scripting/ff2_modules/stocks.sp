@@ -1,22 +1,29 @@
 /*
-	Top Module
-
 	Functions:
+	bool IsValidClient(int client, bool replaycheck=true)
 	int OnlyScoutsLeft(int team)
 	int GetIndexOfWeaponSlot(int client, int slot)
 	bool RemoveCond(int client, TFCond cond)
 	int GetClientCloakIndex(int client)
-	void SpawnSmallHealthPackAt(int client, int team, int attacker)
+	void SpawnSmallHealthPackAt(int client, int team=0, int attacker)
 	void IncrementHeadCount(int client)
+	void HealMessage(int patient, int healer, int amount)
 	int FindTeleOwner(int client)
 	bool IsPlayerCritBuffed(int client)
 	bool IsPlayerMiniCritBuffed(int client)
-	Action Timer_DisguiseBackstab(Handle timer, int userid)
-	TFClassType KvGetClass(Handle kv, const char[] string)
 	void RandomlyDisguise(int client)
+	void AssignTeam(int client, int team)
+	TFClassType KvGetClass(Handle kv, const char[] string)
 	SectionType KvGetSectionType(Handle kv, char[] buffer, int length)
-	bool ConfigureWorldModelOverride(int entity, const char[] model, bool wearable)
+	int KvGetBossAccess(Handle kv, int client, bool force=false)
+	bool KvGetBossAccess2(Handle kv, int client, char[] buffer, int length)
+	void KvGetLang(Handle kv, const char[] key, char[] buffer, int length, int client=0, const char[] defaul="=Failed name=")
+	bool ConfigureWorldModelOverride(int entity, const char[] model, bool wearable=false)
 	void MultiClassname(TFClassType class, char[] name, int length)
+	int GetHealingTarget(int client, bool checkgun=false)
+	void LogError2(const char[] buffer, any ...)
+	int GetRandBlockCell(ArrayList array, int &index, int block=0, bool byte=false, int defaul=0)
+	int GetRandBlockCellEx(ArrayList array, int block=0, bool byte=false, int defaul=0)
 */
 
 #define FF2_STOCKS
@@ -221,37 +228,6 @@ public Action Timer_DisguiseBackstab(Handle timer, int userid)
 	return Plugin_Continue;
 }
 
-stock TFClassType KvGetClass(Handle kv, const char[] string)
-{
-	static char buffer[24];
-	KvGetString(kv, string, buffer, sizeof(buffer), "1");
-	TFClassType class = view_as<TFClassType>(StringToInt(buffer));
-	if(class != TFClass_Unknown)
-		return class;
-
-	class = TF2_GetClass(buffer);
-	if(class == TFClass_Unknown)
-		class = TFClass_Scout;
-
-	return class;
-}
-
-stock void AssignTeam(int client, int team)
-{
-	if(Boss[client].Active && !GetEntProp(client, Prop_Send, "m_iDesiredPlayerClass"))
-		SetEntProp(client, Prop_Send, "m_iDesiredPlayerClass", view_as<int>(Boss[client].Class));
-
-	SetEntProp(client, Prop_Send, "m_lifeState", 2);
-	ChangeClientTeam(client, team);
-	TF2_RespawnPlayer(client);
-
-	if(!GetEntProp(client, Prop_Send, "m_iObserverMode") || !IsPlayerAlive(client))
-		return;
-
-	TF2_SetPlayerClass(client, Boss[client].Active ? Boss[client].Class : TFClass_Heavy);
-	TF2_RespawnPlayer(client);
-}
-
 stock void RandomlyDisguise(int client)
 {
 	int target = client;
@@ -289,6 +265,37 @@ stock void RandomlyDisguise(int client)
 		SetEntProp(client, Prop_Send, "m_iDisguiseTargetIndex", target);
 		SetEntProp(client, Prop_Send, "m_iDisguiseHealth", GetRandomInt(1, 300));
 	}
+}
+
+stock void AssignTeam(int client, int team)
+{
+	if(Boss[client].Active && !GetEntProp(client, Prop_Send, "m_iDesiredPlayerClass"))
+		SetEntProp(client, Prop_Send, "m_iDesiredPlayerClass", view_as<int>(Boss[client].Class));
+
+	SetEntProp(client, Prop_Send, "m_lifeState", 2);
+	ChangeClientTeam(client, team);
+	TF2_RespawnPlayer(client);
+
+	if(!GetEntProp(client, Prop_Send, "m_iObserverMode") || !IsPlayerAlive(client))
+		return;
+
+	TF2_SetPlayerClass(client, Boss[client].Active ? Boss[client].Class : TFClass_Heavy);
+	TF2_RespawnPlayer(client);
+}
+
+stock TFClassType KvGetClass(Handle kv, const char[] string)
+{
+	static char buffer[24];
+	KvGetString(kv, string, buffer, sizeof(buffer), "1");
+	TFClassType class = view_as<TFClassType>(StringToInt(buffer));
+	if(class != TFClass_Unknown)
+		return class;
+
+	class = TF2_GetClass(buffer);
+	if(class == TFClass_Unknown)
+		class = TFClass_Scout;
+
+	return class;
 }
 
 stock SectionType KvGetSectionType(Handle kv, char[] buffer="", int length=16)
@@ -369,7 +376,7 @@ stock bool KvGetBossAccess2(Handle kv, int client, char[] buffer, int length)
 	return false;
 }
 
-stock void KvGetLang(Handle kv, const char[] key, char[] buffer, int length, int client=0, const char[] default="=Failed name=")
+stock void KvGetLang(Handle kv, const char[] key, char[] buffer, int length, int client=0, const char[] defaul="=Failed name=")
 {
 	static char language[20];
 	GetLanguageInfo(client ? GetClientLanguage(client) : GetServerLanguage(), language, sizeof(language), buffer, sizeof(buffer));
@@ -387,7 +394,7 @@ stock void KvGetLang(Handle kv, const char[] key, char[] buffer, int length, int
 	}
 
 	if(!buffer[0])
-		KvGetString(kv, key, buffer, length, default);
+		KvGetString(kv, key, buffer, length, defaul);
 }
 
 stock bool ConfigureWorldModelOverride(int entity, const char[] model, bool wearable=false)
@@ -478,4 +485,22 @@ stock void LogError2(const char[] buffer, any ...)
 
 	LogToOpenFileEx(file, message);
 	PrintToServer(message);
+}
+
+stock int GetRandBlockCell(ArrayList array, int &index, int block=0, bool byte=false, int defaul=0)
+{
+	int size = array.Length;
+	if(size < 0)
+	{
+		index = GetRandomInt(0, size-1);
+		return array.Get(index, iBlock, byte);
+	}
+	index = -1;
+	return defaul;
+}
+
+stock int GetRandBlockCellEx(ArrayList array, int block=0, bool byte=false, int defaul=0)
+{
+	int index;
+	return GetRandBlockCell(array, index, block, byte, defaul);
 }

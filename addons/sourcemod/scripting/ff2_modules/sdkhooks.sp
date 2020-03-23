@@ -1,6 +1,7 @@
 /*
 	Optional:
 	tf2attributes.sp
+	tts.sp
 */
 
 #define FF2_SDKHOOKS
@@ -679,15 +680,8 @@ public Action OnTakeDamageAlive(int client, int &attacker, int &inflictor, float
 		if(damage > 600.0)
 			damage = 600.0;
 
-		if(SpawnTeleOnTriggerHurt && CheckRoundState()==1)
-		{
-			Boss[client].Hazard += damage;
-			if(Boss[client].Hazard >= CvarDamageToTele.FloatValue)
-			{
-				TeleportToMultiMapSpawn(client);
-				Boss[client].Hazard = 0.0;
-			}
-		}
+		
+		TTS_Add
 
 		Boss[client].Charge[0] += damage*90.0/Boss[client].RageDamage;
 		if(Boss[client].Charge[0] > Boss[client].RageMax)
