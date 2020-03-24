@@ -874,13 +874,3 @@ static int BossToClient(int boss)
 
 	return -1;
 }
-
-static int GetZeroBoss()
-{
-	for(int client=1; client<=MaxClients; client++)
-	{
-		if(Boss[client].Active && Boss[client].Leader)
-			return client;
-	}
-	return -1;
-}

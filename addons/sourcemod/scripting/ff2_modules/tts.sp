@@ -16,30 +16,31 @@
 #define TTS_WHITELIST_FILE	"data/freak_fortress_2/spawn_teleport.cfg"
 #define TTS_BLACKLIST_FILE	"data/freak_fortress_2/spawn_teleport_blacklist.cfg"
 
-bool TTSEnabled;
+float TTSEnabled;
+static ConVar CvarTTS;
 static ArrayList s_hSpawnArray = null;
 
 void TTS_Setup()
 {
 	s_hSpawnArray = new ArrayList(2);
-	CvarTTS = CreateConVar("ff2_boss_tts", "600.0", "Amount of damage needed to be taken to teleport the boss (if TTS is enabled)", FCVAR_DONTRECORD);
+	CvarTTS = CreateConVar("ff2_boss_tts", "600.0", "Amount of damage needed to be taken to teleport the boss (if TTS is enabled)", _, true, 0.000001);
 }
 
-bool TTS_Check(const char[] map)
+float TTS_Check(const char[] map)
 {
 	char config[PLATFORM_MAX_PATH];
 	BuildPath(Path_SM, config, sizeof(config), TTS_WHITELIST_FILE);
 	if(!FileExists(config))
 	{
 		LogError2("[TTS] Unable to find '%s'", TTS_WHITELIST_FILE);
-		return false;
+		return 0.0;
 	}
 
 	File file = OpenFile(config, "r");
 	if(file == INVALID_HANDLE)
 	{
 		LogError2("[TTS] Error reading from '%s'", SpawnTeleportCFG);
-		return false;
+		return 0.0;
 	}
 
 	while(!file.EndOfFile() && file.ReadLine(config, sizeof(config)))
@@ -49,19 +50,19 @@ bool TTS_Check(const char[] map)
 			continue;
 
 		delete file;
-		return true;
+		return CvarTTS.FloatValue;
 	}
 	delete file;
 
 	BuildPath(Path_SM, config, sizeof(config), TTS_BLACKLIST_FILE);
 	if(!FileExists(config))
-		return false;
+		return 0.0;
 
 	file = OpenFile(config, "r");
 	if(file == INVALID_HANDLE)
 	{
 		LogError2("[TTS] Error reading from '%s'", TTS_BLACKLIST_FILE);
-		return false;
+		return 0.0;
 	}
 
 	while(!file.EndOfFile() && file.ReadLine(config, sizeof(config)))
@@ -71,10 +72,10 @@ bool TTS_Check(const char[] map)
 			continue;
 
 		delete file;
-		return true;
+		return CvarTTS.FloatValue;
 	}
 	delete file;
-	return false;
+	return 0.0;
 }
 
 void TTS_Start()
@@ -116,11 +117,11 @@ void TTS_Add(int client, float damage)
 	}
 
 	Boss[client].Hazard += damage;
-	if(Boss[client].Hazard >= CvarTTS.FloatValue)
-	{
-		TeleportToMultiMapSpawn(client);
-		Boss[client].Hazard = 0.0;
-	}
+	if(Boss[client].Hazard < TTSEnabled)
+		return;
+
+	TeleportToMultiMapSpawn(client);
+	Boss[client].Hazard = 0.0;
 }
 
 /*

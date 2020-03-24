@@ -764,6 +764,32 @@ void Bosses_Equip(int client, int boss)
 	} while(Special[boss].Kv.GotoNextKey());
 }
 
+bool Bosses_GetSound(const char[] key, char[] buffer, int length, int client=0)
+{
+	if(!client)
+	{
+		client = GetZeroBoss();
+		if(client == -1)
+			return false;
+	}
+
+	Special[Boss[client].Special].Kv.Rewind();
+	if(!Special[Boss[client].Special].Kv.JumpToKey(key))
+		return false;
+
+	if(Boss[client].Special < 0)
+		return false;
+
+	char filePath[PLATFORM_MAX_PATH], key[8];
+	if(Special[Boss[client].Special].Kv.GotoFirstSubKey())
+	{
+		do
+		{
+			
+		} while(Special[Boss[client].Special].Kv.GotoNextKey());
+	}
+}
+
 static int GetRankingKills(int rank, int index, bool wearable)
 {
 	case -1:

@@ -504,3 +504,96 @@ stock int GetRandBlockCellEx(ArrayList array, int block=0, bool byte=false, int 
 	int index;
 	return GetRandBlockCell(array, index, block, byte, defaul);
 }
+
+stock void EmitVoice(const int[] clients, int numClients, const char[] sample, int entity=SOUND_FROM_PLAYER, int channel=SNDCHAN_AUTO, int level=SNDLEVEL_NORMAL, int flags=SND_NOFLAGS, float volume=SNDVOL_NORMAL, int pitch=SNDPITCH_NORMAL, int speakerentity=-1, const float origin[3]=NULL_VECTOR, const float dir[3]=NULL_VECTOR, bool updatePos=true, float soundtime=0.0)
+{
+	for(int i; i<numClients; i++)
+	{
+		if(Client[clients[i]].Pref[Pref_Voice] < Pref_Off)
+			EmitSoundToClient(clients[i], sample, entity, channel, level, flags, volume, pitch, speakerentity, origin, dir, updatePos, soundtime);
+	}
+}
+
+stock void EmitVoiceToAll(const char[] sample, int entity=SOUND_FROM_PLAYER, int channel=SNDCHAN_AUTO, int level=SNDLEVEL_NORMAL, int flags=SND_NOFLAGS, float volume=SNDVOL_NORMAL, int pitch=SNDPITCH_NORMAL, int speakerentity=-1, const float origin[3]=NULL_VECTOR, const float dir[3]=NULL_VECTOR, bool updatePos=true, float soundtime=0.0)
+{
+	for(int client=1; client<=MaxClients; client++)
+	{
+		if(IsValidClient(client) && Client[client].Pref[Pref_Voice]<Pref_Off)
+			EmitSoundToClient(client, sample, entity, channel, level, flags, volume, pitch, speakerentity, origin, dir, updatePos, soundtime);
+	}
+}
+
+stock void EmitVoiceToClient(int client, const char[] sample, int entity=SOUND_FROM_PLAYER, int channel=SNDCHAN_AUTO, int level=SNDLEVEL_NORMAL, int flags=SND_NOFLAGS, float volume=SNDVOL_NORMAL, int pitch=SNDPITCH_NORMAL, int speakerentity=-1, const float origin[3]=NULL_VECTOR, const float dir[3]=NULL_VECTOR, bool updatePos=true, float soundtime=0.0)
+{
+	if(Client[client].Pref[Pref_Voice] < Pref_Off)
+		EmitSoundToClient(client, sample, entity, channel, level, flags, volume, pitch, speakerentity, origin, dir, updatePos, soundtime);
+}
+
+stock void EmitVoiceSound(const int[] clients, int numClients, const char[] sample, bool canStop=true, bool stopLast=true)
+{
+	for(int i; i<numClients; i++)
+	{
+		EmitVoiceSoundToClient(client, sample, canStop, stopLast);
+	}
+}
+
+stock void EmitVoiceSoundToAll(const char[] sample, bool canStop=true, bool stopLast=true)
+{
+	for(int client=1; client<=MaxClients; client++)
+	{
+		if(IsValidClient(client))
+			EmitVoiceSoundToClient(client, sample, canStop, stopLast);
+	}
+}
+
+stock void EmitVoiceSoundToClient(int client, const char[] sample, bool canStop=true, bool stopLast=true)
+{
+	if(Client[client].Pref[Pref_Voice] > Pref_On)
+		return;
+
+	if(stopLast && Client[client].Voice[0])
+	{
+		StopSound(client, SNDCHAN_AUTO, Client[client].Voice);
+		if(!canStop)
+			Client[client].Voice[0] = 0;
+	}
+
+	if(canStop)
+		strcopy(Client[client].Voice, PLATFORM_MAX_PATH, sample);
+
+	ClientCommand(client, "playgamesound \"%s\"", sample);
+}
+
+stock void EmitMusic(const int[] clients, int numClients, const char[] sample)
+{
+	for(int i; i<numClients; i++)
+	{
+		if(Client[client].Pref[Pref_Music] < Pref_Off)
+			ClientCommand(client, "playgamesound \"#%s\"", sample);
+	}
+}
+
+stock void EmitMusicToAll(const char[] sample)
+{
+	for(int client=1; client<=MaxClients; client++)
+	{
+		if(IsValidClient(client) && Client[client].Pref[Pref_Music]<Pref_Off)
+			ClientCommand(client, "playgamesound \"#%s\"", sample);
+	}
+}
+
+stock void EmitMusicToClient(int client, const char[] sample)
+{
+	if(Client[client].Pref[Pref_Music] < Pref_Off)
+		ClientCommand(client, "playgamesound \"#%s\"", sample);
+}
+
+stock int GetZeroBoss()
+{
+	for(int client=1; client<=MaxClients; client++)
+	{
+		if(Boss[client].Active && Boss[client].Leader)
+			return client;
+	}
+	return -1;
+}

@@ -198,6 +198,7 @@ enum struct ClientEnum
 	TFTeam Team;
 
 	char BGM[PLATFORM_MAX_PATH];
+	char Voice[PLATFORM_MAX_PATH];
 	float BGMAt;
 	float GlowFor;
 	float PopUpAt;
@@ -240,6 +241,7 @@ SpecialEnum Special[MAXSPECIALS];
 ArrayList BossList;
 int Specials;
 
+bool LastMann;
 int Enabled;
 int NextGamemode;
 int Players;
@@ -305,7 +307,7 @@ public Plugin myinfo =
 };
 
 /*
-	SourceMod Events
+	Setup Events
 */
 
 public APLRes AskPluginLoad2(Handle myself, bool late, char[] error, int err_max)
@@ -412,10 +414,19 @@ public void OnPluginStart()
 
 public void OnConfigsExecuted()
 {
-	
+	char buffer[64];
+	GetCurrentMap(buffer, sizeof(buffer));
+	CheckGamemode(buffer);
 
 	Weapons_Setup();
 	Bosses_Config();
+}
+
+public void OnMapStart()
+{
+	#if SETTING_TICKMODE>0
+	CreateTimer(SETTING_TICKMODE, OnGameTimer, _, TIMER_FLAG_NO_MAPCHANGE);
+	#endif
 }
 
 /*
@@ -426,17 +437,21 @@ public void OnRoundSetup(Event event, const char[] name, bool dontBroadcast)
 {
 	if(NextGamemode != Game_Invalid)
 	{
-		if(Enabled && NextGamemode)
-		NextGamemode = Game_Invalid;
+		switch(NextGamemode)
+		{
+			case Game_Disabled:
+				Enabled = Game_Disabled;
+
+			case Game_Fun:
+				Enabled = Game_Fun;
+
+			case Game_Arena:
+				Enabled = Game_Arena;
+		}
 	}
 }
 
 #if SETTING_TICKMODE>0
-public void OnMapStart()
-{
-	CreateTimer(SETTING_TICKMODE, OnGameTimer, _, TIMER_FLAG_NO_MAPCHANGE);
-}
-
 public Action OnGameTimer(Handle timer)
 #elseif SETTING_TICKMODE<0
 public void OnGameFrame()
@@ -444,7 +459,7 @@ public void OnGameFrame()
 public void OnPlayerRunCmdPost(int nullVar1, int nullVar2, int nullVar3, const float nullVar4[3], const float nullVar5[3], int nullVar6, int nullVar7, int nullVar8, int nullVar9, int nullVar0, const int nullVar[2])
 #endif
 {
-	if(Enabled != Game_Arena)
+	if(Enabled <= Game_Disabled)
 		return;
 
 	int roundState = CheckRoundState();
@@ -459,7 +474,7 @@ public void OnPlayerRunCmdPost(int nullVar1, int nullVar2, int nullVar3, const f
 		return;
 
 	hudAt = engineTime+SETTING_HUDDELAY;
-	bool sappers;
+	bool sappers, found;
 	int max;
 	int best[10];
 	int[] clients = new int[MaxClients];
@@ -471,6 +486,7 @@ public void OnPlayerRunCmdPost(int nullVar1, int nullVar2, int nullVar3, const f
 		clients[max++] = i;
 		if(Boss[i].Active)
 		{
+			found = true;
 			if(!sappers)
 				sappers = Boss[i].Sapper;
 
@@ -494,6 +510,9 @@ public void OnPlayerRunCmdPost(int nullVar1, int nullVar2, int nullVar3, const f
 			break;
 		}
 	}
+
+	if(Enabled==Game_Fun && !found)
+		return;
 
 	char bestHud[10][48];
 	for(int i; i<10; i++)
@@ -647,8 +666,8 @@ int CheckGamemode(const char[] map)
 			#endif
 
 			#if defined FF2_TTS
-			result = kv.GetNum("doors", -1);
-			TTSEnabled = result ? result<0 ? TTS_Check(map) : true : false;
+			float tts = kv.GetFloat("hazard", -1.0);
+			TTSEnabled = tts<0 ? TTS_Check(map) : tts;
 			#endif
 
 			result = kv.GetNum("mode", 0)+2;
@@ -692,6 +711,58 @@ int CheckGamemode(const char[] map)
 	}
 	delete kv;
 	return result;
+}
+
+void GameOverScreen(TFTeam winner, float duration)
+{
+	if(team == BossTeam)
+	{
+		if(RandomSound("sound_win", sound, sizeof(sound)))
+			EmitVoiceSoundToAll(sound, false);
+
+		if(RandomSound("sound_outtromusic_win", sound, sizeof(sound)))
+		{
+			EmitMusicToAll(sound);
+		}
+		else if(RandomSound("sound_outtromusic", sound, sizeof(sound)))
+		{
+			EmitMusicToAll(sound);
+		}
+	}
+	else if(team)
+	{
+		if(RandomSound("sound_outtromusic_lose", sound, sizeof(sound)))
+		{
+			EmitMusicToAll(sound);
+		}
+		else if(RandomSound("sound_outtromusic", sound, sizeof(sound)))
+		{
+			EmitMusicToAll(sound);
+		}
+	}
+	else
+	{
+		if(RandomSound("sound_stalemate", sound, sizeof(sound)))
+			EmitVoiceSoundToAll(sound, false);
+
+		if(RandomSound("sound_outtromusic_stalemate", sound, sizeof(sound)))
+		{
+			EmitMusicToAll(sound);
+		}
+		else if(RandomSound("sound_outtromusic_lose", sound, sizeof(sound)))
+		{
+			EmitMusicToAll(sound);
+		}
+		else if(RandomSound("sound_outtromusic", sound, sizeof(sound)))
+		{
+			EmitMusicToAll(sound);
+		}
+	}
+
+	for(int client=1; client<=MaxClients; client++)
+	{
+		if(IsValidClient(client)
+	}
 }
 
 public Action MainMenuC(int client, int args)
