@@ -597,3 +597,31 @@ stock int GetZeroBoss()
 	}
 	return -1;
 }
+
+public Action Timer_RemoveOverlay(Handle timer, TFTeam bossTeam)
+{
+	int flags = GetCommandFlags("r_screenoverlay");
+	SetCommandFlags("r_screenoverlay", flags & ~FCVAR_CHEAT);
+	for(int target=1; target<=MaxClients; target++)
+	{
+		if(IsValidClient(target))
+			ClientCommand(target, "r_screenoverlay off");
+	}
+	SetCommandFlags("r_screenoverlay", flags);
+	return Plugin_Continue;
+}
+
+stock void DoOverlay(int client, const char[] overlay)
+{
+	int flags = GetCommandFlags("r_screenoverlay");
+	SetCommandFlags("r_screenoverlay", flags & ~FCVAR_CHEAT);
+	if(overlay[0])
+	{
+		ClientCommand(client, "r_screenoverlay \"%s\"", overlay);
+	}
+	else
+	{
+		ClientCommand(client, "r_screenoverlay off");
+	}
+	SetCommandFlags("r_screenoverlay", flags);
+}
