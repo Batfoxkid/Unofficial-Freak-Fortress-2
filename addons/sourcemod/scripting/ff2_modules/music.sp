@@ -180,6 +180,27 @@ void Music_Stop(int client)
 	Client[client].BGM[0] = 0;
 }
 
+void Music_Override(int client, const char[] path, float time, char[] name, char[] artist)
+{
+	if(Client[client].BGM[0])
+		StopSound(client, SNDCHAN_AUTO, Client[client].BGM);
+
+	strcopy(Client[client].BGM, PLATFORM_MAX_PATH, path);
+
+	ClientCommand(client, "playgamesound \"%s\"", path);
+	Client[client].BGMAt = time>1 ? engineTime+time : FAR_FUTURE;
+
+	SetGlobalTransTarget(client);
+
+	if(!name[0])
+		Format(name, sizeof(name), "%t", "Music Name");
+
+	if(!artist[0])
+		Format(artist, sizeof(artist), "%t", "Music Artist");
+
+	FPrintToChat(client, "%t", "Music Info", artist, name);
+}
+
 void Music_Menu(int client)
 {
 	Menu menu = new Menu(Music_MenuH);
