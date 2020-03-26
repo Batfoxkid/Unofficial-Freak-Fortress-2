@@ -764,15 +764,8 @@ void Bosses_Equip(int client, int boss)
 	} while(Special[boss].Kv.GotoNextKey());
 }
 
-bool Bosses_GetSound(const char[] key, char[] buffer, int length, int client=0)
+bool Bosses_GetSound(const char[] key, char[] buffer, int length, int client, int slot=-2)
 {
-	if(!client)
-	{
-		client = GetZeroBoss();
-		if(client == -1)
-			return false;
-	}
-
 	Special[Boss[client].Special].Kv.Rewind();
 	if(!Special[Boss[client].Special].Kv.JumpToKey(key))
 		return false;
@@ -780,14 +773,165 @@ bool Bosses_GetSound(const char[] key, char[] buffer, int length, int client=0)
 	if(Boss[client].Special < 0)
 		return false;
 
-	char filePath[PLATFORM_MAX_PATH], key[8];
+	char buffer[2];
 	if(Special[Boss[client].Special].Kv.GotoFirstSubKey())
 	{
 		do
 		{
-			
+			if(KvGetSectionType(Special[Boss[client].Special].Kv) == Section_Sound)
+				continue;
+
 		} while(Special[Boss[client].Special].Kv.GotoNextKey());
 	}
+}
+
+// 0: Local Default, 1: Global Default, 2: Music Default
+bool Bosses_PlaySound(const char[] key, int client, int mode=0, const char[] matching="")
+{
+	if(Boss[client].Special < 0)
+		return false;
+
+	Special[Boss[client].Special].Kv.Rewind();
+	if(!Special[Boss[client].Special].Kv.JumpToKey(key))
+		return false;
+
+	static char buffer[PLATFORM_MAX_PATH], name[32], artist[32];
+	int type = mode;
+	float duration;
+	bool catch = !StrContains(key, "catch_");
+	if(matching[0])
+	{
+		ArrayList list = new ArrayList();
+		if(Special[Boss[client].Special].Kv.GotoFirstSubKey())
+		{
+			for(int i; ; i++)
+			{
+				Special[Boss[client].Special].Kv.GetString(catch ? "vo" : "slot", buffer, sizeof(buffer))
+				if(!StrContains(buffer, matching, false))
+					list.Push(i);
+
+				if(!Special[Boss[client].Special].Kv.GotoNextKey())
+					break;
+			}
+
+			int choosen = list.Length;
+			if(choosen < 1)
+			{
+				delete list;
+				return false;
+			}
+
+			choosen = list.Get(GetRandomInt(0, choosen-1));
+			delete list;
+			Special[Boss[client].Special].Kv.Rewind();
+			if(!Special[Boss[client].Special].Kv.JumpToKey(key))
+				return false;
+
+			while(choosen>0 && Special[Boss[client].Special].Kv.GotoNextKey())
+			{
+				choosen--;
+			}
+
+			if(!Special[Boss[client].Special].Kv.GetSectionName(buffer, sizeof(buffer)))
+				return false;
+
+			if(!mode)
+			{
+				type = Special[Boss[client].Special].Kv.GetNum("type", type);
+				duration = Special[Boss[client].Special].Kv.GetFloat("time");
+				if(type == 3)
+				{
+					Special[Boss[client].Special].Kv.GetString("name", name, sizeof(name));
+					Special[Boss[client].Special].Kv.GetString("artist", artist, sizeof(artist));
+				}
+			}
+		}
+		else
+		{
+			char key[8];
+			for(int i=1; ; i++)
+			{
+				IntToString(i, key, sizeof(key));
+				Special[Boss[client].Special].Kv.GetString(key, key, sizeof(key));
+				if(key[0])
+				{
+					Special[Boss[client].Special].Kv.GetString(type==-1 ? "vo" : "slot", buffer, sizeof(buffer))
+					if(!StrContains(buffer, matching, false))
+						list.Push(i);
+
+					continue;
+				}
+
+				if(list.Length)
+				{
+					version = 1;
+					break;
+				}
+
+				for(i=1; ; i++)
+				{
+					FormatEx(key, sizeof(key), "path%d", i);
+					Special[Boss[client].Special].Kv.GetString(key, key, sizeof(key));
+					if(!key[0])
+						break;
+
+					Special[Boss[client].Special].Kv.GetString(type==-1 ? "vo" : "slot", buffer, sizeof(buffer))
+					if(!StrContains(buffer, matching, false))
+						list.Push(i);
+				}
+			}
+		}
+		delete list;
+	}
+	else
+	{
+		int count;
+		version = Special[Boss[client].Special].Kv.GotoFirstSubKey();
+		if(version)
+		{
+			do
+			{
+				count++;
+			} while(Special[Boss[client].Special].Kv.GotoNextKey());
+			return count ? GetRandomInt(0, count-1) : -1;
+		}
+
+		char key[8];
+		for(int i=1; ; i++)
+		{
+			IntToString(i, key, sizeof(key));
+			Special[Boss[client].Special].Kv.GetString(key, key, sizeof(key));
+			if(key[0])
+			{
+				count++;
+				continue;
+			}
+
+			if(count)
+				return GetRandomInt(0, count-1);
+
+			for(i=1; ; i++)
+			{
+				FormatEx(key, sizeof(key), "path%d", i);
+				Special[Boss[client].Special].Kv.GetString(key, key, sizeof(key));
+				if(!key[0])
+					return count ? GetRandomInt(0, count-1) : -1;
+
+				count++;
+			}
+		}
+		return -1;
+	}
+}
+
+static bool KvGetRandomSlotSound(Handle kv, const char[] key, int slot, char[] sound, int &type, float &time)
+{
+	Special[Boss[client].Special].Kv.Rewind();
+	if(!Special[Boss[client].Special].Kv.JumpToKey(key))
+		return false;
+
+
+	
 }
 
 static int GetRankingKills(int rank, int index, bool wearable)
