@@ -1101,14 +1101,324 @@ bool Bosses_GetSound(int client, const char[] key, int &type, char[] buffer, int
 	return false;	// Never going to be called
 }
 
-static bool KvGetRandomSlotSound(Handle kv, const char[] key, int slot, char[] sound, int &type, float &time)
+void Bosses_AbilitySlot(int client, int slot)
+{
+	if(Boss[client].Special < 0)
+		return;
+
+	Special[Boss[client].Special].Kv.Rewind();
+	Special[Boss[client].Special].Kv.GotoFirstSubKey();
+	do
+	{
+		static char ability[64];
+		if(KvGetSectionType(Special[Boss[client].Special].Kv, ability, sizeof(ability) != Section_Ability))
+			continue;
+
+		if(Special[Boss[client].Special].Kv.GetNum("slot", -2)!=slot || Special[Boss[client].Special].Kv.GetNum("arg0", -2)!=slot)
+			continue;
+
+		static char plugin[64];
+		Special[Boss[client].Special].Kv.GetString("life", plugin, sizeof(plugin));
+		if(plugin[0])
+		{
+			bool found;
+			static char lives[8][4];
+			int count = ExplodeString(plugin, " ", lives, sizeof(lives), sizeof(lives[]));
+			for(int i; i<count; i++)
+			{
+				if(StringToInt(lives[i]) != Boss[client].Lives)
+					continue;
+
+				found = true;
+				break;
+			}
+
+			if(!found)
+				continue;
+		}
+
+		Special[Boss[client].Special].Kv.GetString("plugin_name", plugin, sizeof(plugin));
+
+		if(!StrContains(ability, "ability"))
+			Special[Boss[client].Special].Kv.GetString("name", ability, sizeof(ability));
+
+		Bosses_Ability(client, ability, plugin, slot, Special[Boss[client].Special].Kv.GetNum("buttonmode"));
+	} while(Special[Boss[client].Special].Kv.GotoNextKey());
+}
+
+void Bosses_Ability(int client, const char[] ability, const char[] plugin, int slot, int buttonMode)
+{
+	bool enabled = true;
+	Call_StartForward(PreAbility);
+	Call_PushCell(Boss[client].Leader ? 0 : client);
+	Call_PushString(plugin);
+	Call_PushString(ability);
+	Call_PushCell(slot);
+	Call_PushCellRef(enabled);
+	Call_Finish();
+
+	if(!enabled)
+		return;
+
+	Action action = Plugin_Continue;
+	Call_StartForward(OnAbility);
+	Call_PushCell(Boss[client].Leader ? 0 : client);
+	Call_PushString(plugin);
+	Call_PushString(ability);
+	if(slot<=0 || slot>3)
+	{
+		Call_PushCell(3);
+		Call_Finish(action);
+		if(!slot && Boss[client].RageDamage>1)
+		{
+			if(Boss[client].RageMode == 1)
+			{
+				Boss[client].Charge[0] -= Boss[client].RageMin;
+			}
+			else if(!Boss[client].RageMode)
+			{
+				Boss[client].Charge[0] = 0.0;
+			}
+		}
+		return;
+	}
+
+	SetHudTextParams(-1.0, 0.88, 0.15, 255, 255, 255, 255);
+	int button;
+	switch(buttonMode)
+	{
+		case 1:
+			button = IN_DUCK|IN_ATTACK2;
+
+		case 2:
+			button = IN_RELOAD;
+
+		case 3:
+			button = IN_ATTACK3;
+
+		case 4:
+			button = IN_DUCK;
+
+		case 5:
+			button = IN_SCORE;
+
+		default:
+			button = IN_ATTACK2;
+	}
+
+	if(GetClientButtons(client) & button)
+	{
+		if(Boss[client].Charge[slot] >= 0.0)
+		{
+			Call_PushCell(2);
+			Call_Finish(action);
+			float charge;
+			if(GetArgumentI(boss, plugin_name, ability_name, "slot", -2) != -2)
+			{
+				charge = 100.0*0.2/GetArgumentF(boss, plugin_name, ability_name, "charge time", 1.5);
+			}
+			else
+			{
+				charge = 100.0*0.2/GetAbilityArgumentFloat(boss, plugin_name, ability_name, 1, 1.5);
+			}
+
+			if(Boss[client].Charge[slot]+charge < 100.0)
+			{
+				Boss[client].Charge[slot] += charge;
+			}
+			else
+			{
+				Boss[client].Charge[slot] = 100.0;
+			}
+		}
+		else
+		{
+			Call_PushCell(1);  //Status
+			Call_Finish(action);
+			Boss[client].Charge[slot] += 0.2;
+		}
+		return;
+	}
+
+	if(Boss[client].Charge[slot] > 0.3)
+	{
+		float angles[3];
+		GetClientEyeAngles(Boss[boss], angles);
+		if(angles[0] < -30.0)
+		{
+			Call_PushCell(3);
+			Call_Finish(action);
+			DataPack data;
+			CreateDataTimer(0.1, Bosses_UseBossCharge, data);
+			data.WriteCell(GetClientUserId(client));
+			data.WriteCell(slot);
+			if(Bosses_ArgI(client, plugin_name, ability_name, "slot", -2) != -2)
+			{
+				data.WriteFloat(-1.0*GetArgumentF(boss, plugin_name, ability_name, "cooldown", 5.0));
+			}
+			else
+			{
+				data.WriteFloat(-1.0*GetAbilityArgumentFloat(boss, plugin_name, ability_name, 2, 5.0));
+			}
+		}
+		else
+		{
+			Call_PushCell(0);
+			Call_Finish(action);
+			Boss[client].Charge[slot] = 0.0;
+		}
+		return;
+	}
+
+	if(Boss[client].Charge[slot] < 0.0)
+	{
+		Call_PushCell(1);
+		Call_Finish(action);
+		Boss[client].Charge[slot] += 0.2;
+		return;
+	}
+
+	Call_PushCell(0);
+	Call_Finish(action);
+}
+
+public Action Bosses_UseBossCharge(Handle timer, DataPack data)
+{
+	data.Reset();
+	Boss[GetClientOfUserId(data.ReadCell())].Charge[data.ReadCell()] = data.ReadFloat();
+	return Plugin_Continue;
+}
+
+int Bosses_ArgI(int client, const char[] ability, const char[] plugin, const char[] arg, int index=-1, int defaul=0)
+{
+	char buffer[64];
+	Special[Boss[client].Special].Kv.Rewind();
+	Special[Boss[client].Special].Kv.GotoFirstSubKey();
+	do
+	{
+		if(KvGetSectionType(Special[Boss[client].Special].Kv, buffer, sizeof(buffer) != Section_Ability))
+			continue;
+
+		if(!StrContains(buffer, "ability"))
+		{
+			Special[Boss[client].Special].Kv.GetString("name", buffer, sizeof(buffer));
+			continue;
+		}
+
+		if(plugin[0])
+		{
+			Special[Boss[client].Special].Kv.GetString("plugin_name", buffer, sizeof(buffer));
+			if(buffer[0] && !StrEqual(plugin, buffer))
+				continue;
+		}
+
+		if(index >= 0)
+		{
+			FormatEx(buffer, sizeof(buffer), "arg%d", index);
+			return Special[Boss[client].Special].Kv.GetNum(arg, Special[Boss[client].Special].Kv.GetNum(buffer, defaul));
+		}
+
+		return Special[Boss[client].Special].Kv.GetNum(arg, defaul);
+	} while(Special[Boss[client].Special].Kv.GotoNextKey());
+	return defaul;
+}
+
+float Bosses_ArgF(int client, const char[] ability, const char[] plugin, const char[] arg, int index=-1, float defaul=0)
+{
+	char buffer[64];
+	Special[Boss[client].Special].Kv.Rewind();
+	Special[Boss[client].Special].Kv.GotoFirstSubKey();
+	do
+	{
+		if(KvGetSectionType(Special[Boss[client].Special].Kv, buffer, sizeof(buffer) != Section_Ability))
+			continue;
+
+		if(!StrContains(buffer, "ability"))
+		{
+			Special[Boss[client].Special].Kv.GetString("name", buffer, sizeof(buffer));
+			continue;
+		}
+
+		if(plugin[0])
+		{
+			Special[Boss[client].Special].Kv.GetString("plugin_name", buffer, sizeof(buffer));
+			if(buffer[0] && !StrEqual(plugin, buffer))
+				continue;
+		}
+
+		if(index >= 0)
+		{
+			FormatEx(buffer, sizeof(buffer), "arg%d", index);
+			return Special[Boss[client].Special].Kv.GetFloat(arg, Special[Boss[client].Special].Kv.GetFloat(buffer, defaul));
+		}
+
+		return Special[Boss[client].Special].Kv.GetFloat(arg, defaul);
+	} while(Special[Boss[client].Special].Kv.GotoNextKey());
+	return defaul;
+}
+
+bool Bosses_ArgS(int client, const char[] ability, const char[] plugin, const char[] arg, int index=-1, char[] buffer, int length)
 {
 	Special[Boss[client].Special].Kv.Rewind();
-	if(!Special[Boss[client].Special].Kv.JumpToKey(key))
-		return false;
+	Special[Boss[client].Special].Kv.GotoFirstSubKey();
+	do
+	{
+		if(KvGetSectionType(Special[Boss[client].Special].Kv, buffer, length != Section_Ability))
+			continue;
 
+		if(!StrContains(buffer, "ability"))
+		{
+			Special[Boss[client].Special].Kv.GetString("name", buffer, length);
+			continue;
+		}
 
-	
+		if(plugin[0])
+		{
+			Special[Boss[client].Special].Kv.GetString("plugin_name", buffer, length);
+			if(buffer[0] && !StrEqual(plugin, buffer))
+				continue;
+		}
+
+		Special[Boss[client].Special].Kv.GetString(arg, buffer, length);
+		if(!buffer[0] && index>=0)
+		{
+			char key[8];
+			FormatEx(key, sizeof(key), "arg%d", index);
+			Special[Boss[client].Special].Kv.GetString(key, buffer, length);
+		}
+
+		return view_as<bool>(buffer[0]);
+	} while(Special[Boss[client].Special].Kv.GotoNextKey());
+
+	buffer[0] = 0;
+	return false;
+}
+
+KeyValues Bosses_ArgK(int client, const char[] ability, const char[] plugin)
+{
+	Special[Boss[client].Special].Kv.Rewind();
+	Special[Boss[client].Special].Kv.GotoFirstSubKey();
+	do
+	{
+		if(KvGetSectionType(Special[Boss[client].Special].Kv, buffer, length != Section_Ability))
+			continue;
+
+		if(!StrContains(buffer, "ability"))
+		{
+			Special[Boss[client].Special].Kv.GetString("name", buffer, length);
+			continue;
+		}
+
+		if(plugin[0])
+		{
+			Special[Boss[client].Special].Kv.GetString("plugin_name", buffer, length);
+			if(buffer[0] && !StrEqual(plugin, buffer))
+				continue;
+		}
+
+		return Special[Boss[client].Special].Kv;
+	} while(Special[Boss[client].Special].Kv.GotoNextKey());
+	return view_as<KeyValues>(INVALID_HANDLE);
 }
 
 static int GetRankingKills(int rank, int index, bool wearable)
