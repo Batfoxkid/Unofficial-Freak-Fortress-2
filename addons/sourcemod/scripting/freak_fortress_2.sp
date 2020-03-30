@@ -274,7 +274,7 @@ void MainMenu(int client) { MainMenuC(client, 0); }
 
 #include "ff2_modules/stocks.sp"
 #include "ff2_modules/preference.sp"
-#include "ff2_modules/weapons.sp"
+#tryinclude "ff2_modules/dhooks.sp"
 #tryinclude "ff2_modules/doors.sp"
 #tryinclude "ff2_modules/music.sp"
 #tryinclude "ff2_modules/rtd.sp"
@@ -283,14 +283,14 @@ void MainMenu(int client) { MainMenuC(client, 0); }
 #tryinclude "ff2_modules/tf2x10.sp"
 #tryinclude "ff2_modules/tf2attributes.sp"
 #tryinclude "ff2_modules/tts.sp"
+#tryinclude "ff2_modules/weapons.sp"
 
 #include "ff2_modules/formula.sp"	// tf2x10
-#include "ff2_modules/sdkhooks.sp"	// tf2attributes
+#include "ff2_modules/sdkhooks.sp"	// dhooks, tts, tf2attributes
 #tryinclude "ff2_modules/tf2items.sp"	// weapons
 #tryinclude "ff2_modules/steamworks.sp"	// tf2x10
 
 #include "ff2_modules/bosses.sp"	// convars, sdkhooks, tf2items
-#tryinclude "ff2_modules/dhooks.sp"	// sdkhooks
 #tryinclude "ff2_modules/stomp.sp"	// sdkhooks
 
 #include "ff2_modules/natives.sp"
@@ -418,6 +418,10 @@ public void OnPluginStart()
 	HookEvent("object_deflected", OnObjectDeflected, EventHookMode_Pre);
 	HookEvent("rps_taunt_event", OnRPS);
 
+	AddCommandListener(OnChangeClass, "changeclass");
+	AddCommandListener(OnJoinTeam, "jointeam");
+	AddCommandListener(OnJoinTeam, "autoteam");
+
 	AutoExecConfig(true, "FreakFortress2");
 
 	LoadTranslations("freak_fortress_2.phrases");
@@ -476,12 +480,56 @@ public void OnClientPostAdminCheck(int client)
 	SDKHook(client, SDKHook_GetMaxHealth, OnGetMaxHealth);
 }
 
-public Action ChangeClass(int client, const char[] command, int args)
+public Action OnChangeClass(int client, const char[] command, int args)
 {
 	if(Enabled!=Game_Arena || CheckRoundState()!=1)
 		return Plugin_Continue;
 
 	ShowVGUIPanel(client, GetClientTeam(client)==2 ? "class_red" : "class_blue");
+	return Plugin_Handled;
+}
+
+public Action OnJoinTeam(int client, const char[] command, int args)
+{
+	if(!args)
+		return Plugin_Continue;
+
+	if(Boss[client].Active)
+		return Plugin_Handled;
+
+	if(Enabled!=Game_Arena || CheckRoundState()==-1)
+		return Plugin_Continue;
+
+	if(GetClientTeam(client) > view_as<int>(TFTeam_Spectator))
+	{
+		if(GetConVarBool(FindConVar("mp_allowspectators"))
+		{
+			static char buffer[10];
+			GetCmdArg(1, buffer, sizeof(buffer));
+			if(StrEqual(buffer, "spectate", false))
+				ChangeClientTeam(client, view_as<int>(TFTeam_Spectator));
+		}
+
+		return Plugin_Handled;
+	}
+
+	ChangeClientTeam(client, Client[client].Team);
+	if(CheckRoundState() != 1)
+		ShowVGUIPanel(client, Client[client].Team==TFTeam_Red ? "class_red" : "class_blue");
+
+	return Plugin_Handled;
+}
+
+public Action OnAutoTeam(int client, const char[] command, int args)
+{
+	if(Enabled!=Game_Arena || CheckRoundState()==-1)
+		return Plugin_Continue;
+
+	if(GetClientTeam(client) > view_as<int>(TFTeam_Spectator))
+		return Plugin_Handled;
+
+	ChangeClientTeam(client, Client[client].Team);
+	ShowVGUIPanel(client, Client[client].Team==TFTeam_Red ? "class_red" : "class_blue");
 	return Plugin_Handled;
 }
 
