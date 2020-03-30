@@ -1,12 +1,22 @@
 /*
 	Optional:
-	tf2attributes.sp
-	tts.sp
+	dhooks
+	tf2attributes
+	tts
+
+	Functions:
+	void SDK_Setup()
+	int SDK_SpawnWeapon(int client, const char[] name, int index, int level, int quality, char[] attributes)
+
+	Credits:
+	Benoist3012 - ChangeClientTeamEx
 */
 
 #define FF2_SDKHOOKS
 
 Handle SDKEquipWearable;
+Handle SDKRemovePlayer;
+Handle SDKAddPlayer;
 
 void SDK_Setup()
 {
@@ -23,6 +33,20 @@ void SDK_Setup()
 	SDKEquipWearable = EndPrepSDKCall();
 	if(SDKEquipWearable == null)
 		LogError2("[Gamedata] Failed to create call: CBasePlayer::EquipWearable");
+
+	StartPrepSDKCall(SDKCall_Entity);
+	PrepSDKCall_SetFromConf(gameData, SDKConf_Virtual, "CTeam::AddPlayer");
+	PrepSDKCall_AddParameter(SDKType_CBasePlayer, SDKPass_Pointer);
+	SDKAddPlayer = EndPrepSDKCall();
+	if(SDKAddPlayer == null)
+		LogError2("[Gamedata] Failed to create call: CTeam::AddPlayer");
+	
+	StartPrepSDKCall(SDKCall_Entity);
+	PrepSDKCall_SetFromConf(gameData, SDKConf_Virtual, "CTeam::RemovePlayer");
+	PrepSDKCall_AddParameter(SDKType_CBasePlayer, SDKPass_Pointer);
+	SDKRemovePlayer = EndPrepSDKCall();
+	if(SDKRemovePlayer == null)
+		LogError2("[Gamedata] Failed to create call: CTeam::RemovePlayer");
 
 	#if defined FF2_DHOOKS
 	DHook_Setup(gameData);
@@ -74,6 +98,22 @@ stock int SDK_SpawnWeapon(int client, const char[] name, int index, int level, i
 		SDKCall(SDKEquipWearable, client, entity);
 
 	return entity;
+}
+
+stock void ChangeClientTeamEx(iClient, int iNewTeamNum)
+{
+	int iTeamNum = GetEntProp(iClient, Prop_Send, "m_iTeamNum");
+
+	int iTeam = MaxClients+1;
+	while ((iTeam = FindEntityByClassname(iTeam, TEAM_CLASSNAME)) != -1)
+	{
+		int iAssociatedTeam = GetEntProp(iTeam, Prop_Send, "m_iTeamNum");
+		if (iAssociatedTeam == iTeamNum)
+			SDK_Team_RemovePlayer(iTeam, iClient);
+		else if (iAssociatedTeam == iNewTeamNum)
+			SDK_Team_AddPlayer(iTeam, iClient);
+	}
+	SetEntProp(client, Prop_Send, "m_iTeamNum", team);
 }
 
 public Action OnTakeDamage(int client, int &attacker, int &inflictor, float &damage, int &damagetype, int &weapon, float damageForce[3], float damagePosition[3], int damagecustom)
