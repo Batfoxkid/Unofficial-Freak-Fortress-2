@@ -20,7 +20,6 @@
 #define DEFAULT_ATTRIBUTES	"2 ; 3.1 ; 68 ; %i ; 275 ; 1"
 #define DEFAULT_RAGEDAMAGE	"1900"
 #define DEFAULT_HEALTH		""
-#define MAX_CLASSNAME_LENGTH	36
 #define MAX_CHARSET_LENGTH	42
 
 ConVar CvarCharset;
@@ -28,6 +27,7 @@ static ConVar CvarTriple;
 static ConVar CvarKnockback;
 static ConVar CvarCrits;
 static ConVar CvarHealing;
+static ConVar CvarSewerSlide;
 
 void Bosses_Setup()
 {
@@ -36,7 +36,10 @@ void Bosses_Setup()
 	CvarTriple = CreateConVar("ff2_boss_triple", "1", "If to triple damage against players if initial damage is less than 160", _, true, 0.0, true, 1.0);
 	CvarKnockback = CreateConVar("ff2_boss_knockback", "0", "If bosses can knockback themselves, 2 to also allow self-damaging", _, true, 0.0, true, 2.0);
 	CvarCrits = CreateConVar("ff2_boss_crits", "0", "If bosses can perform random crits", _, true, 0.0, true, 1.0);
-	CvarHealing = CreateConVar("ff2_boss_healing", "0", "If bosses can be healed by Medics, packs, etc.", _, true, 0.0, true, 1.0);
+	CvarHealing = CreateConVar("ff2_boss_healing", "0", "If bosses can be healed by Medics, packs, etc. (Requires DHooks to disable)", _, true, 0.0, true, 1.0);
+	CvarSewerSlide = CreateConVar("ff2_boss_suicide", "0", "If bosses can suicide during the round", _, true, 0.0, true, 1.0);
+
+	AddCommandListener(Bosses_Rage, "voicemenu");
 }
 
 void Bosses_Config()
@@ -69,16 +72,22 @@ void Bosses_Config()
 		Charsets.SetString(0, "Freak Fortress 2");
 		BuildPath(Path_SM, filepath, PLATFORM_MAX_PATH, CONFIG_PATH);
 		if(Enabled <= Game_Disabled)
+		{
 			Charset = -1;
+			CvarCharset.IntValue = -1;
+		}
 
 		ProcessDirectory(filepath, "", "", 0);
 		return;
 	}
 
+	char config[PLATFORM_MAX_PATH];
 	if(Enabled > Game_Disabled)
 	{
 		Charset = CvarCharset.IntValue;
-		char config[PLATFORM_MAX_PATH];
+		if(Charset < 0)
+			Charset = 0;
+
 		int i = Charset;
 		Action action = Plugin_Continue;
 		Call_StartForward(OnLoadCharacterSet);
@@ -100,6 +109,7 @@ void Bosses_Config()
 	else
 	{
 		Charset = -1;
+		CvarCharset.IntValue = -1;
 	}
 
 	KeyValues kv = new KeyValues("");
@@ -164,7 +174,10 @@ void Bosses_Config()
 
 	#if defined FF2_CONVARS
 	if(Charset!=-1 && CvarNameChange.IntValue==2)
-		Convars_NameSuffix(Charsets.GetString(Charset));
+	{
+		Charsets.GetString(Charset, config, sizeof(config));
+		Convars_NameSuffix(config);
+	}
 	#endif
 
 	if(FileExists("sound/saxton_hale/9000.wav", true))
@@ -510,7 +523,6 @@ void Bosses_Create(int client, int boss=-1)
 			return;
 
 		Boss[client].Active = false;
-		SDKUnhook(client, SDKHook_GetMaxHealth, SDK_OnGetMaxHealth);
 		if(IsPlayerAlive(client))
 			TF2_RegeneratePlayer(client);
 	}
@@ -540,25 +552,24 @@ void Bosses_Create(int client, int boss=-1)
 	Boss[client].RageMin = Special[boss].Kv.GetFloat("ragemin", 100.0);
 	Boss[client].Class = KvGetClass(Special[boss].Kv, "class");
 	Boss[client].MaxSpeed = Special[boss].Kv.GetFloat("maxspeed", 340.0);
-	Boss[client].Team = view_as<TFTeam>(Special[boss].Kv.GetNum("bossteam"));
-	if(Boss[client].Team == TFTeam_Unassigned)
+	Client[client].Team = view_as<TFTeam>(Special[boss].Kv.GetNum("bossteam"));
+	if(Client[client].Team == TFTeam_Unassigned)
 	{
 		switch(CvarTeam.IntValue)
 		{
-			case 1:		Boss[client].Team = GetRandomInt(0, 1) ? TFTeam_Red : TFTeam_Blue;
-			case 2:		Boss[client].Team = TFTeam_Red;
-			default:	Boss[client].Team = TFTeam_Blue;
+			case 1:		Client[client].Team = GetRandomInt(0, 1) ? TFTeam_Red : TFTeam_Blue;
+			case 2:		Client[client].Team = TFTeam_Red;
+			default:	Client[client].Team = TFTeam_Blue;
 		}	
 	}
-	else if(Boss[client].Team == TFTeam_Spectator)
+	else if(Client[client].Team == TFTeam_Spectator)
 	{
-		Boss[client].Team = GetRandomInt(0, 1) ? TFTeam_Red : TFTeam_Blue;
+		Client[client].Team = GetRandomInt(0, 1) ? TFTeam_Red : TFTeam_Blue;
 	}
 
 	SetEntProp(client, Prop_Send, "m_bGlowEnabled", 0);
 	TF2_RemovePlayerDisguise(client);
 	TF2_SetPlayerClass(client, Boss[client].Class, _, !GetEntProp(client, Prop_Send, "m_iDesiredPlayerClass") ? true : false);
-	SDKHook(client, SDKHook_GetMaxHealth, SDK_OnGetMaxHealth);
 
 	int i = Special[boss].Kv.GetNum("sapper", CvarSapper.IntValue);
 	Boss[client].Sapper = (i==1 || i>2);
@@ -763,11 +774,8 @@ void Bosses_Equip(int client, int boss)
 		SetEntPropEnt(client, Prop_Send, "m_hActiveWeapon", index);
 	} while(Special[boss].Kv.GotoNextKey());
 
-	Special[Boss[client].Special].Kv.Rewind();
+	/*Special[Boss[client].Special].Kv.Rewind();
 	if(!Special[Boss[client].Special].Kv.JumpToKey(key))
-		return false;
-
-	if(Boss[client].Special < 0)
 		return false;
 
 	char buffer[2];
@@ -779,333 +787,71 @@ void Bosses_Equip(int client, int boss)
 				continue;
 
 		} while(Special[Boss[client].Special].Kv.GotoNextKey());
-	}
+	}*/
 }
 
-// 0: Local, 1: Global, 2: Music
-bool Bosses_PlaySound(int client, const char[] key, int mode=0, const char[] matching="", bool canStop=true, bool stopLast=true)
+public Action Bosses_Rage(int client, const char[] command, int args)
 {
-	float duration;
-	int type = mode;
-	static char buffer[PLATFORM_MAX_PATH], name[32], artist[32];
-	if(!Bosses_GetSound(client, key, type, buffer, sizeof(buffer), matching, name, sizeof(name), artist, sizeof(artist), duration))
-		return false;
+	if(!Boss[client].Active || Boss[client].RageDamage>99998 || Boss[client].RageMode==RageMode_None || Boss[client].RageMin>Boss[client].Charge[0] || !IsPlayerAlive(client) || CheckRoundState()!=1)
+		return Plugin_Continue;
 
-	switch(type)
+	static char arg[4];
+	GetCmdArgString(arg, sizeof(arg));
+	if(!StrEqual(arg, "0 0"))
+		return Plugin_Continue;
+
+	if(Boss[client].RageMode == RageMode_Full)
 	{
-		case 1:
-			EmitVoiceSoundToAll(buffer, client, canStop, stopLast);
-
-		case 2:
-			EmitMusicToAll(buffer, client);
-
-		case 3:
-			Music_Override(client, buffer, duration, name, artist);
-
-		default:
-			EmitVoiceToAll(buffer, client);
+		Boss[client].Charge[0] = 0.0;
 	}
+	else if(Boss[client].RageMode == RageMode_Part)
+	{
+		Boss[client].Charge[0] -= Boss[client].RageMin;
+	}
+
+	Bosses_AbilitySlot(client, 0);
+	if(!Bosses_PlaySound(client, "sound_ability_serverwide", 1, "0"))
+		Bosses_PlaySound(client, "sound_ability", 0, "0");
 }
 
-// TODO: Optimize the heck out of this thing
-bool Bosses_GetSound(int client, const char[] key, int &type, char[] buffer, int bufferL, const char[] matching="", char[] name="", int nameL=32, char[] artist="", int artistL=32, float &duration=0.0)
+public Action Bosses_KermitSewerSlide(int client, const char[] command, int args)
 {
-	if(Boss[client].Special < 0)
-		return false;
+	if(!Boss[client].Active)
+		return Plugin_Continue;
 
-	Special[Boss[client].Special].Kv.Rewind();
-	if(!Special[Boss[client].Special].Kv.JumpToKey(key))
-		return false;
+	int roundState = CheckRoundState();
+	if(roundState == 2)
+		return Plugin_Continue;
 
-	bool catch = !StrContains(key, "catch_");
-	if(matching[0])
+	if(roundState == 1)
 	{
-		// Matching & New Syntax
-		ArrayList list = new ArrayList();
-		if(Special[Boss[client].Special].Kv.GotoFirstSubKey())
-		{
-			for(int i; ; i++)
-			{
-				Special[Boss[client].Special].Kv.GetString(catch ? "vo" : "slot", buffer, bufferL)
-				if(!StrContains(buffer, matching, false))
-					list.Push(i);
+		if(CvarSewerSlide.BoolValue)
+			return Plugin_Continue;
 
-				if(Special[Boss[client].Special].Kv.GotoNextKey())
-					continue;
-
-				i = list.Length;
-				if(i < 1)
-				{
-					delete list;
-					return false;
-				}
-
-				i = list.Get(GetRandomInt(0, i-1));
-				delete list;
-				Special[Boss[client].Special].Kv.Rewind();
-				if(!Special[Boss[client].Special].Kv.JumpToKey(key))
-					return false;
-
-				while(i>0 && Special[Boss[client].Special].Kv.GotoNextKey())
-				{
-					i--;
-				}
-
-				if(!catch)
-				{
-					Special[Boss[client].Special].Kv.GetString("overlay", buffer, bufferL);
-					if(buffer[0])
-					{
-						TFTeam team = TF2_GetClientTeam(client);
-						int flags = GetCommandFlags("r_screenoverlay");
-						SetCommandFlags("r_screenoverlay", flags & ~FCVAR_CHEAT);
-						for(int target=1; target<=MaxClients; target++)
-						{
-							if(IsValidClient(target) && TF2_GetClientTeam(target)!=team)
-								ClientCommand(target, "r_screenoverlay \"%s\"", buffer);
-						}
-						SetCommandFlags("r_screenoverlay", flags);
-
-						float time = Special[Boss[client].Special].Kv.GetFloat("duration", 2.0);
-						if(time > 0)
-							CreateTimer(time, Timer_RemoveOverlay, _, TIMER_FLAG_NO_MAPCHANGE);
-					}
-				}
-
-				if(!Special[Boss[client].Special].Kv.GetSectionName(buffer, bufferL))
-					return false;
-
-				if(catch)
-				{
-					type = Special[Boss[client].Special].Kv.GetNum("type", type);
-					duration = Special[Boss[client].Special].Kv.GetFloat("time");
-					if(type == 3)
-					{
-						Special[Boss[client].Special].Kv.GetString("name", name, nameL);
-						Special[Boss[client].Special].Kv.GetString("artist", artist, artistL);
-					}
-				}
-				return true;
-			}
-		}
-
-		// Matching & Old Syntax
-		char key[16];
-		for(int i=1; ; i++)
-		{
-			IntToString(i, key, sizeof(key));
-			Special[Boss[client].Special].Kv.GetString(key, buffer, bufferL);
-			if(buffer[0])
-			{
-				FormatEx(key, sizeof(key), "%s%d", catch ? "vo" : "slot", i);
-				Special[Boss[client].Special].Kv.GetString(key, buffer, bufferL)
-				if(!StrContains(matching, buffer, false))
-					list.Push(i);
-
-				continue;
-			}
-
-			i = list.Length;
-			if(i < 1)
-			{
-				delete list;
-				return false;
-			}
-
-			i = list.Get(GetRandomInt(0, i-1));
-			delete list;
-			Special[Boss[client].Special].Kv.Rewind();
-			if(!Special[Boss[client].Special].Kv.JumpToKey(key))
-				return false;
-
-			FormatEx(key, sizeof(key), "%d_overlay", i);
-			Special[Boss[client].Special].Kv.GetString(key, buffer, bufferL);
-			if(buffer[0])
-			{
-				//LogError2("[Boss] '%s' will be removed in the future, use newer syntax for this key", key);
-
-				TFTeam team = TF2_GetClientTeam(client);
-				int flags = GetCommandFlags("r_screenoverlay");
-				SetCommandFlags("r_screenoverlay", flags & ~FCVAR_CHEAT);
-				for(int target=1; target<=MaxClients; target++)
-				{
-					if(IsValidClient(target) && TF2_GetClientTeam(target)!=team)
-						ClientCommand(target, "r_screenoverlay \"%s\"", buffer);
-				}
-				SetCommandFlags("r_screenoverlay", flags);
-
-				FormatEx(key, sizeof(key), "%i_overlay_time", i);
-				float time = Special[Boss[client].Special].Kv.GetFloat(key, 2.0);
-				if(time > 0)
-					CreateTimer(time, Timer_RemoveOverlay, _, TIMER_FLAG_NO_MAPCHANGE);
-			}
-
-			IntToString(i, key, sizeof(key));
-			Special[Boss[client].Special].Kv.GetString(key, buffer, bufferL);
-
-			if(!catch)
-			{
-				FormatEx(key, sizeof(key), "%dmusic", i);
-				duration = Special[Boss[client].Special].Kv.GetFloat(key, -1.0);
-				if(duration >= 0)
-					type = 3;
-
-				if(type == 3)
-				{
-					//LogError2("[Boss] '%s' will be removed in the future, use newer syntax for this key", key);
-
-					FormatEx(key, sizeof(key), "%dname", i);
-					Special[Boss[client].Special].Kv.GetString(key, name, nameL);
-
-					FormatEx(key, sizeof(key), "%dartist", i);
-					Special[Boss[client].Special].Kv.GetString(key, artist, artistL);
-				}
-			}
-			return true;
-		}
+		FPrintToChat(client, "%t", "Boss Suicide");
 	}
-
-	// Non-Matching & New Syntax
-	int count;
-	if(Special[Boss[client].Special].Kv.GotoFirstSubKey())
+	else
 	{
-		for(int i; ; i++)
-		{
-			Special[Boss[client].Special].Kv.GetString(catch ? "vo" : "slot", buffer, bufferL)
-			if(!StrContains(buffer, matching, false))
-				count++;
-
-			if(Special[Boss[client].Special].Kv.GotoNextKey())
-				continue;
-
-			if(!count)
-				return false;
-
-			count = GetRandomInt(0, count-1);
-			Special[Boss[client].Special].Kv.Rewind();
-			if(!Special[Boss[client].Special].Kv.JumpToKey(key))
-				return false;
-
-			while(count>0 && Special[Boss[client].Special].Kv.GotoNextKey())
-			{
-				count--;
-			}
-
-			if(!catch)
-			{
-				Special[Boss[client].Special].Kv.GetString("overlay", buffer, bufferL);
-				if(buffer[0])
-				{
-					TFTeam team = TF2_GetClientTeam(client);
-					i = GetCommandFlags("r_screenoverlay");
-					SetCommandFlags("r_screenoverlay", i & ~FCVAR_CHEAT);
-					for(int target=1; target<=MaxClients; target++)
-					{
-						if(IsValidClient(target) && TF2_GetClientTeam(target)!=team)
-							ClientCommand(target, "r_screenoverlay \"%s\"", buffer);
-					}
-					SetCommandFlags("r_screenoverlay", i);
-
-					float time = Special[Boss[client].Special].Kv.GetFloat("duration", 2.0);
-					if(time > 0)
-						CreateTimer(time, Timer_RemoveOverlay, _, TIMER_FLAG_NO_MAPCHANGE);
-				}
-			}
-
-			if(!Special[Boss[client].Special].Kv.GetSectionName(buffer, bufferL))
-				return false;
-
-			if(!catch)
-			{
-				type = Special[Boss[client].Special].Kv.GetNum("type", type);
-				duration = Special[Boss[client].Special].Kv.GetFloat("time");
-				if(type == 3)
-				{
-					Special[Boss[client].Special].Kv.GetString("name", name, nameL);
-					Special[Boss[client].Special].Kv.GetString("artist", artist, artistL);
-				}
-			}
-			return true;
-		}
+		FPrintToChat(client, "%t", CvarSewerSlide.BoolValue ? "Boss Suicide Pre" : "Boss Suicide");
 	}
+	return Plugin_Handled;
+}
 
-	// Non-Matching & Old Syntax
-	char key[16];
-	for(int i=1; ; i++)
-	{
-		IntToString(i, key, sizeof(key));
-		Special[Boss[client].Special].Kv.GetString(key, buffer, bufferL);
-		if(buffer[0])
-		{
-			FormatEx(key, sizeof(key), "%s%d", catch ? "vo" : "slot", i);
-			Special[Boss[client].Special].Kv.GetString(key, buffer, bufferL)
-			if(!StrContains(matching, buffer, false))
-				count++;
+public Action Bosses_JoinClass(int client, const char[] command, int args)
+{
+	if(!Boss[client].Active || CheckRoundState()!=1)
+		return Plugin_Continue;
 
-			continue;
-		}
+	static char class[16];
+	GetCmdArg(1, class, sizeof(class));
+	if(TF2_GetClass(class) != TFClass_Unknown)
+		SetEntProp(client, Prop_Send, "m_iDesiredPlayerClass", TF2_GetClass(class));
 
-		if(count < 1)
-			return false;
-
-		count = GetRandomInt(0, count-1);
-		Special[Boss[client].Special].Kv.Rewind();
-		if(!Special[Boss[client].Special].Kv.JumpToKey(key))
-			return false;
-
-		FormatEx(key, sizeof(key), "%d_overlay", count);
-		Special[Boss[client].Special].Kv.GetString(key, buffer, bufferL);
-		if(buffer[0])
-		{
-			//LogError2("[Boss] '%s' will be removed in the future, use newer syntax for this key", key);
-
-			TFTeam team = TF2_GetClientTeam(client);
-			i = GetCommandFlags("r_screenoverlay");
-			SetCommandFlags("r_screenoverlay", i & ~FCVAR_CHEAT);
-			for(int target=1; target<=MaxClients; target++)
-			{
-				if(IsValidClient(target) && TF2_GetClientTeam(target)!=team)
-					ClientCommand(target, "r_screenoverlay \"%s\"", buffer);
-			}
-			SetCommandFlags("r_screenoverlay", i);
-
-			FormatEx(key, sizeof(key), "%i_overlay_time", count);
-			float time = Special[Boss[client].Special].Kv.GetFloat(key, 2.0);
-			if(time > 0)
-				CreateTimer(time, Timer_RemoveOverlay, _, TIMER_FLAG_NO_MAPCHANGE);
-		}
-
-		IntToString(count, key, sizeof(key));
-		Special[Boss[client].Special].Kv.GetString(key, buffer, bufferL);
-
-		if(!catch)
-		{
-			FormatEx(key, sizeof(key), "%dmusic", count);
-			duration = Special[Boss[client].Special].Kv.GetFloat(key, -1.0);
-			if(duration >= 0)
-				type = 3;
-
-			if(type == 3)
-			{
-				//LogError2("[Boss] '%s' will be removed in the future, use newer syntax for this key", key);
-
-				FormatEx(key, sizeof(key), "%dname", count);
-				Special[Boss[client].Special].Kv.GetString(key, name, nameL);
-	
-				FormatEx(key, sizeof(key), "%dartist", count);
-				Special[Boss[client].Special].Kv.GetString(key, artist, artistL);
-			}
-		}
-		return true;
-	}
-	return false;	// Never going to be called
+	return Plugin_Handled;
 }
 
 void Bosses_AbilitySlot(int client, int slot)
 {
-	if(Boss[client].Special < 0)
-		return;
-
 	Special[Boss[client].Special].Kv.Rewind();
 	Special[Boss[client].Special].Kv.GotoFirstSubKey();
 	do
@@ -1169,17 +915,6 @@ void Bosses_Ability(int client, const char[] ability, const char[] plugin, int s
 	{
 		Call_PushCell(3);
 		Call_Finish(action);
-		if(!slot && Boss[client].RageDamage>1)
-		{
-			if(Boss[client].RageMode == 1)
-			{
-				Boss[client].Charge[0] -= Boss[client].RageMin;
-			}
-			else if(!Boss[client].RageMode)
-			{
-				Boss[client].Charge[0] = 0.0;
-			}
-		}
 		return;
 	}
 
@@ -1213,13 +948,14 @@ void Bosses_Ability(int client, const char[] ability, const char[] plugin, int s
 			Call_PushCell(2);
 			Call_Finish(action);
 			float charge;
-			if(GetArgumentI(boss, plugin_name, ability_name, "slot", -2) != -2)
+			KeyValues kv = Bosses_ArgK(client, ability, plugin);
+			if(kv == INVALID_HANDLE)
 			{
-				charge = 100.0*0.2/GetArgumentF(boss, plugin_name, ability_name, "charge time", 1.5);
+				charge = 20.0/1.5;
 			}
 			else
 			{
-				charge = 100.0*0.2/GetAbilityArgumentFloat(boss, plugin_name, ability_name, 1, 1.5);
+				charge = 20.0/kv.GetFloat("charge time", kv.GetFloat("arg1", 1.5)));
 			}
 
 			if(Boss[client].Charge[slot]+charge < 100.0)
@@ -1248,17 +984,14 @@ void Bosses_Ability(int client, const char[] ability, const char[] plugin, int s
 		{
 			Call_PushCell(3);
 			Call_Finish(action);
-			DataPack data;
-			CreateDataTimer(0.1, Bosses_UseBossCharge, data);
-			data.WriteCell(GetClientUserId(client));
-			data.WriteCell(slot);
-			if(Bosses_ArgI(client, plugin_name, ability_name, "slot", -2) != -2)
+			KeyValues kv = Bosses_ArgK(client, ability, plugin);
+			if(kv != INVALID_HANDLE)
 			{
-				data.WriteFloat(-1.0*GetArgumentF(boss, plugin_name, ability_name, "cooldown", 5.0));
-			}
-			else
-			{
-				data.WriteFloat(-1.0*GetAbilityArgumentFloat(boss, plugin_name, ability_name, 2, 5.0));
+				DataPack data;
+				CreateDataTimer(0.1, Bosses_UseBossCharge, data);
+				data.WriteCell(GetClientUserId(client));
+				data.WriteCell(slot);
+				data.WriteFloat(-1.0*kv.GetFloat("cooldown", kv.GetFloat("arg2", 5.0)));
 			}
 		}
 		else

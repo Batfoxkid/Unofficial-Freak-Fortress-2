@@ -1,34 +1,34 @@
 /*
-	Requirement:
-	bosses.sp
+	Functions:
+	void TargetFilter_Setup()
 */
 
 #define FF2_TARGETFILTER
 
 void TargetFilter_Setup()
 {
-	AddMultiTargetFilter("@hale", BossTargetFilter, "all current Bosses", false);
-	AddMultiTargetFilter("@!hale", BossTargetFilter, "all non-Boss players", false);
-	AddMultiTargetFilter("@boss", BossTargetFilter, "all current Bosses", false);
-	AddMultiTargetFilter("@!boss", BossTargetFilter, "all non-Boss players", false);
+	AddMultiTargetFilter("@hale", TargetFilter, "all current Bosses", false);
+	AddMultiTargetFilter("@!hale", TargetFilter, "all non-Boss players", false);
+	AddMultiTargetFilter("@boss", TargetFilter, "all current Bosses", false);
+	AddMultiTargetFilter("@!boss", TargetFilter, "all non-Boss players", false);
 }
 
-public bool BossTargetFilter(const char[] pattern, Handle clients)
+public bool TargetFilter(const char[] pattern, ArrayList clients)
 {
 	bool non = StrContains(pattern, "!", false)!=-1;
 	for(int client=1; client<=MaxClients; client++)
 	{
-		if(!IsValidClient(client) || FindValueInArray(clients, client)!=-1)
+		if(!IsValidClient(client) || clients.FindValue(client)!=-1)
 			continue;
 
 		if(Boss[client].Active)
 		{
 			if(!non)
-				PushArrayCell(clients, client);
+				clients.Push(client);
 		}
 		else if(non)
 		{
-			PushArrayCell(clients, client);
+			clients.Push(client);
 		}
 	}
 	return true;

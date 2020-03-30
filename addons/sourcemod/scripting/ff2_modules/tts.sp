@@ -39,7 +39,7 @@ float TTS_Check(const char[] map)
 	File file = OpenFile(config, "r");
 	if(file == INVALID_HANDLE)
 	{
-		LogError2("[TTS] Error reading from '%s'", SpawnTeleportCFG);
+		LogError2("[TTS] Error reading from '%s'", TTS_WHITELIST_FILE);
 		return 0.0;
 	}
 
@@ -85,7 +85,7 @@ void TTS_Start()
 	int iSkip[MAXTF2PLAYERS]={0,...};
 	while((iEnt = FindEntityByClassname2(iEnt, "info_player_teamspawn")) != -1)
 	{
-		TFTeam iTeam = GetEntityTeamNum(iEnt);
+		TFTeam iTeam = view_as<TFTeam>(GetEntProp(iEnt, Prop_Send, "m_iTeamNum"));
 		int iClient = GetClosestPlayerTo(iEnt, iTeam);
 		if(iClient)
 		{
@@ -161,7 +161,7 @@ static int GetClosestPlayerTo(int iEnt, TFTeam iTeam=TFTeam_Unassigned)
 	{
 		if(IsClientInGame(iClient) && IsPlayerAlive(iClient))
 		{
-			if(iTeam>TFTeam_Unassigned && GetEntityTeamNum(iClient)!=iTeam)
+			if(iTeam>TFTeam_Unassigned && view_as<TFTeam>(GetEntProp(iClient, Prop_Send, "m_iTeamNum"))!=iTeam)
 				continue;
 
 			GetEntPropVector(iClient, Prop_Send, "m_vecOrigin", vPos);

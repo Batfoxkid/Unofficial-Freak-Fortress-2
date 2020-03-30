@@ -1,6 +1,9 @@
 /*
-	Requirement:
-	bosses.sp
+	Optional:
+	tf2x10
+
+	Functions:
+	float ParseFormula(int boss, const char[] key, const char[] defaultFormula, float players)
 */
 
 #define FF2_FORMULA
@@ -65,10 +68,9 @@ static void OperateString(ArrayList sumArray, int &bracket, char[] value, int si
 
 stock float ParseFormula(int boss, const char[] key, const char[] defaultFormula, float players)
 {
-	static char formula[1024], bossName[64];
-	KvRewind(BossKV[boss]);
-	KvGetString(BossKV[boss], "filename", bossName, sizeof(bossName));
-	KvGetString(BossKV[boss], key, formula, sizeof(formula), defaultFormula);
+	static char formula[1024];
+	Special[boss].Kv.Rewind();
+	Special[boss].Kv.GetString(key, formula, sizeof(formula), defaultFormula);
 
 	int size = 1;
 	int matchingBrackets;
@@ -118,6 +120,8 @@ stock float ParseFormula(int boss, const char[] key, const char[] defaultFormula
 				OperateString(sumArray, bracket, value, sizeof(value), _operator);
 				if(_operator.Get(bracket) != Operator_None)  //Something like (5*)
 				{
+					char bossName[64];
+					Special[boss].Kv.GetString("filename", bossName, sizeof(bossName));
 					LogError2("[Boss] %s's %s formula has an invalid operator at character %i", bossName, key, i+1);
 					delete sumArray;
 					delete _operator;
@@ -126,6 +130,8 @@ stock float ParseFormula(int boss, const char[] key, const char[] defaultFormula
 
 				if(--bracket<0)  //Something like (5))
 				{
+					char bossName[64];
+					Special[boss].Kv.GetString("filename", bossName, sizeof(bossName));
 					LogError2("[Boss] %s's %s formula has an unbalanced parentheses at character %i", bossName, key, i+1);
 					delete sumArray;
 					delete _operator;
@@ -181,8 +187,8 @@ stock float ParseFormula(int boss, const char[] key, const char[] defaultFormula
 	delete _operator;
 
 	#if defined FF2_TIMESTEN
-	result *= TimesTen_Value();
-	#endif
-
+	return result*TimesTen_Value();
+	#else
 	return result;
+	#endif
 }

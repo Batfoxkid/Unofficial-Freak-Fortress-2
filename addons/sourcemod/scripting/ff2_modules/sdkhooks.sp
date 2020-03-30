@@ -24,6 +24,10 @@ void SDK_Setup()
 	if(SDKEquipWearable == null)
 		LogError2("[Gamedata] Failed to create call: CBasePlayer::EquipWearable");
 
+	#if defined FF2_DHOOKS
+	DHook_Setup(gameData);
+	#endif
+
 	delete gameData;
 }
 
@@ -122,7 +126,7 @@ public Action OnTakeDamage(int client, int &attacker, int &inflictor, float &dam
 			return Plugin_Changed;
 		}
 
-		if(damage<=160.0 && Boss[attacker].Triple)
+		if(damage<=160 && Boss[attacker].Triple)
 		{
 			damage *= 3;
 			return Plugin_Changed;
@@ -182,10 +186,11 @@ public Action OnTakeDamage(int client, int &attacker, int &inflictor, float &dam
 		if(action == Plugin_Handled)
 			return Plugin_Handled;
 
-		EmitSoundToClient(client, "player/crit_received3.wav", _, _, _, _, 0.7, _, _, _, _, false);
-		EmitSoundToClient(attacker, "player/crit_received3.wav", _, _, _, _, 0.7, _, _, _, _, false);
+		ClientCommand(client, "playgamesound TFPlayer.CritPain");
+		ClientCommand(attacker, "playgamesound TFPlayer.CritPain");
 
-		float delay = Boss[attacker].Active ? GetGameTime()+1.5 : GetGameTime()+2.0;
+		float gameTime = GetGameTime();
+		float delay = Boss[attacker].Active ? gameTime+1.5 : gameTime+2.0;
 		SetEntPropFloat(weapon, Prop_Send, "m_flNextPrimaryAttack", delay;
 		SetEntPropFloat(attacker, Prop_Send, "m_flNextAttack", delay);
 		SetEntPropFloat(attacker, Prop_Send, "m_flStealthNextChangeTime", delay);
@@ -207,18 +212,18 @@ public Action OnTakeDamage(int client, int &attacker, int &inflictor, float &dam
 			SetEntProp(health, Prop_Send, "m_nSequence", team);
 		}
 
-		if(!(Client[attacker].Hud & HUD_MESSAGE))
+		if(!(Client[attacker].Pref[Pref_Hud] & HUD_MESSAGE))
 		{
 			KvGetLang(Special[Boss[client].Special].Kv, "name", buffer, sizeof(buffer));
-			CreateAttachedAnnotation(attacker, client, true, 5.0, "%t", "Player Backstab", buffer);
+			CreateAttachedAnnotation(attacker, client, true, 3.0, "%t", "Player Backstab", buffer);
 		}
 
 		if(Boss[attacker].Active || (index!=225 && index!=574))  //Your Eternal Reward, Wanga Prick
 		{
-			EmitSoundToClient(client, "player/spy_shield_break.wav", _, _, _, _, 0.7, _, _, position, _, false);
-			EmitSoundToClient(attacker, "player/spy_shield_break.wav", _, _, _, _, 0.7, _, _, position, _, false);
+			ClientCommand(client, "playgamesound Player.Spy_Shield_Break");
+			ClientCommand(attacker, "playgamesound Player.Spy_Shield_Break");
 
-			if(!(Client[client].Hud & HUD_MESSAGE))
+			if(!(Client[client].Pref[Pref_Hud] & HUD_MESSAGE))
 			{
 				if(Boss[attacker].Active)
 				{
@@ -229,16 +234,11 @@ public Action OnTakeDamage(int client, int &attacker, int &inflictor, float &dam
 					GetClientName(attacker, buffer, sizeof(buffer));
 				}
 
-				CreateAttachedAnnotation(client, attacker, true, 3.0, "%t", "Player Backstabbed", buffer);
+				CreateAttachedAnnotation(client, attacker, true, 3.0, "%t", GetClientAimTarget(attacker, true)==client ? "Player Backstabbed" : "Player Trickstabbed", buffer);
 			}
 
-			if(Boss[client].Health() > damage*3)
-			{
-				if(RandomSound("sound_stabbed", buffer, sizeof(buffer), client))
-					EmitSoundToAllExcept(buffer, _, _, _, _, _, _, attacker);
-			}
-
-			HealthBarFor = delay;
+			PlayBossSound(client, "sound_stabbed");
+			HealthBarFor = gameTime+1.0;
 		}
 
 		if(!Boss[attacker].Active)
@@ -274,7 +274,7 @@ public Action OnTakeDamage(int client, int &attacker, int &inflictor, float &dam
 				SetEntProp(attacker, Prop_Send, "m_iRevengeCrits", GetEntProp(attacker, Prop_Send, "m_iRevengeCrits")+2);
 		}
 
-		ActivateAbilitySlot(boss, 6);
+		Bosses_AbilitySlot(boss, 6);
 		return (action == Plugin_Stop) ? Plugin_Handled : Plugin_Changed;
 	}
 	else if(damagecustom == TF_CUSTOM_TELEFRAG)
@@ -318,13 +318,13 @@ public Action OnTakeDamage(int client, int &attacker, int &inflictor, float &dam
 		}
 		damagetype |= DMG_CRIT|DMG_PREVENT_PHYSICS_FORCE;
 
-		if(!(Client[attacker].Hud & HUD_MESSAGE))
+		if(!(Client[attacker].Pref[Pref_Hud] & HUD_MESSAGE))
 		{
 			KvGetLang(Special[Boss[client].Special].Kv, "name", buffer, sizeof(buffer));
-			CreateAttachedAnnotation(attacker, client, true, 5.0, "%t", "Player Telefrag", buffer);
+			CreateAttachedAnnotation(attacker, client, true, 3.0, "%t", "Player Telefrag", buffer);
 		}
 
-		if(!(Client[client].Hud & HUD_MESSAGE))
+		if(!(Client[client].Pref[Pref_Hud] & HUD_MESSAGE))
 		{
 			if(Boss[attacker].Active)
 			{
@@ -338,10 +338,8 @@ public Action OnTakeDamage(int client, int &attacker, int &inflictor, float &dam
 			CreateAttachedAnnotation(client, attacker, true, 3.0, "%t", "Player Telefraged", buffer);
 		}
 
-		if(RandomSound("sound_telefraged", buffer, sizeof(buffer), client))
-			EmitSoundToAllExcept(sound);
-
-		HealthBarFor = GetGameTime()+2.0;
+		PlayBossSound(client, "sound_telefraged", 1);
+		HealthBarFor = GetGameTime()+1.0;
 		return Plugin_Changed;
 	}
 
@@ -461,18 +459,18 @@ public Action OnTakeDamage(int client, int &attacker, int &inflictor, float &dam
 			if(Weapon[attacker][slot].Special)
 			{
 				stale = true;
-				IncrementHeadCount(attacker, Weapon[attacker][slot].Special);
+				IncrementHeadCount(attacker, RoundFloat(Weapon[attacker][slot].Special));
 			}
 		}
 		case 307:
 		{
 			if(Weapon[attacker][slot].Special < 1)
-				Weapon[attacker][slot].Special = 1;
+				Weapon[attacker][slot].Special = 1.0;
 
 			stale = true;
 			if(Weapon[attacker][slot].Stab && Weapon[attacker][slot].Special<3 && !GetEntProp(weapon, Prop_Send, "m_iDetonated"))
 			{
-				int health;
+				float health;
 				int team = GetClientTeam(client);
 				for(int i=1; i<=MaxClients; i++)
 				{
@@ -487,13 +485,13 @@ public Action OnTakeDamage(int client, int &attacker, int &inflictor, float &dam
 				#endif
 				damagetype |= DMG_CRIT;
 
-				if(!(Client[attacker].Hud & HUD_MESSAGE))
+				if(!(Client[attacker].Pref[Pref_Hud] & HUD_MESSAGE))
 				{
 					KvGetLang(Special[Boss[client].Special].Kv, "name", buffer, sizeof(buffer));
 					CreateAttachedAnnotation(attacker, client, true, 3.0, "%t", "Player Caber", buffer);
 				}
 
-				if(!(Client[client].Hud & HUD_MESSAGE))
+				if(!(Client[client].Pref[Pref_Hud] & HUD_MESSAGE))
 				{
 					if(Boss[attacker].Active)
 					{
@@ -504,18 +502,13 @@ public Action OnTakeDamage(int client, int &attacker, int &inflictor, float &dam
 						GetClientName(attacker, buffer, sizeof(buffer));
 					}
 
-					CreateAttachedAnnotation(client, attacker, true, 5.0, "%t", "Player Cabered", buffer);
+					CreateAttachedAnnotation(client, attacker, true, 3.0, "%t", "Player Cabered", buffer);
 				}
 
-				EmitSoundToClient(attacker, "ambient/lightsoff.wav", _, _, _, _, 0.6, _, _, position, _, false);
-				EmitSoundToClient(client, "ambient/lightson.wav", _, _, _, _, 0.6, _, _, position, _, false);
+				ClientCommand(attacker, "playgamesound Halloween.LightsOff");
+				ClientCommand(client, "playgamesound Halloween.LightsOn");
 
-				if(Boss[client].Health() > damage*3)
-				{
-					if(RandomSound("sound_cabered", buffer, sizeof(buffer)))
-						EmitSoundToAllExcept(buffer);
-				}
-
+				PlayBossSound(client, "sound_cabered");
 				HealthBarFor = GetGameTime()+2.0;
 				changed = true;
 			}
@@ -530,7 +523,7 @@ public Action OnTakeDamage(int client, int &attacker, int &inflictor, float &dam
 				{
 					if(health < max)
 					{
-						int add = Weapon[attacker][slot].Special;
+						int add = RoundFloat(Weapon[attacker][slot].Special);
 						if(health+add > max)
 							add = max-health;
 
@@ -542,7 +535,7 @@ public Action OnTakeDamage(int client, int &attacker, int &inflictor, float &dam
 				{
 					if(health < max)
 					{
-						int add = RoundToFloor(max/(4+Weapon[attacker][slot].Stale));
+						int add = RoundToFloor(max/(4.0+Weapon[attacker][slot].Stale));
 						if(health+add > max)
 							add = max-health;
 
@@ -564,7 +557,7 @@ public Action OnTakeDamage(int client, int &attacker, int &inflictor, float &dam
 		{
 			if(Weapon[attacker][slot].Stab && RemoveCond(attacker, TFCond_BlastJumping))
 			{
-				int health;
+				float health;
 				int team = GetClientTeam(client);
 				for(int i=1; i<=MaxClients; i++)
 				{
@@ -582,13 +575,13 @@ public Action OnTakeDamage(int client, int &attacker, int &inflictor, float &dam
 				if(RemoveCond(attacker, TFCond_Parachute))
 					damage *= 0.85;
 
-				if(!(Client[attacker].Hud & HUD_MESSAGE))
+				if(!(Client[attacker].Pref[Pref_Hud] & HUD_MESSAGE))
 				{
 					KvGetLang(Special[Boss[client].Special].Kv, "name", buffer, sizeof(buffer));
 					CreateAttachedAnnotation(attacker, client, true, 3.0, "%t", "Player Market", buffer);
 				}
 
-				if(!(Client[client].Hud & HUD_MESSAGE))
+				if(!(Client[client].Pref[Pref_Hud] & HUD_MESSAGE))
 				{
 					if(Boss[attacker].Active)
 					{
@@ -599,20 +592,15 @@ public Action OnTakeDamage(int client, int &attacker, int &inflictor, float &dam
 						GetClientName(attacker, buffer, sizeof(buffer));
 					}
 
-					CreateAttachedAnnotation(client, attacker, true, 5.0, "%t", "Player Marketed", buffer);
+					CreateAttachedAnnotation(client, attacker, true, 3.0, "%t", "Player Marketed", buffer);
 				}
 
-				EmitSoundToClient(attacker, "player/doubledonk.wav", _, _, _, _, 0.6, _, _, position, _, false);
-				EmitSoundToClient(client, "player/doubledonk.wav", _, _, _, _, 0.6, _, _, position, _, false);
+				ClientCommand(attacker, "playgamesound TFPlayer.DoubleDonk");
+				ClientCommand(client, "playgamesound TFPlayer.DoubleDonk");
 
-				if(Boss[client].Health() > damage*3)
-				{
-					if(RandomSound("sound_marketed", buffer, sizeof(buffer)))
-						EmitSoundToAllExcept(buffer);
-				}
-
-				ActivateAbilitySlot(client, 7);
-				HealthBarFor = GetGameTime()+2.0;
+				PlayBossSound(client, "sound_marketed");
+				Bosses_AbilitySlot(client, 7);
+				HealthBarFor = GetGameTime()+1.0;
 				changed = true;
 				stale = true;
 			}
@@ -648,7 +636,7 @@ public Action OnTakeDamage(int client, int &attacker, int &inflictor, float &dam
 	}
 
 	if(stale)
-		Weapon[attacker][slot]++;
+		Weapon[attacker][slot].Stale++;
 
 	return changed ? Plugin_Changed : Plugin_Continue;
 }
@@ -680,8 +668,10 @@ public Action OnTakeDamageAlive(int client, int &attacker, int &inflictor, float
 		if(damage > 600.0)
 			damage = 600.0;
 
-		
-		TTS_Add
+
+		#if defined FF2_TTS
+		TTS_Add(client, damage);
+		#endif
 
 		Boss[client].Charge[0] += damage*90.0/Boss[client].RageDamage;
 		if(Boss[client].Charge[0] > Boss[client].RageMax)
@@ -690,10 +680,9 @@ public Action OnTakeDamageAlive(int client, int &attacker, int &inflictor, float
 		return Plugin_Changed;
 	}
 
-	bool invuln = IsInvuln(client);
 	if(!Boss[client].Active)
 	{
-		if(Enabled==Game_Arena && !invuln && !Client[attacker].Minion)
+		if(Enabled==Game_Arena && !Client[client].Minion && !IsInvuln(client))
 		{
 			for(int i; i<3; i++)
 			{
@@ -704,32 +693,30 @@ public Action OnTakeDamageAlive(int client, int &attacker, int &inflictor, float
 					break;
 
 				RemoveShield(client, attacker, Weapon[client][i].Shield);
+				Weapon[client][i].Shield = 0;
 				return Plugin_Handled;
 			}
 		}
 		return Plugin_Continue;
 	}
 
-	if(!invuln)
-	{
-		Boss[client].Charge[0] += damage*100.0/Boss[client].RageDamage;
-		if(Boss[client].Charge[0] > Boss[client].RageMax)
-			Boss[client].Charge[0] = Boss[client].RageMax;
-	}
+	if(IsInvuln(client))
+		return Plugin_Continue;
+
+	Boss[client].Charge[0] += damage*100.0/Boss[client].RageDamage;
+	if(Boss[client].Charge[0] > Boss[client].RageMax)
+		Boss[client].Charge[0] = Boss[client].RageMax;
 
 	if(Boss[attacker].Active || Client[attacker].Minion)
 		return Plugin_Continue;
 
-	if(!invuln)
-	{
-		int add = RoundToFloor(damage/500.0);
-		if((damage%500)+(Client[attacker].Damage%500) >= 500)
-			add++;
+	int add = RoundToFloor(damage/500.0);
+	if((damage%500.0)+(Client[attacker].Damage%500.0) >= 500)
+		add++;
 
-		Client[attacker].Damage += RoundFloat(damage);
-		if(add)
-			SetEntProp(attacker, Prop_Send, "m_nStreaks", GetEntProp(attacker, Prop_Send, "m_nStreaks")+add);
-	}
+	Client[attacker].Damage += RoundFloat(damage);
+	if(add)
+		SetEntProp(attacker, Prop_Send, "m_nStreaks", GetEntProp(attacker, Prop_Send, "m_nStreaks")+add);
 
 	if(Enabled!=Game_Arena || weapon<=MaxClients || !IsValidEntity(weapon) || !HasEntProp(weapon, Prop_Send, "m_iItemDefinitionIndex"))
 		return Plugin_Continue;
@@ -738,7 +725,7 @@ public Action OnTakeDamageAlive(int client, int &attacker, int &inflictor, float
 	if(slot == -1)
 		return Plugin_Continue;
 
-	if(!invuln && Boss[client].Active && Weapon[attacker][slot].Outline)
+	if(Boss[client].Active && Weapon[attacker][slot].Outline)
 	{
 		float gameTime = GetGameTime();
 		if(gameTime > Client[client].GlowFor)
@@ -767,7 +754,7 @@ public Action OnTakeDamageAlive(int client, int &attacker, int &inflictor, float
 		}
 		case 1104:
 		{
-			if(!invuln && Weapon[attacker][slot].Special>0)
+			if(Weapon[attacker][slot].Special > 0)
 			{
 				Weapon[attacker][slot].Stab += damage;
 
@@ -783,4 +770,16 @@ public Action OnTakeDamageAlive(int client, int &attacker, int &inflictor, float
 			}
 		}
 	}
+	return Plugin_Continue;
+}
+
+public Action OnGetMaxHealth(int client, int &health)
+{
+	if(!IsValidClient(client) || !Boss[client].Active)
+		return Plugin_Continue;
+
+	// Context: Some players have HUDs with flashy low health, make it so it happens at a lesser amount of health (25% Boss Health = 50% Visual Health)
+	health = Boss[client].MaxHealth-GetClientHealth(client);
+	health = health>0 ? Boss[client].MaxHealth-(health*2/3) : Boss[client].MaxHealth;
+	return Plugin_Changed;
 }

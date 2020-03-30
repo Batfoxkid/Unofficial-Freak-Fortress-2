@@ -43,11 +43,11 @@ public Action TF2Items_OnGiveNamedItem(int client, char[] classname, int index, 
 		return Plugin_Continue;
 
 	WeaponKV.Rewind();
-	WeaponKv.GotoFirstSubKey();
+	WeaponKV.GotoFirstSubKey();
 	do
 	{
 		static char attrib[256];
-		if(!WeaponKv.GetSectionName(attrib, sizeof(attrib))
+		if(!WeaponKV.GetSectionName(attrib, sizeof(attrib)))
 			continue;
 
 		static char names[8][MAX_CLASSNAME_LENGTH];

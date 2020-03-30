@@ -59,13 +59,13 @@
 #pragma semicolon 1
 
 #include <sourcemod>
-#include <freak_fortress_2>
-#include <adt_array>
 #include <clientprefs>
+#include <freak_fortress_2>
 #include <colorlib>
 #include <sdkhooks>
 #include <tf2_stocks>
 #undef REQUIRE_EXTENSIONS
+#tryinclude <dhooks>
 #tryinclude <tf2items>
 #tryinclude <SteamWorks>
 #tryinclude <smjansson>
@@ -81,13 +81,13 @@
 #define FORK_MINOR_REVISION	"0"
 #define FORK_STABLE_REVISION	"0"
 #define FORK_SUB_REVISION	"Unofficial"
-#define FORK_DEV_REVISION	"build"
+#define FORK_DEV_REVISION	"Alpha"
 #define FORK_DATE_REVISION	"SoonTM"
 
 #define BUILD_NUMBER	FORK_MINOR_REVISION...""...FORK_STABLE_REVISION..."000"
 
 #if defined FORK_DEV_REVISION
-	#define PLUGIN_VERSION	FORK_SUB_REVISION..." "...FORK_MAJOR_REVISION..."."...FORK_MINOR_REVISION..."."...FORK_STABLE_REVISION..." "...FORK_DEV_REVISION..."-"...BUILD_NUMBER
+	#define PLUGIN_VERSION	FORK_SUB_REVISION..." "...FORK_MAJOR_REVISION..."."...FORK_MINOR_REVISION..."."...FORK_STABLE_REVISION..." "...FORK_DEV_REVISION
 #else
 	#define PLUGIN_VERSION	FORK_SUB_REVISION..." "...FORK_MAJOR_REVISION..."."...FORK_MINOR_REVISION..."."...FORK_STABLE_REVISION
 #endif
@@ -112,38 +112,38 @@
 
 enum
 {
-	Pref_Undef = 0,
-	Pref_On,
-	Pref_Off,
-	Pref_Temp,
+	Pref_Undef = 0,	// Default Value
+	Pref_On,	// Enabled
+	Pref_Off,	// Disabled
+	Pref_Temp,	// Disabled for the map duration or current round
 
-	Pref_Music = 0,
-	Pref_Voice,
-	Pref_Help,
-	Pref_Boss,
-	Pref_Duo,
-	Pref_Diff,
-	Pref_Dmg,
-	Pref_DmgPos,
-	Pref_Hud,
+	Pref_Music = 0,	// Boss Music
+	Pref_Voice,	// Boss Voicelines
+	Pref_Help,	// Class Info
+	Pref_Boss,	// Boss Toggle
+	Pref_Duo,	// Companion Toggle
+	Pref_Diff,	// Special Toggle or Difficulty Setting
+	Pref_Dmg,	// Damage Tracker Players
+	Pref_DmgPos,	// Damage Tracker Position
+	Pref_Hud,	// HUD Flags
 	Pref_MAX,
 
-	RageMode_Full = 0,
-	RageMode_Part,
-	RageMode_None,
+	RageMode_Full = 0,	// Take all of rage
+	RageMode_Part,		// Take only required amount
+	RageMode_None,		// Disable using rage
 
-	Stat_Win = 0,
-	Stat_Lose,
-	Stat_Kill
-	Stat_Death,
+	Stat_Win = 0,	// Boss Wins
+	Stat_Lose,	// Boss Loses
+	Stat_Kill,	// Boss Kills
+	Stat_Death,	// Boss Deaths
 	Stat_MAX,
-	Stat_Slain = 4,
-	Stat_Mvp,
+	Stat_Slain = 4,	// Killed Bosses
+	Stat_Mvp,	// MVP Count
 
-	Game_Invalid = 0,
-	Game_Disabled = 1,
-	Game_Fun,
-	Game_Arena,
+	Game_Invalid = 0,	// Unknown Type
+	Game_Disabled,		// No Assets
+	Game_Fun,		// Bosses Only
+	Game_Arena,		// Full Gamemode
 	Game_MAX
 }
 
@@ -152,9 +152,7 @@ enum struct BossEnum
 	bool Active;
 	bool Leader;
 	int Special;
-	char Name[MAX_TARGET_LENGTH];
 	TFClassType Class;
-	TFTeam Team;
 
 	int MaxHealth;
 	int Lives;
@@ -170,6 +168,7 @@ enum struct BossEnum
 	int Killstreak;
 	int RPSHealth;
 	int RPSCount;
+	float Hazard;
 
 	bool Voice;
 	bool Triple;
@@ -202,13 +201,14 @@ enum struct ClientEnum
 	float BGMAt;
 	float GlowFor;
 	float PopUpAt;
-	float Hazard;
 	int Damage;
 	int Queue;
+	int Selection;
 	int Pref[Pref_MAX];
 	int Kills[view_as<int>(TFClassType)];
 	int Mvps[view_as<int>(TFClassType)];
 	int Stat[Stat_MAX];
+	int Goombas[MAXTF2PLAYERS];
 	bool DisableHud;
 
 	bool Private;
@@ -218,6 +218,7 @@ enum struct ClientEnum
 enum struct WeaponEnum
 {
 	int Crit;
+	int Shield;
 	int Stale;
 	float Stun;
 	float Uber;
@@ -244,9 +245,11 @@ int Specials;
 bool LastMann;
 int Enabled;
 int NextGamemode;
+int ArenaRoundsLeft;
 int Players;
 int BossPlayers;
 int MercPlayers;
+float HealthBarFor;
 TFTeam BossTeam;
 ArrayList Charsets;
 int Charset;
@@ -267,27 +270,29 @@ GlobalForward OnLoseLife;
 GlobalForward OnAlivePlayersChanged;
 GlobalForward OnBackstabbed;
 
-// First-Load (No module dependencies)
+void MainMenu(int client) { MainMenuC(client, 0); }
+
 #include "ff2_modules/stocks.sp"
+#include "ff2_modules/preference.sp"
+#include "ff2_modules/weapons.sp"
+#tryinclude "ff2_modules/doors.sp"
+#tryinclude "ff2_modules/music.sp"
+#tryinclude "ff2_modules/rtd.sp"
 #tryinclude "ff2_modules/stattrak.sp"
+#tryinclude "ff2_modules/targetfilter.sp"
 #tryinclude "ff2_modules/tf2x10.sp"
 #tryinclude "ff2_modules/tf2attributes.sp"
-#include "ff2_modules/weapons.sp"
+#tryinclude "ff2_modules/tts.sp"
 
-// Second-Load
-#tryinclude "ff2_modules/tf2items.sp"	// weapons.sp
-#tryinclude "ff2_modules/steamworks.sp"	// tf2x10.sp
-#include "ff2_modules/sdkhooks.sp"	// tf2attributes.sp
+#include "ff2_modules/formula.sp"	// tf2x10
+#include "ff2_modules/sdkhooks.sp"	// tf2attributes
+#tryinclude "ff2_modules/tf2items.sp"	// weapons
+#tryinclude "ff2_modules/steamworks.sp"	// tf2x10
 
-// Third-Load
-#include "ff2_modules/bosses.sp"	// convars.sp, sdkhooks.sp, tf2items.sp
+#include "ff2_modules/bosses.sp"	// convars, sdkhooks, tf2items
+#tryinclude "ff2_modules/dhooks.sp"	// sdkhooks
+#tryinclude "ff2_modules/stomp.sp"	// sdkhooks
 
-// Fourth-Load
-#tryinclude "ff2_modules/targetfilter.sp"	// bosses.sp
-#include "ff2_modules/music.sp"			// bosses.sp
-#include "ff2_modules/formula.sp"		// bosses.sp
-
-// Last-Load
 #include "ff2_modules/natives.sp"
 
 // Require either one due to needing weapon attributes for bosses
@@ -356,6 +361,7 @@ public void OnPluginStart()
 
 	CvarVersion = CreateConVar("ff2_version", PLUGIN_VERSION, "Freak Fortress 2 Version", FCVAR_NOTIFY|FCVAR_DONTRECORD);
 	CvarEnabled = CreateConVar("ff2_enabled", "1", "Backwards Compatibility ConVar", FCVAR_DONTRECORD, true, 0.0, true, 2.0);
+	CvarDebug = CreateConVar("ff2_debug", "1", "If to display debug outputs", FCVAR_NOTIFY, true, 0.0, true, 1.0);
 
 	CreateConVar("ff2_oldjump", "1", "Backwards Compatibility ConVar", FCVAR_DONTRECORD, true, 0.0, true, 1.0);
 	CreateConVar("ff2_base_jumper_stun", "0", "Backwards Compatibility ConVar", FCVAR_DONTRECORD, true, 0.0, true, 1.0);
@@ -383,6 +389,14 @@ public void OnPluginStart()
 
 	SDK_Setup();
 	Bosses_Setup();
+
+	#if defined FF2_STOMP
+	Stomp_Setup();
+	#endif
+
+	#if defined FF2_TTS
+	TTS_Setup();
+	#endif
 
 	#if defined FF2_TARGETFILTER
 	TargetFilter_Setup();
@@ -416,9 +430,31 @@ public void OnConfigsExecuted()
 {
 	char buffer[64];
 	GetCurrentMap(buffer, sizeof(buffer));
-	CheckGamemode(buffer);
+	if(CvarEnabled.BoolValue)
+	{
+		int gamemode = CheckGamemode(buffer);
+		if(gamemode==Game_Disabled || (game==Game_Invalid && CvarEnabled.IntValue!=2))
+		{
+			Enabled = Game_Disabled;
+		}
+		else
+		{
+			Enabled = gamemode;
+		}
+	}
+	else
+	{
+		Enabled = Game_Disabled;
+	}
 
+	#if defined FF2_WEAPONS
 	Weapons_Setup();
+	#endif
+
+	#if defined FF2_TTS
+	TTS_Check(buffer);
+	#endif
+
 	Bosses_Config();
 }
 
@@ -430,6 +466,26 @@ public void OnMapStart()
 }
 
 /*
+	Player Events
+*/
+
+public void OnClientPostAdminCheck(int client)
+{
+	SDKHook(client, SDKHook_OnTakeDamage, OnTakeDamage);
+	SDKHook(client, SDKHook_OnTakeDamageAlive, OnTakeDamageAlive);
+	SDKHook(client, SDKHook_GetMaxHealth, OnGetMaxHealth);
+}
+
+public Action ChangeClass(int client, const char[] command, int args)
+{
+	if(Enabled!=Game_Arena || CheckRoundState()!=1)
+		return Plugin_Continue;
+
+	ShowVGUIPanel(client, GetClientTeam(client)==2 ? "class_red" : "class_blue");
+	return Plugin_Handled;
+}
+
+/*
 	Game Events
 */
 
@@ -437,18 +493,31 @@ public void OnRoundSetup(Event event, const char[] name, bool dontBroadcast)
 {
 	if(NextGamemode != Game_Invalid)
 	{
-		switch(NextGamemode)
+		if(Enabled <= Game_Disabled)
 		{
-			case Game_Disabled:
-				Enabled = Game_Disabled;
+			switch(NextGamemode)
+			{
+				case Game_Disabled:
+					Enabled = Game_Disabled;
 
-			case Game_Fun:
-				Enabled = Game_Fun;
+				case Game_Fun:
+					Enabled = Game_Fun;
 
-			case Game_Arena:
-				Enabled = Game_Arena;
+				case Game_Arena:
+					Enabled = Game_Arena;
+			}
 		}
 	}
+
+	if(Enabled <= Game_Disabled)
+		return;
+
+	#if defined FF2_TTS
+	TTS_Start();
+	#endif
+
+	if(Enabled != Game_Arena)
+		return;
 }
 
 #if SETTING_TICKMODE>0
@@ -715,53 +784,38 @@ int CheckGamemode(const char[] map)
 
 void GameOverScreen(TFTeam winner, float duration)
 {
-	if(team == BossTeam)
+	int leader = GetZeroBoss();
+	if(leader != -1)
 	{
-		if(RandomSound("sound_win", sound, sizeof(sound)))
-			EmitVoiceSoundToAll(sound, false);
+		if(team == BossTeam)
+		{
+			PlayBossSound(leader, "sound_win", 1, _, false);
+			if(!PlayBossSound(leader, "sound_outtromusic_win", 2))
+				PlayBossSound(leader, "sound_outtromusic", 2);
+		}
+		else if(team)
+		{
+			if(!PlayBossSound(leader, "sound_outtromusic_lose", 2))
+				PlayBossSound(leader, "sound_outtromusic", 2);
+		}
+		else
+		{
+			if(IsPlayerAlive(leader))
+				PlayBossSound(leader, "sound_stalemate", 1, _, false);
 
-		if(RandomSound("sound_outtromusic_win", sound, sizeof(sound)))
-		{
-			EmitMusicToAll(sound);
-		}
-		else if(RandomSound("sound_outtromusic", sound, sizeof(sound)))
-		{
-			EmitMusicToAll(sound);
-		}
-	}
-	else if(team)
-	{
-		if(RandomSound("sound_outtromusic_lose", sound, sizeof(sound)))
-		{
-			EmitMusicToAll(sound);
-		}
-		else if(RandomSound("sound_outtromusic", sound, sizeof(sound)))
-		{
-			EmitMusicToAll(sound);
-		}
-	}
-	else
-	{
-		if(RandomSound("sound_stalemate", sound, sizeof(sound)))
-			EmitVoiceSoundToAll(sound, false);
-
-		if(RandomSound("sound_outtromusic_stalemate", sound, sizeof(sound)))
-		{
-			EmitMusicToAll(sound);
-		}
-		else if(RandomSound("sound_outtromusic_lose", sound, sizeof(sound)))
-		{
-			EmitMusicToAll(sound);
-		}
-		else if(RandomSound("sound_outtromusic", sound, sizeof(sound)))
-		{
-			EmitMusicToAll(sound);
+			if(!PlayBossSound(leader, "sound_outtromusic_stalemate", 2))
+			{
+				if(!PlayBossSound(leader, "sound_outtromusic_lose", 2))
+					PlayBossSound(leader, "sound_outtromusic", 2);
+			}
 		}
 	}
 
 	for(int client=1; client<=MaxClients; client++)
 	{
-		if(IsValidClient(client)
+		if(IsValidClient(client))
+		{
+		}
 	}
 }
 
@@ -769,7 +823,33 @@ public Action MainMenuC(int client, int args)
 {
 	if(client)
 	{
-		MainMenu(client);
+		Menu menu = new Menu(MainMenuH);
+		char buffer[256];
+		SetGlobalTransTarget(client);
+		FormatEx(buffer, sizeof(buffer), "%t", "Menu Title");
+		menu.SetTitle(buffer);
+
+		FormatEx(buffer, sizeof(buffer), "%t", "Menu Pref");
+		menu.AddItem("1", buffer);
+		FormatEx(buffer, sizeof(buffer), "%t", "Menu Selection");
+		menu.AddItem("2", buffer);
+		FormatEx(buffer, sizeof(buffer), "%t", "Menu Help");
+		menu.AddItem("3", buffer);
+		FormatEx(buffer, sizeof(buffer), "%t", "Menu New");
+		menu.AddItem("4", buffer);
+		FormatEx(buffer, sizeof(buffer), "%t", "Menu Queue");
+		menu.AddItem("5", buffer);
+		FormatEx(buffer, sizeof(buffer), "%t", "Menu Music");
+		menu.AddItem("6", buffer);
+
+		#if defined FF2_STATTRAK
+		FormatEx(buffer, sizeof(buffer), "%t", "Menu Stats");
+		menu.AddItem("7", buffer);
+		#endif
+
+		menu.Pagination = false;
+		menu.ExitButton = true;
+		menu.Display(client, MENU_TIME_FOREVER);
 		return Plugin_Handled;
 	}
 
@@ -792,8 +872,36 @@ public Action MainMenuC(int client, int args)
 
 	PrintToServer("");
 
+	#if defined FF2_DHOOKS
+	PrintToServer("DHooks: %s", GetFeatureStatus(FeatureType_Native, "DHookCreateDetour")==FeatureStatus_Available ? "Enabled" : GetFeatureStatus(FeatureType_Native, "DHookCreate")==FeatureStatus_Available ? "Incorrect Version" : "Library Not Found");
+	#elseif defined _dhooks_included
+	PrintToServer("DHooks: Module Not Compiled");
+	#else
+	PrintToServer("DHooks: Include Not Compiled");
+	#endif
+
+	#if defined FF2_DOORS
+	PrintToServer("Doors: %s", DoorEnabled ? "Enabled" : "Disabled");
+	#else
+	PrintToServer("Doors: Module Not Compiled");
+	#endif
+
+	#if defined FF2_MUSIC
+	PrintToServer("Music: %s", BGMs>0 ? "Enabled" : "Disabled");
+	#else
+	PrintToServer("Music: Module Not Compiled");
+	#endif
+
+	#if defined FF2_STEAMWORKS
+	PrintToServer("SMJansson: %s", GetFeatureStatus(FeatureType_Native, "json_load")==FeatureStatus_Available ? "Enabled" : "Library Not Found");
+	#elseif defined _jansson_included_
+	PrintToServer("SMJansson: Module Not Compiled");
+	#else
+	PrintToServer("SMJansson: Include Not Compiled");
+	#endif
+
 	#if defined FF2_STATTRAK
-	PrintToServer("StatTrak: Enabled");
+	PrintToServer("StatTrak: %s", StatEnabled ? "Enabled" : "Disabled");
 	#else
 	PrintToServer("StatTrak: Module Not Compiled");
 	#endif
@@ -833,48 +941,31 @@ public Action MainMenuC(int client, int args)
 	#endif
 
 	#if defined FF2_TIMESTEN
-	PrintToServer("TF2x10: %s", TimesTen ? "Enabled" : "Library Not Found"));
+	PrintToServer("TF2x10: %s", TimesTen ? "Enabled" : "Library Not Found");
 	#else
 	PrintToServer("TF2x10: Module Not Compiled");
+	#endif
+
+	#if defined FF2_TTS
+	PrintToServer("Teleport-to-Spawn: %s", TTSEnabled ? "Enabled" : "Disabled");
+	#else
+	PrintToServer("Teleport-to-Spawn: Module Not Compiled");
+	#endif
+
+	#if defined FF2_WEAPONS
+	PrintToServer("Weapons: %s", WeaponKV==null ? "Disabled" : "Enabled");
+	#else
+	PrintToServer("Weapons: Module Not Compiled");
 	#endif
 
 	PrintToServer("");
 	PrintToServer("Weapon Attributes: %s", statusCheck ? "OK" : "TF2Attributes nor TF2Items are available");
 	PrintToServer("Wearable Weapons: %s", SDKEquipWearable==null ? "Failed to create call via Gamedata" : "OK");
 	PrintToServer("Boss KeyValues: %s", Enabled>Game_Disabled ? Special[0].Kv==INVALID_HANDLE ? "Failed to create boss KeyValues" : "OK" : "N/A");
+	#if defined FF2_WEAPONS
 	PrintToServer("Weapon KeyValues: %s", Enabled>Game_Disabled ? WeaponKV==null ? "Failed to create weapon KeyValues" : "OK" : "N/A");
-	return Plugin_Handled;
-}
-
-void MainMenu(int client)
-{
-	Menu menu = new Menu(MainMenuH);
-	char buffer[256];
-	SetGlobalTransTarget(client);
-	FormatEx(buffer, sizeof(buffer), "%t", "Menu Title");
-	menu.SetTitle(buffer);
-
-	FormatEx(buffer, sizeof(buffer), "%t", "Menu Pref");
-	menu.AddItem("1", buffer);
-	FormatEx(buffer, sizeof(buffer), "%t", "Menu Selection");
-	menu.AddItem("2", buffer);
-	FormatEx(buffer, sizeof(buffer), "%t", "Menu Help");
-	menu.AddItem("3", buffer);
-	FormatEx(buffer, sizeof(buffer), "%t", "Menu New");
-	menu.AddItem("4", buffer);
-	FormatEx(buffer, sizeof(buffer), "%t", "Menu Queue");
-	menu.AddItem("5", buffer);
-	FormatEx(buffer, sizeof(buffer), "%t", "Menu Music");
-	menu.AddItem("6", buffer);
-
-	#if defined FF2_STATTRAK
-	FormatEx(buffer, sizeof(buffer), "%t", "Menu Stats");
-	menu.AddItem("7", buffer);
 	#endif
-
-	menu.Pagination = false;
-	menu.ExitButton = true;
-	menu.Display(client, MENU_TIME_FOREVER);
+	return Plugin_Handled;
 }
 
 public int MainMenuH(Menu menu, MenuAction action, int client, int selection)

@@ -1,6 +1,12 @@
 /*
-	Requirement:
-	bosses.sp
+	Functions:
+	void Music_Start(float engineTime)
+	void Music_Play(int client, float engineTime, int song)
+	void Music_Stop(int client)
+	void Music_Override(int client, const char[] path, float time, char[] name, char[] artist)
+	void Music_Menu(int client)
+	void Music_Next(int client, float engineTime, bool skip)
+	void Music_List(int client)
 */
 
 #define FF2_MUSIC
@@ -107,7 +113,8 @@ void Music_Play(int client, float engineTime, int song)
 	}
 
 	float time = BGM[song].Time;
-	char name[64], artist[64], path[MAX_PLATFORM_PATH];
+	char name[64], artist[64];
+	static char path[PLATFORM_MAX_PATH];
 	strcopy(path, sizeof(path), BGM[song].Path);
 	strcopy(name, sizeof(name), BGM[song].Name);
 	strcopy(artist, sizeof(artist), BGM[song].Artist);
@@ -188,15 +195,15 @@ void Music_Override(int client, const char[] path, float time, char[] name, char
 	strcopy(Client[client].BGM, PLATFORM_MAX_PATH, path);
 
 	ClientCommand(client, "playgamesound \"%s\"", path);
-	Client[client].BGMAt = time>1 ? engineTime+time : FAR_FUTURE;
+	Client[client].BGMAt = time>1 ? GetEngineTime()+time : FAR_FUTURE;
 
 	SetGlobalTransTarget(client);
 
 	if(!name[0])
-		Format(name, sizeof(name), "%t", "Music Name");
+		Format(name, 64, "%t", "Music Name");
 
 	if(!artist[0])
-		Format(artist, sizeof(artist), "%t", "Music Artist");
+		Format(artist, 64, "%t", "Music Artist");
 
 	FPrintToChat(client, "%t", "Music Info", artist, name);
 }
@@ -256,7 +263,7 @@ public int Music_MenuH(Menu menu, MenuAction action, int client, int selection)
 		case MenuAction_Cancel:
 		{
 			if(selection == MenuCancel_ExitBack)
-				Menu_Main(client);
+				MainMenu(client);
 		}
 		case MenuAction_Select:
 		{

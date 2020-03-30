@@ -723,56 +723,47 @@ public any Native_SetClientGlow(Handle plugin, int numParams)
 
 public any Native_GetClientShield(Handle plugin, int numParams)
 {
-	/*int client = GetNativeCell(1);
-	if(IsValidClient(client) && hadshield[client])
+	int client = GetNativeCell(1);
+	if(client<0 || client>=MAXTF2PLAYERS)
+		return -1;
+
+	for(int i; i<3; i++)
 	{
-		if(shield[client])
-		{
-			if(cvarShieldType.IntValue > 2)
-			{
-				return RoundToFloor(shieldHP[client]/cvarShieldHealth.FloatValue*100.0);
-			}
-			else
-			{
-				return 100;
-			}
-		}
-		return 0;
-	}*/
+		if(Weapon[client][i].Shield)
+			return 100;
+	}
 	return -1;
 }
 
 public any Native_SetClientShield(Handle plugin, int numParams)
 {
-	/*int client = GetNativeCell(1);
-	if(IsValidClient(client))
-	{
-		if(GetNativeCell(2) > 0)
-			shield[client] = GetNativeCell(2);
+	int client = GetNativeCell(1);
+	if(client<0 || client>=MAXTF2PLAYERS)
+		return;
 
-		if(GetNativeCell(3) >= 0)
-			shieldHP[client] = GetNativeCell(3)*cvarShieldHealth.FloatValue/100.0;
+	any value = GetNativeCell(3);
+	if(!value || (value<0 && !Weapon[client][1].Shield))
+		return;
 
-		if(GetNativeCell(4) > 0)
-		{
-			shDmgReduction[client] = (1.0-GetNativeCell(4));
-		}
-		else if(GetNativeCell(3) > 0)
-		{
-			shDmgReduction[client] = shieldHP[client]/cvarShieldHealth.FloatValue*(1.0-cvarShieldResist.FloatValue);
-		}
-	}*/
+	value = GetNativeCell(2);
+	if(value > 0)
+		Weapon[client][1].Shield = view_as<int>(value);
 }
 
 public any Native_RemoveClientShield(Handle plugin, int numParams)
 {
-	/*int client = GetNativeCell(1);
-	if(IsValidClient(client))
+	int client = GetNativeCell(1);
+	if(!IsValidClient(client))
+		return;
+
+	for(int i; i<3; i++)
 	{
-		TF2_RemoveWearable(client, shield[client]);
-		shieldHP[client] = 0.0;
-		shield[client] = 0;
-	}*/
+		if(!Weapon[client][i].Shield)
+			continue;
+
+		RemoveShield(client, 0, Weapon[client][i].Shield);
+		Weapon[client][i].Shield = 0;
+	}
 }
 
 public any Native_LogError(Handle plugin, int numParams)
@@ -781,7 +772,7 @@ public any Native_LogError(Handle plugin, int numParams)
 	int error = FormatNativeString(0, 1, 2, sizeof(buffer), _, buffer);
 	if(error != SP_ERROR_NONE)
 	{
-		ThrowNativeError(error, "Failed to format");
+		ThrowNativeError(error, "FormatNativeString Failed");
 		return;
 	}
 	LogError2(buffer);

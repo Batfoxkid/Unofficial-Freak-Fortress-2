@@ -38,7 +38,8 @@ void StatTrak_Save(int client)
 	if(!Client[client].Cached)
 		return;
 
-	static char buffer[6 * (view_as<int>(TFClassType)-1+Stat_MAX)];
+	// 6 * (view_as<int>(TFClassType)-1+Stat_MAX)
+	static char buffer[78];
 	for(int i; i<Stat_MAX; i++)
 	{
 		if(Client[client].Stat[i] > 99999)
@@ -62,7 +63,7 @@ void StatTrak_Save(int client)
 
 		Format(buffer, sizeof(buffer), "%s %d %d", buffer, Client[client].Kills[i], Client[client].Mvps[i]);
 	}
-	SetClientCookie(client, StatCookie, cookies);
+	SetClientCookie(client, StatCookie, buffer);
 }
 
 void StatTrak_Client(int client)
@@ -115,7 +116,7 @@ void StatTrak_Add(int client, int stat, TFClassType class=TFClass_Unknown, int a
 
 	if(stat == Stat_Slain)
 	{
-		Client[client].Kiils[class] += amount;
+		Client[client].Kills[class] += amount;
 		return;
 	}
 
@@ -128,7 +129,7 @@ public Action StatTrak_Command(int client, int args)
 	{
 		if(client)
 		{
-			StatTrak_Menu(client, Boss[client].Active ? 0 : GetClassType(view_as<TFClassType>(GetEntProp(client, Prop_Send, "m_iDesiredPlayerClass"))));
+			StatTrak_Menu(client, client, Boss[client].Active ? 0 : GetClassType(view_as<TFClassType>(GetEntProp(client, Prop_Send, "m_iDesiredPlayerClass"))));
 		}
 		else
 		{
@@ -320,6 +321,7 @@ static void StatTrak_Reset(int client, const char[] back, bool confirm=false)
 	SetGlobalTransTarget(client);
 	menu.SetTitle("%t", confirm ? "Stat Confirm" : "Stat Reset");
 
+	char buffer[16];
 	FormatEx(buffer, sizeof(buffer), "%t", "Yes");
 	menu.AddItem(back, buffer);
 
@@ -327,7 +329,7 @@ static void StatTrak_Reset(int client, const char[] back, bool confirm=false)
 	menu.AddItem(back, buffer);
 
 	menu.ExitButton = true;
-	menu.DisplayAt(client, page*7, MENU_TIME_FOREVER);
+	menu.Display(client, MENU_TIME_FOREVER);
 }
 
 public int StatTrak_Confirm(Menu menu, MenuAction action, int client, int selection)

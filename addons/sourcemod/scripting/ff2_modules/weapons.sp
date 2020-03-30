@@ -14,6 +14,9 @@ KeyValues WeaponKV;
 
 void Weapons_Setup()
 {
+	if(Enabled <= Game_Disabled)
+		return;
+
 	char config[PLATFORM_MAX_PATH];
 	BuildPath(Path_SM, config, sizeof(config), WEAPON_CONFIG);
 	if(!FileExists(config))

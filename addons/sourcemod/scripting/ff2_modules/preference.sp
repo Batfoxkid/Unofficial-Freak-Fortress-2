@@ -5,7 +5,7 @@
 	void Pref_SaveClient(int client)
 	void Pref_Menu(int client)
 	void Pref_QuickToggle(int client, int selection=-1)
-	void Pref_Boss(int client, int pack)
+	void Pref_BossMenu(int client, int pack)
 	void Pref_Bosses(int client)
 	void Pref_SelectBoss(int client, int boss, bool blank=false)
 */
@@ -282,12 +282,12 @@ public int Pref_QuickToggleH(Menu menu, MenuAction action, int client, int selec
 
 			bool blank = boss==-1;
 			Pref_SelectBoss(client, blank ? Charset : boss, blank);
-			Pref_Boss(blank ? Charset : Special[boss].Charset);
+			Pref_BossMenu(client, blank ? Charset : Special[boss].Charset);
 		}
 	}
 }
 
-void Pref_Boss(int client, int pack)
+void Pref_BossMenu(int client, int pack)
 {
 	if(pack < 0)
 	{
@@ -361,7 +361,7 @@ void Pref_Boss(int client, int pack)
 		return;
 	}
 
-	Menu menu = new Menu(Pref_BossH);
+	Menu menu = new Menu(Pref_BossMenuH);
 
 	char buffer[64], boss[64];
 	SetGlobalTransTarget(client);
@@ -410,7 +410,7 @@ void Pref_Boss(int client, int pack)
 	menu.Display(client, MENU_TIME_FOREVER);
 }
 
-public int Pref_BossH(Menu menu, MenuAction action, int client, int selection)
+public int Pref_BossMenuH(Menu menu, MenuAction action, int client, int selection)
 {
 	switch(action)
 	{
@@ -447,7 +447,7 @@ public int Pref_BossH(Menu menu, MenuAction action, int client, int selection)
 			}
 
 			Pref_SelectBoss(client, boss, true);
-			Pref_Boss(boss);
+			Pref_BossMenu(client, boss);
 		}
 	}
 }
@@ -515,7 +515,7 @@ public int ConfirmBossH(Menu menu, MenuAction action, int client, int selection)
 				}
 				Pref_SelectBoss(client, boss);
 			}
-			Pref_Boss(client, Special[boss].Charset);
+			Pref_BossMenu(client, Special[boss].Charset);
 		}
 	}
 }
@@ -615,7 +615,7 @@ public int Pref_BossesH(Menu menu, MenuAction action, int client, int selection)
 		{
 			char buffer[6];
 			menu.GetItem(selection, buffer, sizeof(buffer));
-			Pref_Boss(client, StringToInt(buffer));
+			Pref_BossMenu(client, StringToInt(buffer));
 		}
 	}
 }
@@ -654,7 +654,7 @@ void Pref_SelectBoss(int client, int boss, bool blank=false)
 		Special[boss].Kv.GetString("name", buffers[pack], size);
 	}
 
-	strcopy(buffer, buffers[0], sizeof(buffer));
+	strcopy(buffer, sizeof(buffer), buffers[0]);
 	for(int i=1; i<length; i++)
 	{
 		Format(buffer, sizeof(buffer), "%s;%s", buffer, buffers[i]);
