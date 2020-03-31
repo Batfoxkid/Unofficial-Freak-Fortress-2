@@ -1,9 +1,9 @@
 /*
 	Requirement:
-	sdkhooks.sp
+	sdkhooks
 
 	Optional:
-	tf2items.sp
+	tf2items
 
 	Functions:
 	void Bosses_Setup()
@@ -456,8 +456,22 @@ void Bosses_Prepare(int boss)
 		return;
 
 	Special[boss].Kv.Rewind();
+
+	char filePath[PLATFORM_MAX_PATH];
+	Special[boss].Kv.GetString("model", filePath, sizeof(filePath));
+	if(FileExists(filePath, true))
+	{
+		PrecacheModel(filePath);
+	}
+	else
+	{
+		char bossName[MAX_TARGET_LENGTH];
+		Special[boss].Kv.GetString("filename", bossName, sizeof(bossName));
+		LogError2("[Boss] Character %s is missing file '%s' in \"model\"!", bossName, filePath);
+	}
+
 	Special[boss].Kv.GoFirstSubKey();
-	char filePath[PLATFORM_MAX_PATH], key[8];
+	char key[8];
 	while(Special[boss].Kv.GotoNextKey())
 	{
 		static char file[PLATFORM_MAX_PATH], section[16];
@@ -507,7 +521,7 @@ void Bosses_Prepare(int boss)
 
 					char bossName[MAX_TARGET_LENGTH];
 					Special[boss].Kv.GetString("filename", bossName, sizeof(bossName));
-					LogError2("[Boss] Character %s is missing file '%s' in section '%s'!", bossName, filePath, section);
+					LogError2("[Boss] Character %s is missing file '%s' in section '%s'!", bossName, file, section);
 				}
 			}
 		}
@@ -515,44 +529,34 @@ void Bosses_Prepare(int boss)
 	Special[boss].Precached = true;
 }
 
-void Bosses_Create(int client, int boss=-1)
+void Bosses_Create(int client)
 {
-	if(boss < 0)
-	{
-		if(!Boss[client].Active)
-			return;
+	Bosses_Prepare(Boss[client].Special);
 
-		Boss[client].Active = false;
-		if(IsPlayerAlive(client))
-			TF2_RegeneratePlayer(client);
-	}
-
-	Bosses_Prepare(boss);
-
-	Boss[client].RageDamage = RoundFloat(ParseFormula(boss, "ragedamage", DEFAULT_RAGEDAMAGE));
-	Boss[client].Lives = Special[boss].Kv.GetNum("lives", 1);
+	Boss[client].RageDamage = RoundFloat(ParseFormula(Boss[client].Special, "ragedamage", DEFAULT_RAGEDAMAGE));
+	Boss[client].Lives = Special[Boss[client].Special].Kv.GetNum("lives", 1);
 	if(Boss[client].Lives < 1)
 		Boss[client].Lives = 1;
 
 	Boss[client].MaxLives = Boss[client].Lives;
-	Boss[client].MaxHealth = RoundFloat(ParseFormula(boss, "health_formula", DEFAULT_HEALTH));
+	Boss[client].MaxHealth = RoundFloat(ParseFormula(Boss[client].Special, "health_formula", DEFAULT_HEALTH));
 	if(Boss[client].MaxHealth < 1)
 		Boss[client].MaxHealth = RoundFloat(Pow((760.8+float(Players))*(float(Players)-1.0), 1.0341)+2046.0);
 
 	Boss[client].Health = Boss[client].MaxHealth*Boss[client].Lives;
 
-	Boss[client].Triple = view_as<bool>(Special[boss].Kv.GetNum("triple", CvarTriple.IntValue));
-	Boss[client].Knockback = Special[boss].Kv.GetNum("knockback", Special[boss].Kv.GetNum("rocketjump", CvarKnockback.IntValue));
-	Boss[client].Crits = Special[boss].Kv.GetNum("crits", CvarCrits.IntValue);
-	Boss[client].Healing = view_as<bool>(Special[boss].Kv.GetNum("healing", CvarHealing.IntValue));
+	Boss[client].Triple = view_as<bool>(Special[Boss[client].Special].Kv.GetNum("triple", CvarTriple.IntValue));
+	Boss[client].Knockback = Special[Boss[client].Special].Kv.GetNum("knockback", Special[Boss[client].Special].Kv.GetNum("rocketjump", CvarKnockback.IntValue));
+	Boss[client].Crits = Special[Boss[client].Special].Kv.GetNum("crits", CvarCrits.IntValue);
+	Boss[client].Healing = view_as<bool>(Special[Boss[client].Special].Kv.GetNum("healing", CvarHealing.IntValue));
 
-	Boss[client].Voice = !Special[boss].Kv.GetNum("sound_block_vo");
-	Boss[client].RageMode = Special[boss].Kv.GetNum("ragemode");
-	Boss[client].RageMax = Special[boss].Kv.GetFloat("ragemax", 100.0);
-	Boss[client].RageMin = Special[boss].Kv.GetFloat("ragemin", 100.0);
-	Boss[client].Class = KvGetClass(Special[boss].Kv, "class");
-	Boss[client].MaxSpeed = Special[boss].Kv.GetFloat("maxspeed", 340.0);
-	Client[client].Team = view_as<TFTeam>(Special[boss].Kv.GetNum("bossteam"));
+	Boss[client].Voice = !Special[Boss[client].Special].Kv.GetNum("sound_block_vo");
+	Boss[client].RageMode = Special[Boss[client].Special].Kv.GetNum("ragemode");
+	Boss[client].RageMax = Special[Boss[client].Special].Kv.GetFloat("ragemax", 100.0);
+	Boss[client].RageMin = Special[Boss[client].Special].Kv.GetFloat("ragemin", 100.0);
+	Boss[client].Class = KvGetClass(Special[Boss[client].Special].Kv, "class");
+	Boss[client].MaxSpeed = Special[Boss[client].Special].Kv.GetFloat("maxspeed", 340.0);
+	Client[client].Team = view_as<TFTeam>(Special[Boss[client].Special].Kv.GetNum("bossteam"));
 	if(Client[client].Team == TFTeam_Unassigned)
 	{
 		switch(CvarTeam.IntValue)
@@ -571,10 +575,10 @@ void Bosses_Create(int client, int boss=-1)
 	TF2_RemovePlayerDisguise(client);
 	TF2_SetPlayerClass(client, Boss[client].Class, _, !GetEntProp(client, Prop_Send, "m_iDesiredPlayerClass") ? true : false);
 
-	int i = Special[boss].Kv.GetNum("sapper", CvarSapper.IntValue);
+	int i = Special[Boss[client].Special].Kv.GetNum("sapper", CvarSapper.IntValue);
 	Boss[client].Sapper = (i==1 || i>2);
 
-	i = Special[boss].Kv.GetNum("pickups");
+	i = Special[Boss[client].Special].Kv.GetNum("pickups");
 	Boss[client].HealthKits = (i==1 || i>2);
 	Boss[client].AmmoKits = i>1;
 
@@ -584,7 +588,9 @@ void Bosses_Create(int client, int boss=-1)
 	Boss[client].Charge[0] = 0.0;
 	Boss[client].Hazard = 0.0;
 
-	Boss[client].Cosmetics = view_as<bool>(Special[boss].Kv.GetNum("cosmetics"));
+	RequestFrame(Bosses_Model, client);
+
+	Boss[client].Cosmetics = view_as<bool>(Special[Boss[client].Special].Kv.GetNum("cosmetics"));
 	i = -1;
 	while((i=FindEntityByClassname2(i, "tf_wear*")) != -1)
 	{
@@ -616,7 +622,7 @@ void Bosses_Create(int client, int boss=-1)
 			TF2_RemoveWearable(client, i);
 	}
 
-	Bosses_Equip(client, boss);
+	Bosses_Equip(client);
 
 	bool var;
 	for(int target=1; target<=MaxClients; target++)
@@ -631,16 +637,16 @@ void Bosses_Create(int client, int boss=-1)
 	Boss[client].Leader = !var;
 }
 
-void Bosses_Equip(int client, int boss)
+void Bosses_Equip(int client)
 {
 	TF2_RemoveAllWeapons(client);
-	Special[boss].Kv.Rewind();
-	Special[boss].Kv.GotoFirstSubKey();
+	Special[Boss[client].Special].Kv.Rewind();
+	Special[Boss[client].Special].Kv.GotoFirstSubKey();
 	char attributes[PLATFORM_MAX_PATH];
 	do
 	{
 		static char classname[MAX_CLASSNAME_LENGTH];
-		if(!Special[boss].Kv.GetSectionName(classname, sizeof(classname))
+		if(!Special[Boss[client].Special].Kv.GetSectionName(classname, sizeof(classname))
 			continue;
 
 		bool wearable;
@@ -654,7 +660,7 @@ void Bosses_Equip(int client, int boss)
 				wearable = true;
 			}
 
-			Special[boss].Kv.GetString("name", classname, sizeof(classname), wearable ? "tf_wearable" : "saxxy");
+			Special[Boss[client].Special].Kv.GetString("name", classname, sizeof(classname), wearable ? "tf_wearable" : "saxxy");
 		}
 
 		MultiClassname(TF2_GetPlayerClass(client), classname, sizeof(classname));
@@ -663,16 +669,16 @@ void Bosses_Equip(int client, int boss)
 		if(wearable && SDKEquipWearable==null)
 			continue;
 
-		int index = Special[boss].Kv.GetNum("index");
-		int level = Special[boss].Kv.GetNum("level", -1);
-		bool override = view_as<bool>(Special[boss].Kv.GetNum("override"));
-		int rank = Special[boss].Kv.GetNum("rank", (level==-1 || override) ? -1 : 21);
+		int index = Special[Boss[client].Special].Kv.GetNum("index");
+		int level = Special[Boss[client].Special].Kv.GetNum("level", -1);
+		bool override = view_as<bool>(Special[Boss[client].Special].Kv.GetNum("override"));
+		int rank = Special[Boss[client].Special].Kv.GetNum("rank", (level==-1 || override) ? -1 : 21);
 		int kills = GetRankingKills(rank, index, wearable);
 
 		if(level < 0)
 			level = 101;
 
-		Special[boss].Kv.GetString("attributes", attributes, sizeof(attributes));
+		Special[Boss[client].Special].Kv.GetString("attributes", attributes, sizeof(attributes));
 		if(kills >= 0)
 		{
 			if(attributes[0])
@@ -711,16 +717,16 @@ void Bosses_Equip(int client, int boss)
 		}
 
 		#if defined FF2_TF2ITEMS
-		index = (TF2Items && !wearable) ? TF2Items_SpawnWeapon(client, classname, index, level, Special[boss].Kv.GetNum("quality", 5), attributes) : SDK_SpawnWeapon(client, classname, index, level, Special[boss].Kv.GetNum("quality", 5), attributes);
+		index = (TF2Items && !wearable) ? TF2Items_SpawnWeapon(client, classname, index, level, Special[Boss[client].Special].Kv.GetNum("quality", 5), attributes) : SDK_SpawnWeapon(client, classname, index, level, Special[Boss[client].Special].Kv.GetNum("quality", 5), attributes);
 		#else
-		index = SDK_SpawnWeapon(client, classname, index, level, Special[boss].Kv.GetNum("quality", 5), attributes);
+		index = SDK_SpawnWeapon(client, classname, index, level, Special[Boss[client].Special].Kv.GetNum("quality", 5), attributes);
 		#endif
 		if(index == -1)
 			continue;
 
 		if(!wearable)
 		{
-			FF2_SetAmmo(client, index, Special[boss].Kv.GetNum("ammo", -1), Special[boss].Kv.GetNum("clip", -1));
+			FF2_SetAmmo(client, index, Special[Boss[client].Special].Kv.GetNum("ammo", -1), Special[Boss[client].Special].Kv.GetNum("clip", -1));
 			if(index!=735 && StrEqual(classname, "tf_weapon_builder", false))
 			{
 				SetEntProp(index, Prop_Send, "m_aBuildableObjectTypes", 1, _, 0);
@@ -739,9 +745,9 @@ void Bosses_Equip(int client, int boss)
 			}
 		}
 
-		if(Special[boss].Kv.GetNum("show", wearable ? 1 : 0))
+		if(Special[Boss[client].Special].Kv.GetNum("show", wearable ? 1 : 0))
 		{
-			Special[boss].Kv.GetString("worldmodel", attributes, sizeof(attributes));
+			Special[Boss[client].Special].Kv.GetString("worldmodel", attributes, sizeof(attributes));
 			if(attributes[0])
 				ConfigureWorldModelOverride(index, attributes, wearable);
 
@@ -756,10 +762,10 @@ void Bosses_Equip(int client, int boss)
 		}
 
 		static int rgba[4];
-		rgba[0] = Special[boss].Kv.GetNum("alpha", 255);
-		rgba[1] = Special[boss].Kv.GetNum("red", 255);
-		rgba[2] = Special[boss].Kv.GetNum("green", 255);
-		rgba[3] = Special[boss].Kv.GetNum("blue", 255);
+		rgba[0] = Special[Boss[client].Special].Kv.GetNum("alpha", 255);
+		rgba[1] = Special[Boss[client].Special].Kv.GetNum("red", 255);
+		rgba[2] = Special[Boss[client].Special].Kv.GetNum("green", 255);
+		rgba[3] = Special[Boss[client].Special].Kv.GetNum("blue", 255);
 
 		for(level=0; level<4; level++)
 		{
@@ -772,22 +778,7 @@ void Bosses_Equip(int client, int boss)
 		}
 
 		SetEntPropEnt(client, Prop_Send, "m_hActiveWeapon", index);
-	} while(Special[boss].Kv.GotoNextKey());
-
-	/*Special[Boss[client].Special].Kv.Rewind();
-	if(!Special[Boss[client].Special].Kv.JumpToKey(key))
-		return false;
-
-	char buffer[2];
-	if(Special[Boss[client].Special].Kv.GotoFirstSubKey())
-	{
-		do
-		{
-			if(KvGetSectionType(Special[Boss[client].Special].Kv) == Section_Sound)
-				continue;
-
-		} while(Special[Boss[client].Special].Kv.GotoNextKey());
-	}*/
+	} while(Special[Boss[client].Special].Kv.GotoNextKey());
 }
 
 public Action Bosses_Rage(int client, const char[] command, int args)
