@@ -258,6 +258,10 @@ WeaponEnum Weapon[MAXTF2PLAYERS][3];
 ClientEnum Client[MAXTF2PLAYERS];
 BossEnum Boss[MAXTF2PLAYERS];
 
+ConVar CvarVersion;
+ConVar CvarEnabled;
+ConVar CvarDebug;
+
 GlobalForward PreAbility;
 GlobalForward OnAbility;
 GlobalForward OnMusic;
@@ -418,9 +422,8 @@ public void OnPluginStart()
 	HookEvent("object_deflected", OnObjectDeflected, EventHookMode_Pre);
 	HookEvent("rps_taunt_event", OnRPS);
 
-	AddCommandListener(OnChangeClass, "changeclass");
 	AddCommandListener(OnJoinTeam, "jointeam");
-	AddCommandListener(OnJoinTeam, "autoteam");
+	AddCommandListener(OnAutoTeam, "autoteam");
 
 	AutoExecConfig(true, "FreakFortress2");
 
@@ -432,6 +435,8 @@ public void OnPluginStart()
 
 public void OnConfigsExecuted()
 {
+	CvarVersion.SetString(PLUGIN_VERSION);
+
 	char buffer[64];
 	GetCurrentMap(buffer, sizeof(buffer));
 	if(CvarEnabled.BoolValue)
@@ -450,6 +455,11 @@ public void OnConfigsExecuted()
 	{
 		Enabled = Game_Disabled;
 	}
+
+	#if defined FF2_STEAMWORKS
+	if(Enabled == Game_Arena)
+		SteamWorks_Toggle(true);
+	#endif
 
 	#if defined FF2_WEAPONS
 	Weapons_Setup();
@@ -478,15 +488,12 @@ public void OnClientPostAdminCheck(int client)
 	SDKHook(client, SDKHook_OnTakeDamage, OnTakeDamage);
 	SDKHook(client, SDKHook_OnTakeDamageAlive, OnTakeDamageAlive);
 	SDKHook(client, SDKHook_GetMaxHealth, OnGetMaxHealth);
-}
 
-public Action OnChangeClass(int client, const char[] command, int args)
-{
-	if(Enabled!=Game_Arena || CheckRoundState()!=1)
-		return Plugin_Continue;
-
-	ShowVGUIPanel(client, GetClientTeam(client)==2 ? "class_red" : "class_blue");
-	return Plugin_Handled;
+	#if defined FF2_STEAMWORKS
+	SteamWorks_Client(client);
+	#else
+	Client[client].Private = false;
+	#endif
 }
 
 public Action OnJoinTeam(int client, const char[] command, int args)
@@ -497,7 +504,11 @@ public Action OnJoinTeam(int client, const char[] command, int args)
 	if(Boss[client].Active)
 		return Plugin_Handled;
 
-	if(Enabled!=Game_Arena || CheckRoundState()==-1)
+	if(Enabled != Game_Arena)
+		return Plugin_Continue;
+
+	int state = CheckRoundState();
+	if(state == -1)
 		return Plugin_Continue;
 
 	if(GetClientTeam(client) > view_as<int>(TFTeam_Spectator))
@@ -509,12 +520,11 @@ public Action OnJoinTeam(int client, const char[] command, int args)
 			if(StrEqual(buffer, "spectate", false))
 				ChangeClientTeam(client, view_as<int>(TFTeam_Spectator));
 		}
-
 		return Plugin_Handled;
 	}
-
+	
 	ChangeClientTeam(client, Client[client].Team);
-	if(CheckRoundState() != 1)
+	if(state != 1)
 		ShowVGUIPanel(client, Client[client].Team==TFTeam_Red ? "class_red" : "class_blue");
 
 	return Plugin_Handled;
@@ -539,26 +549,76 @@ public Action OnAutoTeam(int client, const char[] command, int args)
 
 public void OnRoundSetup(Event event, const char[] name, bool dontBroadcast)
 {
+	if(Enabled <= Game_Disabled)
+		return;
+
 	if(NextGamemode != Game_Invalid)
 	{
-		if(Enabled <= Game_Disabled)
+		if(Enabled > Game_Disabled)
 		{
 			switch(NextGamemode)
 			{
 				case Game_Disabled:
+				{
 					Enabled = Game_Disabled;
-
+					DisableFF2();
+					return;
+				}
 				case Game_Fun:
+				{
 					Enabled = Game_Fun;
-
+					DisableFF2();
+				}
 				case Game_Arena:
+				{
 					Enabled = Game_Arena;
+					EnableFF2();
+				}
 			}
 		}
+		NextGamemode = Game_Invalid;
 	}
 
-	if(Enabled <= Game_Disabled)
-		return;
+	bool teamHasPlayers[2];
+	for(int client=1; client<=MaxClients; client++)
+	{
+		if(!IsValidClient(client))
+			continue;
+
+		int team = GetClientTeam(client);
+		if(team <= view_as<int>(TFTeam_Spectator))
+			continue;
+
+		teamHasPlayers[team-2] = true;
+		if(teamHasPlayers[0] && teamHasPlayers[1])
+			break;
+	}
+
+	if(!teamHasPlayers[0] || !teamHasPlayers[1])
+	{
+		float gameTime = GetGameTime();
+		for(int client=1; client<=MaxClients; client++)
+		{
+			if(!IsValidClient(client))
+				continue;
+
+			if(Boss[client].Active)
+			{
+				AssignTeam(client, view_as<int>(Boss[client].Team));
+				continue;
+			}
+
+			if(GetClientTeam(client) == BossTeam)
+				Client[client].RefreshAt = gameTime+0.1;
+		}
+
+		for(int client=1; client<=MaxClients; client++)
+		{
+			if(IsValidClient(client) && !IsBoss(client) && (GetClientTeam(client)!=OtherTeam && !Enabled3))
+				CreateTimer(0.1, Timer_MakeNotBoss, GetClientUserId(client), TIMER_FLAG_NO_MAPCHANGE);
+		}
+		return;	// NOTE: This is needed because OnRoundSetup gets fired a second time once both teams have players
+	}
 
 	#if defined FF2_TTS
 	TTS_Start();
@@ -646,27 +706,26 @@ public void OnPlayerRunCmdPost(int nullVar1, int nullVar2, int nullVar3, const f
 	{
 		bool alive = IsPlayerAlive(clients[i]);
 		int buttons = GetClientButtons(clients[i]);
-		ClientThink(clients[i], engineTime, gameTime, alive);
 		if(!Client[clients[i]].DisableHud && !(Client[clients[i]] & HUD_DAMAGE) && !(buttons & IN_SCORE) && (alive || IsClientObserver(clients[i]))
 		{
 			int observer;
 			if(alive)
 			{
 				observer = GetClientAimTarget(clients[i], true);
-				if(observer!=client && IsValidClient(observer))
+				if(observer!=clients[i] && IsValidClient(observer))
 				{
-					TFTeam team = TF2_GetClientTeam(clients[i]);
-					if(TF2_GetClientTeam(observer) != team)
+					int team = GetClientTeam(clients[i]);
+					if(GetClientTeam(observer) != team)
 					{
-						if(TF2_IsPlayerInCondition(observer, TFCond_Cloaked))
-						{
-							observer = 0;
-						}
-						else if(TF2_IsPlayerInCondition(observer, TFCond_Disguised))
+						if(TF2_IsPlayerInCondition(observer, TFCond_Disguised) && !IsPlayerInvis(observer))
 						{
 							observer = GetEntProp(observer, Prop_Send, "m_iDisguiseTargetIndex");
-							if(!IsValidClient(observer) || TF2_GetClientTeam(observer)!=team)
+							if(!IsValidClient(observer) || GetClientTeam(observer)!=team)
 								observer = 0;
+						}
+						else
+						{
+							observer = 0;
 						}
 					}
 
@@ -675,7 +734,7 @@ public void OnPlayerRunCmdPost(int nullVar1, int nullVar2, int nullVar3, const f
 						static float position[3], position2[3];
 						GetEntPropVector(client, Prop_Send, "m_vecOrigin", position);
 						GetEntPropVector(observer, Prop_Send, "m_vecOrigin", position2);
-						if(GetVectorDistance(position, position2) > 400)
+						if(GetVectorDistance(position, position2) > 800)
 							observer = 0;
 					}
 				}
@@ -694,18 +753,26 @@ public void OnPlayerRunCmdPost(int nullVar1, int nullVar2, int nullVar3, const f
 			SetGlobalTransTarget(client);
 			SetHudTextParams(-1.0, 0.88, 0.35, 90, 255, 90, 255, 0, 0.35, 0.0, 0.1);
 
-			if(stattrack)
+			if(Boss[client].Active)
 			{
-				FormatEx(buffer, sizeof(buffer), "%t", "Hud Stats", Client[client].Damage, Client[client].Healing, Client[client].Assist);
 			}
 			else
 			{
-				FormatEx(buffer, sizeof(buffer), "%t", "Hud StatTrak", Damage[client], Healing[client], PlayerKills[client], PlayerMVPs[client]);
+				if(stattrack)
+				{
+					FormatEx(buffer, sizeof(buffer), "%t", "Hud Stats", Client[client].Damage, Client[client].Healing, Client[client].Assist);
+				}
+				else
+				{
+					FormatEx(buffer, sizeof(buffer), "%t", "Hud StatTrak", Damage[client], Healing[client], PlayerKills[client], PlayerMVPs[client]);
+				}
 			}
 		}
 
+		#if defined FF2_MUSIC
 		if(Client[client].BGMAt < engineTime)
 			Music_Play(client, engineTime, -1);
+		#endif
 
 		if(Client[client].PopUpAt < engineTime)
 		{
@@ -865,6 +932,14 @@ void GameOverScreen(TFTeam winner, float duration)
 		{
 		}
 	}
+}
+
+void ResetClientVars(int client)
+{
+	Client[client].BGMAt = FAR_FUTURE;
+	Client[client].PopUpAt = FAR_FUTURE;
+	Client[client].GlowFor = 0.0;
+	Client[client].RefreshAt = FAR_FUTURE;
 }
 
 public Action MainMenuC(int client, int args)
