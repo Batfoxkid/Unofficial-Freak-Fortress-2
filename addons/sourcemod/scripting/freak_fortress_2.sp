@@ -636,17 +636,12 @@ public void OnGameFrame()
 public void OnPlayerRunCmdPost(int nullVar1, int nullVar2, int nullVar3, const float nullVar4[3], const float nullVar5[3], int nullVar6, int nullVar7, int nullVar8, int nullVar9, int nullVar0, const int nullVar[2])
 #endif
 {
-	if(Enabled <= Game_Disabled)
+	if(Enabled<=Game_Disabled || (Enabled==Game_Arena && CheckRoundState()!=1))
 		return;
 
-	int roundState = CheckRoundState();
 	float engineTime = GetEngineTime();
-	float gameTime = GetGameTime();
 
 	static float hudAt;
-	if(roundState != 1)
-		return;
-
 	if(hudAt > engineTime)
 		return;
 
@@ -701,6 +696,7 @@ public void OnPlayerRunCmdPost(int nullVar1, int nullVar2, int nullVar3, const f
 	}
 
 	int stattrack = CvarStatTrak.IntValue;
+	float gameTime = GetGameTime();
 	char buffer[256];
 	for(int i; i<max; i++)
 	{
@@ -779,6 +775,12 @@ public void OnPlayerRunCmdPost(int nullVar1, int nullVar2, int nullVar3, const f
 			Client[client].PopUpAt = FAR_FUTURE;
 			if(Client[client].Pref[Pref_Boss] == Pref_Undef)
 				Pref_QuickToggle(client, -2);
+		}
+
+		if(Client[client].RefreshAt < gameTime)
+		{
+			Client[client].RefreshAt = FAR_FUTURE;
+			if(alive && !Client[client].Minion)
 		}
 
 		if(!alive)
@@ -932,6 +934,26 @@ void GameOverScreen(TFTeam winner, float duration)
 		{
 		}
 	}
+}
+
+void RefreshClient(int client)
+{
+	if(Boss[client].Active)
+	{
+		if(!IsVoteInProgress())
+			Boss_Info(client);
+
+		Boss[client].Leader = false;
+		Bosses_Create(client);
+	}
+
+	if(Client[client].Pref[Pref_Help]<Toggle_Off && !IsVoteInProgress())
+		Weapons_Info(client);
+
+	SetEntityHealth(client, GetEntProp(GetPlayerResourceEntity(), Prop_Send, "m_iMaxHealth", _, client));
+	Client[client].Team = BossTeam==TFTeam_Blue ? TFTeam_Red : TFTeam_Blue;
+	AssignTeam(client, view_as<int>(Client[client].Team));
+	RequestFrame(Weapons_Check, client);
 }
 
 void ResetClientVars(int client)
