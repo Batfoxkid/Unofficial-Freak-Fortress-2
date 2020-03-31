@@ -628,6 +628,25 @@ public void OnRoundSetup(Event event, const char[] name, bool dontBroadcast)
 		return;
 }
 
+public Action OnPlayerHurt(Event event, const char[] name, bool dontBroadcast)
+{
+	if(Enabled <= Game_Disabled)
+		return Plugin_Continue;
+
+	int client = GetClientOfUserId(event.GetInt("userid"));
+	if(!IsValidClient(client) || !Boss[client].Active)
+		return Plugin_Continue;
+
+	int attacker = GetClientOfUserId(event.GetInt("attacker"));
+	int damage = event.GetInt("damageamount");
+	int custom = event.GetInt("custom");
+	if(!(custom & TF_CUSTOM_BACKSTAB) && !(custom & TF_CUSTOM_COMBO_PUNCH) && !(custom & TF_CUSTOM_TELEFRAG) && event.GetBool("minicrit") && event.GetBool("allseecrit"))
+		event.SetBool("allseecrit", false);
+
+	if(custom == TF_CUSTOM_BOOTS_STOMP)
+		event.SetInt("damageamount", damage*5);
+}
+
 #if SETTING_TICKMODE>0
 public Action OnGameTimer(Handle timer)
 #elseif SETTING_TICKMODE<0
@@ -953,7 +972,7 @@ void RefreshClient(int client)
 	SetEntityHealth(client, GetEntProp(GetPlayerResourceEntity(), Prop_Send, "m_iMaxHealth", _, client));
 	Client[client].Team = BossTeam==TFTeam_Blue ? TFTeam_Red : TFTeam_Blue;
 	AssignTeam(client, view_as<int>(Client[client].Team));
-	RequestFrame(Weapons_Check, client);
+	RequestFrame(Weapons_Check, GetClientUserId(client));
 }
 
 void ResetClientVars(int client)

@@ -3,7 +3,7 @@
 
 	Functions:
 	void Weapons_Setup()
-	void Weapons_Check(int client)
+	void Weapons_Check(int userid)
 */
 
 #define FF2_WEAPONS
@@ -34,9 +34,13 @@ void Weapons_Setup()
 	WeaponKV = null;
 }
 
-void Weapons_Check(int client)
+public void Weapons_Check(int userid)
 {
 	if(WeaponKV == null)
+		return;
+
+	int client = GetClientOfUserId(userid);
+	if(!IsValidClient(client))
 		return;
 
 	for(int slot; slot<4; slot++)

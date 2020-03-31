@@ -11,15 +11,22 @@
 	void Bosses_Prepare(int boss)
 	void Bosses_Create(int client, int boss=-1)
 	void Bosses_Equip(int client, int boss)
+	void Bosses_Model(int userid)
+	void Bosses_AbilitySlot(int client, int slot)
+	void Bosses_Ability(int client, const char[] ability, const char[] plugin, int slot, int buttonMode)
+	int Bosses_ArgI(int client, const char[] ability, const char[] plugin, const char[] arg, int index=-1, int defaul=0)
+	float Bosses_ArgF(int client, const char[] ability, const char[] plugin, const char[] arg, int index=-1, float defaul=0.0)
+	bool Bosses_ArgS(int client, const char[] ability, const char[] plugin, const char[] arg, int index=-1, char[] buffer, int length)
+	KeyValues Bosses_ArgK(int client, const char[] ability, const char[] plugin)
 */
 
 #define FF2_BOSSES
 
 #define CONFIG_PATH		"config/freak_fortress_2"
 #define CHARSET_FILE		"data/freak_fortress_2/characters.cfg"
-#define DEFAULT_ATTRIBUTES	"2 ; 3.1 ; 68 ; %i ; 275 ; 1"
+#define DEFAULT_ATTRIBUTES	"2 ; 3.1 ; 68 ; %d ; 275 ; 1"
 #define DEFAULT_RAGEDAMAGE	"1900"
-#define DEFAULT_HEALTH		""
+#define DEFAULT_HEALTH		"(((760.8+n)*(n-1))^1.0341)+2046"
 #define MAX_CHARSET_LENGTH	42
 
 ConVar CvarCharset;
@@ -28,6 +35,7 @@ static ConVar CvarKnockback;
 static ConVar CvarCrits;
 static ConVar CvarHealing;
 static ConVar CvarSewerSlide;
+static ConVar CvarTeam;
 
 void Bosses_Setup()
 {
@@ -38,8 +46,12 @@ void Bosses_Setup()
 	CvarCrits = CreateConVar("ff2_boss_crits", "0", "If bosses can perform random crits", _, true, 0.0, true, 1.0);
 	CvarHealing = CreateConVar("ff2_boss_healing", "0", "If bosses can be healed by Medics, packs, etc. (Requires DHooks to disable)", _, true, 0.0, true, 1.0);
 	CvarSewerSlide = CreateConVar("ff2_boss_suicide", "0", "If bosses can suicide during the round", _, true, 0.0, true, 1.0);
+	CvarTeam = CreateConVar("ff2_boss_team", "3", "Default boss team, 1 for random team", _, true, 1.0, true, 3.0);
 
 	AddCommandListener(Bosses_Rage, "voicemenu");
+	AddCommandListener(Bosses_KermitSewerSlide, "kill");
+	AddCommandListener(Bosses_KermitSewerSlide, "explode");
+	AddCommandListener(Bosses_KermitSewerSlide, "spectate");
 }
 
 void Bosses_Config()
@@ -115,7 +127,7 @@ void Bosses_Config()
 	KeyValues kv = new KeyValues("");
 	kv.ImportFromFile(filepath);
 
-	BuildPath(Path_SM, filepath, PLATFORM_MAX_PATH, ConfigPath);
+	BuildPath(Path_SM, filepath, PLATFORM_MAX_PATH, CONFIG_PATH);
 	int charset;
 	do
 	{
@@ -253,7 +265,7 @@ static void ProcessDirectory(const char[] base, const char[] current, const char
 static KeyValues LoadCharacter(const char[] character, int charset)
 {
 	static char config[PLATFORM_MAX_PATH];
-	BuildPath(Path_SM, config, sizeof(config), "%s/%s.cfg", ConfigPath, character);
+	BuildPath(Path_SM, config, sizeof(config), "%s/%s.cfg", CONFIG_PATH, character);
 	if(!FileExists(config))
 	{
 		LogError2("[Characters] Character %s does not exist!", character);
@@ -267,33 +279,33 @@ static KeyValues LoadCharacter(const char[] character, int charset)
 		return INVALID_HANDLE;
 	}
 
-	int version = Special[Specials].Kv.GetNum("version", StringToInt(MAJOR_REVISION));
-	if(version!=StringToInt(MAJOR_REVISION) && version!=99) // 99 for bosses made ONLY for this fork
+	int i = Special[Specials].Kv.GetNum("version", StringToInt(MAJOR_REVISION));
+	if(i!=StringToInt(MAJOR_REVISION) && i!=99) // 99 for bosses made ONLY for this fork
 	{
-		LogError2("[Boss] Character %s is only compatible with FF2 v%i!", character, version);
+		LogError2("[Boss] Character %s is only compatible with FF2 v%i!", character, i);
 		return INVALID_HANDLE;
 	}
 
-	version = Special[Specials].Kv.GetNum("version_minor", StringToInt(MINOR_REVISION));
-	int version2 = Special[Specials].Kv.GetNum("version_stable", StringToInt(STABLE_REVISION));
-	if(version>StringToInt(MINOR_REVISION) || (version2>StringToInt(STABLE_REVISION) && version==StringToInt(MINOR_REVISION)))
+	i = Special[Specials].Kv.GetNum("version_minor", StringToInt(MINOR_REVISION));
+	int x = Special[Specials].Kv.GetNum("version_stable", StringToInt(STABLE_REVISION));
+	if(i>StringToInt(MINOR_REVISION) || (x>StringToInt(STABLE_REVISION) && i==StringToInt(MINOR_REVISION)))
 	{
-		LogError2("[Boss] Character %s requires newer version of FF2 (at least %s.%i.%i)!", character, MAJOR_REVISION, version, version2);
+		LogError2("[Boss] Character %s requires newer version of FF2 (at least %s.%i.%i)!", character, MAJOR_REVISION, i, x);
 		return INVALID_HANDLE;
 	}
 
-	version = Special[Specials].Kv.GetNum("fversion", StringToInt(FORK_MAJOR_REVISION));
-	if(version != StringToInt(FORK_MAJOR_REVISION))
+	i = Special[Specials].Kv.GetNum("fversion", StringToInt(FORK_MAJOR_REVISION));
+	if(i != StringToInt(FORK_MAJOR_REVISION))
 	{
-		LogError2("[Boss] Character %s is only compatible with %s FF2 v%i!", character, FORK_SUB_REVISION, version);
+		LogError2("[Boss] Character %s is only compatible with %s FF2 v%i!", character, FORK_SUB_REVISION, i);
 		return INVALID_HANDLE;
 	}
 
-	version = Special[Specials].Kv.GetNum("fversion_minor", StringToInt(FORK_MINOR_REVISION));
-	version2 = Special[Specials].Kv.GetNum("fversion_stable", StringToInt(FORK_STABLE_REVISION));
-	if(version>StringToInt(FORK_MINOR_REVISION) || (version2>StringToInt(FORK_STABLE_REVISION) && version==StringToInt(FORK_MINOR_REVISION)))
+	i = Special[Specials].Kv.GetNum("fversion_minor", StringToInt(FORK_MINOR_REVISION));
+	x = Special[Specials].Kv.GetNum("fversion_stable", StringToInt(FORK_STABLE_REVISION));
+	if(i>StringToInt(FORK_MINOR_REVISION) || (x>StringToInt(FORK_STABLE_REVISION) && i==StringToInt(FORK_MINOR_REVISION)))
 	{
-		LogError2("[Boss] Character %s requires newer version of %s FF2 (at least %s.%i.%i)!", character, FORK_SUB_REVISION, FORK_MAJOR_REVISION, version, version2);
+		LogError2("[Boss] Character %s requires newer version of %s FF2 (at least %s.%i.%i)!", character, FORK_SUB_REVISION, FORK_MAJOR_REVISION, i, x);
 		return INVALID_HANDLE;
 	}
 
@@ -311,7 +323,7 @@ static KeyValues LoadCharacter(const char[] character, int charset)
 		{
 			bool found;
 			char item[4];
-			for(int i=1; ; i++)
+			for(i=1; ; i++)
 			{
 				IntToString(i, item, sizeof(item));
 				Special[Specials].Kv.GetString(item, section, sizeof(section));
@@ -333,7 +345,7 @@ static KeyValues LoadCharacter(const char[] character, int charset)
 		else if(Special[Specials].Kv.JumpToKey("map_blacklist"))
 		{
 			char item[4];
-			for(int i=1; ; i++)
+			for(i=1; ; i++)
 			{
 				IntToString(i, item, sizeof(item));
 				Special[Specials].Kv.GetString(item, section, sizeof(section));
@@ -348,7 +360,7 @@ static KeyValues LoadCharacter(const char[] character, int charset)
 		else if(Special[Specials].Kv.JumpToKey("map_exclude"))
 		{
 			char item[6];
-			for(int i=1; ; i++)
+			for(i=1; ; i++)
 			{
 				FormatEx(item, sizeof(item), "map%d", i);
 				Special[Specials].Kv.GetString(item, section, sizeof(section));
@@ -376,7 +388,26 @@ static KeyValues LoadCharacter(const char[] character, int charset)
 		{
 			case Section_Download:
 			{
-				for(int i=1; ; i++)
+				if(Special[Specials].Kv.GotoFirstSubKey())
+				{
+					do
+					{
+						if(!Special[Specials].Kv.GetSectionName(config, sizeof(config)))
+							continue;
+
+						if(FileExists(config, true))
+						{
+							AddFileToDownloadsTable(config);
+							continue;
+						}
+
+						LogError2("[Boss] Character %s is missing file '%s' in section '%s'!", character, config, section);
+					} while(Special[Specials].Kv.GotoNextKey());
+					Special[boss].Kv.GoBack();
+					continue;
+				}
+
+				for(i=1; ; i++)
 				{
 					IntToString(i, key, sizeof(key));
 					Special[Specials].Kv.GetString(key, config, sizeof(config));
@@ -394,17 +425,41 @@ static KeyValues LoadCharacter(const char[] character, int charset)
 			}
 			case Section_Model:
 			{
-				for(int i=1; ; i++)
+				static const char extensions[][] = {".mdl", ".dx80.vtx", ".dx90.vtx", ".sw.vtx", ".vvd", ".phy"};
+				if(Special[Specials].Kv.GotoFirstSubKey())
+				{
+					do
+					{
+						if(!Special[Specials].Kv.GetSectionName(config, sizeof(config)))
+							continue;
+
+						for(x=0; x<sizeof(extensions); x++)
+						{
+							FormatEx(key, PLATFORM_MAX_PATH, "%s%s", config, extensions[x]);
+							if(FileExists(key, true))
+							{
+								AddFileToDownloadsTable(key);
+							}
+							else if(StrContains(key, ".phy") == -1)
+							{
+								LogError2("[Boss] Character %s is missing file '%s' in section '%s'!", character, key, section);
+							}
+						}
+					} while(Special[Specials].Kv.GotoNextKey());
+					Special[boss].Kv.GoBack();
+					continue;
+				}
+
+				for(i=1; ; i++)
 				{
 					IntToString(i, key, sizeof(key));
 					Special[Specials].Kv.GetString(key, config, sizeof(config));
 					if(!config[0])
 						break;
 
-					static const char extensions[][] = {".mdl", ".dx80.vtx", ".dx90.vtx", ".sw.vtx", ".vvd", ".phy"};
-					for(int extension; extension<sizeof(extensions); extension++)
+					for(x=0; x<sizeof(extensions); x++)
 					{
-						FormatEx(key, PLATFORM_MAX_PATH, "%s%s", config, extensions[extension]);
+						FormatEx(key, PLATFORM_MAX_PATH, "%s%s", config, extensions[x]);
 						if(FileExists(key, true))
 						{
 							AddFileToDownloadsTable(key);
@@ -418,7 +473,26 @@ static KeyValues LoadCharacter(const char[] character, int charset)
 			}
 			case Section_Material:
 			{
-				for(int i=1; ; i++)
+				if(Special[Specials].Kv.GotoFirstSubKey())
+				{
+					do
+					{
+						if(!Special[Specials].Kv.GetSectionName(config, sizeof(config)))
+							continue;
+
+						if(FileExists(config, true))
+						{
+							AddFileToDownloadsTable(config);
+							continue;
+						}
+
+						LogError2("[Boss] Character %s is missing file '%s' in section '%s'!", character, config, section);
+					} while(Special[Specials].Kv.GotoNextKey());
+					Special[boss].Kv.GoBack();
+					continue;
+				}
+
+				for(i=1; ; i++)
 				{
 					IntToString(i, key, sizeof(key));
 					Special[Specials].Kv.GetString(key, config, sizeof(config));
@@ -441,7 +515,7 @@ static KeyValues LoadCharacter(const char[] character, int charset)
 						AddFileToDownloadsTable(key);
 						continue;
 					}
-					
+
 					LogError2("[Boss] Character %s is missing file '%s' in section '%s'!", character, key, section);
 				}
 			}
@@ -480,6 +554,28 @@ void Bosses_Prepare(int boss)
 		{
 			case Section_Sound:
 			{
+				if(Special[boss].Kv.GotoFirstSubKey())
+				{
+					do
+					{
+						if(!Special[boss].Kv.GetSectionName(file, sizeof(file)))
+							continue;
+
+						FormatEx(filePath, sizeof(filePath), "sound/%s", file);
+						if(FileExists(filePath, true))
+						{
+							PrecacheSound(file);
+							continue;
+						}
+
+						char bossName[MAX_TARGET_LENGTH];
+						Special[boss].Kv.GetString("filename", bossName, sizeof(bossName));
+						LogError2("[Boss] Character %s is missing file '%s' in section '%s'!", bossName, filePath, section);
+					} while(Special[Specials].Kv.GotoNextKey());
+					Special[boss].Kv.GoBack();
+					continue;
+				}
+
 				for(int i=1; ; i++)
 				{
 					IntToString(i, key, sizeof(key));
@@ -506,6 +602,27 @@ void Bosses_Prepare(int boss)
 			}
 			case Section_Precache:
 			{
+				if(Special[boss].Kv.GotoFirstSubKey())
+				{
+					do
+					{
+						if(!Special[boss].Kv.GetSectionName(file, sizeof(file)))
+							continue;
+
+						if(FileExists(file, true))
+						{
+							PrecacheModel(file);
+							continue;
+						}
+
+						char bossName[MAX_TARGET_LENGTH];
+						Special[boss].Kv.GetString("filename", bossName, sizeof(bossName));
+						LogError2("[Boss] Character %s is missing file '%s' in section '%s'!", bossName, file, section);
+					} while(Special[Specials].Kv.GotoNextKey());
+					Special[boss].Kv.GoBack();
+					continue;
+				}
+
 				for(int i=1; ; i++)
 				{
 					IntToString(i, key, sizeof(key));
@@ -559,12 +676,28 @@ void Bosses_Create(int client)
 	Client[client].Team = view_as<TFTeam>(Special[Boss[client].Special].Kv.GetNum("bossteam"));
 	if(Client[client].Team == TFTeam_Unassigned)
 	{
-		switch(CvarTeam.IntValue)
+		int team = Special[Boss[client].Special].Kv.GetNum("team", -1);
+		if(team < 0)
 		{
-			case 1:		Client[client].Team = GetRandomInt(0, 1) ? TFTeam_Red : TFTeam_Blue;
-			case 2:		Client[client].Team = TFTeam_Red;
-			default:	Client[client].Team = TFTeam_Blue;
-		}	
+			switch(CvarTeam.IntValue)
+			{
+				case 1:		Client[client].Team = GetRandomInt(0, 1) ? TFTeam_Red : TFTeam_Blue;
+				case 2:		Client[client].Team = TFTeam_Red;
+				default:	Client[client].Team = TFTeam_Blue;
+			}
+		}
+		else if(!team)
+		{
+			Client[client].Team = TFTeam_Unassigned;
+		}
+		else if(team == 1)
+		{
+			Client[client].Team = GetRandomInt(0, 1) ? TFTeam_Red : TFTeam_Blue;
+		}
+		else
+		{
+			Client[client].Team = view_as<TFTeam>(team);
+		}
 	}
 	else if(Client[client].Team == TFTeam_Spectator)
 	{
@@ -779,6 +912,20 @@ void Bosses_Equip(int client)
 
 		SetEntPropEnt(client, Prop_Send, "m_hActiveWeapon", index);
 	} while(Special[Boss[client].Special].Kv.GotoNextKey());
+}
+
+public void Bosses_Model(int userid)
+{
+	int client = GetClientOfUserId(userid);
+	if(!client || !Boss[client].Active)
+		return;
+
+	Special[Boss[client].Special].Kv.Rewind();
+	static char buffer[PLATFORM_MAX_PATH];
+	Special[Boss[client].Special].Kv.GetString("model", buffer, sizeof(buffer));
+	SetVariantString(model);
+	AcceptEntityInput(client, "SetCustomModel");
+	SetEntProp(client, Prop_Send, "m_bUseClassAnimations", 1);
 }
 
 public Action Bosses_Rage(int client, const char[] command, int args)
@@ -1047,7 +1194,7 @@ int Bosses_ArgI(int client, const char[] ability, const char[] plugin, const cha
 	return defaul;
 }
 
-float Bosses_ArgF(int client, const char[] ability, const char[] plugin, const char[] arg, int index=-1, float defaul=0)
+float Bosses_ArgF(int client, const char[] ability, const char[] plugin, const char[] arg, int index=-1, float defaul=0.0)
 {
 	char buffer[64];
 	Special[Boss[client].Special].Kv.Rewind();
