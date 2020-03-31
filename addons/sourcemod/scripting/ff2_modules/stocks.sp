@@ -11,6 +11,7 @@
 	int FindTeleOwner(int client)
 	bool IsPlayerCritBuffed(int client)
 	bool IsPlayerMiniCritBuffed(int client)
+	bool IsPlayerInvis(int client)
 	void RandomlyDisguise(int client)
 	void AssignTeam(int client, int team)
 	int GetHealingTarget(int client, bool checkgun=false)
@@ -80,6 +81,25 @@ static const TFCond MiniCritConditions[] =
 	TFCond_CritCola,
 	TFCond_NoHealingDamageBuff,
 	TFCond_MiniCritOnKill
+};
+
+static const TFCond InvisConditions[] =
+{
+	TFCond_Cloaked,
+	TFCond_Stealthed,
+	TFCond_StealthedUserBuffFade
+};
+
+static const TFCond InvulnConditions[] =
+{
+	TFCond_Ubercharged,
+	TFCond_UberchargeFading,
+	TFCond_Bonked,
+	TFCond_UberchargedHidden,
+	TFCond_UberchargedCanteen,
+	TFCond_UberchargedOnTakeDamage,
+	TFCond_HalloweenGhostMode,
+	
 };
 
 enum SectionType
@@ -251,6 +271,16 @@ stock bool IsPlayerMiniCritBuffed(int client)
 	return false;
 }
 
+stock bool IsPlayerInvis(int client)
+{
+	for(int i; i<sizeof(InvisConditions); i++)
+	{
+		if(TF2_IsPlayerInCondition(client, InvisConditions[i]))
+			return true;
+	}
+	return false;
+}
+
 public Action Timer_DisguiseBackstab(Handle timer, int userid)
 {
 	int client = GetClientOfUserId(userid);
@@ -305,7 +335,7 @@ stock void AssignTeam(int client, int team)
 		SetEntProp(client, Prop_Send, "m_iDesiredPlayerClass", view_as<int>(Boss[client].Class));
 
 	SetEntProp(client, Prop_Send, "m_lifeState", 2);
-	ChangeClientTeam(client, team);
+	ChangeClientTeamEx(client, team);
 	TF2_RespawnPlayer(client);
 
 	if(!GetEntProp(client, Prop_Send, "m_iObserverMode") || !IsPlayerAlive(client))
@@ -1053,11 +1083,51 @@ stock bool GetBossSound(int client, const char[] key, int &type, char[] buffer, 
 
 stock bool IsInvuln(int client)
 {
-	return (TF2_IsPlayerInCondition(client, TFCond_Ubercharged) ||
-		TF2_IsPlayerInCondition(client, TFCond_UberchargedCanteen) ||
-		TF2_IsPlayerInCondition(client, TFCond_UberchargedHidden) ||
-		TF2_IsPlayerInCondition(client, TFCond_UberchargedOnTakeDamage) ||
-		TF2_IsPlayerInCondition(client, TFCond_Bonked) ||
-		TF2_IsPlayerInCondition(client, TFCond_HalloweenGhostMode) ||
-		!GetEntProp(client, Prop_Data, "m_takedamage"));
+	for(int i; i<sizeof(InvulnConditions); i++)
+	{
+		if(TF2_IsPlayerInCondition(client, InvulnConditions[i]))
+			return true;
+	}
+	return !GetEntProp(client, Prop_Data, "m_takedamage");
+}
+
+stock int GetNextBossPlayer()
+{
+	int winner;
+	for(int client=1; client<=MaxClients; client++)
+	{
+		if(IsValidClient(client) && !Boss[client].Active && Client[client].Pref[Pref_Boss]<Pref_Off && GetClientTeam(client)>view_as<int>(TFTeam_Spectator) && (!winner || Client[client].Queue>=Client[winner].Queue))
+			winner = client;
+	}
+
+	if(!winner)	// Ignore the boss toggle pref if we can't find available clients
+	{
+		for(int client=1; client<=MaxClients; client++)
+		{
+			if(IsValidClient(client) && !Boss[client].Active && GetClientTeam(client)>view_as<int>(TFTeam_Spectator) && (!winner || Client[client].Queue>=Client[winner].Queue))
+				winner = client;
+		}
+	}
+	return winner;
+}
+
+stock int GetRandBossClient()
+{
+	int winner;
+	int[] winners = new int[MaxClients];
+	for(int client=1; client<=MaxClients; client++)
+	{
+		if(IsValidClient(client) && !Boss[client].Active && Client[client].Pref[Pref_Boss]<Pref_Off && GetClientTeam(client)>view_as<int>(TFTeam_Spectator))
+			winners[winner++] = client;
+	}
+
+	if(winner)
+		return winners[GetRandomInt(0, winner-1)];
+
+	for(int client=1; client<=MaxClients; client++)
+	{
+		if(IsValidClient(client) && !Boss[client].Active && GetClientTeam(client)>view_as<int>(TFTeam_Spectator))
+			winners[winner++] = client;
+	}
+	return winner ? winners[GetRandomInt(0, winner-1)] : 0;
 }
