@@ -100,20 +100,29 @@ stock int SDK_SpawnWeapon(int client, const char[] name, int index, int level, i
 	return entity;
 }
 
-stock void ChangeClientTeamEx(iClient, int iNewTeamNum)
+stock void ChangeClientTeamEx(int client, int newTeam)
 {
-	int iTeamNum = GetEntProp(iClient, Prop_Send, "m_iTeamNum");
-
-	int iTeam = MaxClients+1;
-	while ((iTeam = FindEntityByClassname(iTeam, TEAM_CLASSNAME)) != -1)
+	if(SDKRemovePlayer==null || SDKAddPlayer==null)
 	{
-		int iAssociatedTeam = GetEntProp(iTeam, Prop_Send, "m_iTeamNum");
-		if (iAssociatedTeam == iTeamNum)
-			SDK_Team_RemovePlayer(iTeam, iClient);
-		else if (iAssociatedTeam == iNewTeamNum)
-			SDK_Team_AddPlayer(iTeam, iClient);
+		ChangeClientTeam(client, newTeam);
+		return;
 	}
-	SetEntProp(client, Prop_Send, "m_iTeamNum", team);
+
+	int current = GetEntProp(client, Prop_Send, "m_iTeamNum");
+	int entity = MaxClients+1;
+	while((entity=FindEntityByClassname(entity, "tf_team")) != -1)
+	{
+		int team = GetEntProp(entity, Prop_Send, "m_iTeamNum");
+		if(team == current)
+		{
+			SDKCall(SDKRemovePlayer, entity, client);
+		}
+		else if(team == newTeam)
+		{
+			SDKCall(SDKAddPlayer, entity, client);
+		}
+	}
+	SetEntProp(client, Prop_Send, "m_iTeamNum", newTeam);
 }
 
 public Action OnTakeDamage(int client, int &attacker, int &inflictor, float &damage, int &damagetype, int &weapon, float damageForce[3], float damagePosition[3], int damagecustom)
