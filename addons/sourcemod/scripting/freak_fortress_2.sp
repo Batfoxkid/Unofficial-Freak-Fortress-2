@@ -431,6 +431,43 @@ public void OnPluginStart()
 	LoadTranslations("freak_fortress_2_weapons.phrases");
 	LoadTranslations("common.phrases");
 	LoadTranslations("core.phrases");
+
+	for(int client; client<MAXTF2PLAYERS; client++)
+	{
+		ResetClientVars(client);
+		if(IsValidClient(client))
+			OnClientPostAdminCheck(client);
+	}
+}
+
+public void OnPluginEnd()
+{
+	OnMapEnd();
+	//hostName.SetString(oldName);
+	if(Enabled!=Game_Arena || CheckRoundState()!=1)
+		return;
+
+	ForceTeamWin(0);
+	FPrintToChatAll("%t", "Unloaded");
+}
+
+public void OnMapStart()
+{
+	if(FileExists("sound/saxton_hale/9000.wav", true))
+	{
+		AddFileToDownloadsTable("sound/saxton_hale/9000.wav");
+		PrecacheSound("saxton_hale/9000.wav", true);
+	}
+
+	#if SETTING_TICKMODE>0
+	CreateTimer(SETTING_TICKMODE, OnGameTimer, _, TIMER_FLAG_NO_MAPCHANGE);
+	#endif
+}
+
+public void OnMapEnd()
+{
+	if(Enabled || Enabled2)
+		DisableFF2();
 }
 
 public void OnConfigsExecuted()
@@ -472,13 +509,6 @@ public void OnConfigsExecuted()
 	Bosses_Config();
 }
 
-public void OnMapStart()
-{
-	#if SETTING_TICKMODE>0
-	CreateTimer(SETTING_TICKMODE, OnGameTimer, _, TIMER_FLAG_NO_MAPCHANGE);
-	#endif
-}
-
 /*
 	Player Events
 */
@@ -494,6 +524,11 @@ public void OnClientPostAdminCheck(int client)
 	#else
 	Client[client].Private = false;
 	#endif
+}
+
+public void OnClientDisconnect(int client)
+{
+	ResetClientVars(client);
 }
 
 public Action OnJoinTeam(int client, const char[] command, int args)
@@ -981,6 +1016,8 @@ void ResetClientVars(int client)
 	Client[client].PopUpAt = FAR_FUTURE;
 	Client[client].GlowFor = 0.0;
 	Client[client].RefreshAt = FAR_FUTURE;
+
+	Boss[client].Active = false;
 }
 
 public Action MainMenuC(int client, int args)
