@@ -393,6 +393,7 @@ public void OnPluginStart()
 
 	SDK_Setup();
 	Bosses_Setup();
+	Pref_Setup();
 
 	#if defined FF2_STOMP
 	Stomp_Setup();
@@ -479,9 +480,9 @@ public void OnConfigsExecuted()
 	if(CvarEnabled.BoolValue)
 	{
 		int gamemode = CheckGamemode(buffer);
-		if(gamemode==Game_Disabled || (game==Game_Invalid && CvarEnabled.IntValue!=2))
+		if(gamemode == Game_Invalid)
 		{
-			Enabled = Game_Disabled;
+			Enabled = CvarEnabled.IntValue==2 ? Game_Arena : Game_Disabled;
 		}
 		else
 		{
@@ -521,13 +522,14 @@ public void OnClientPostAdminCheck(int client)
 
 	#if defined FF2_STEAMWORKS
 	SteamWorks_Client(client);
-	#else
-	Client[client].Private = false;
 	#endif
+
+	Pref_SetupClient(client, GetEngineTime());
 }
 
 public void OnClientDisconnect(int client)
 {
+	Pref_SaveClient(client);
 	ResetClientVars(client);
 }
 
@@ -589,29 +591,10 @@ public void OnRoundSetup(Event event, const char[] name, bool dontBroadcast)
 
 	if(NextGamemode != Game_Invalid)
 	{
-		if(Enabled > Game_Disabled)
-		{
-			switch(NextGamemode)
-			{
-				case Game_Disabled:
-				{
-					Enabled = Game_Disabled;
-					DisableFF2();
-					return;
-				}
-				case Game_Fun:
-				{
-					Enabled = Game_Fun;
-					DisableFF2();
-				}
-				case Game_Arena:
-				{
-					Enabled = Game_Arena;
-					EnableFF2();
-				}
-			}
-		}
+		Enabled = NextGamemode;
 		NextGamemode = Game_Invalid;
+		if(Enabled == Game_Disabled)
+			return;
 	}
 
 	bool teamHasPlayers[2];
@@ -835,6 +818,7 @@ public void OnPlayerRunCmdPost(int nullVar1, int nullVar2, int nullVar3, const f
 		{
 			Client[client].RefreshAt = FAR_FUTURE;
 			if(alive && !Client[client].Minion)
+				RefreshClient(client);
 		}
 
 		if(!alive)
@@ -1016,6 +1000,9 @@ void ResetClientVars(int client)
 	Client[client].PopUpAt = FAR_FUTURE;
 	Client[client].GlowFor = 0.0;
 	Client[client].RefreshAt = FAR_FUTURE;
+	#if !defined FF2_STEAMWORKS
+	Client[client].Private = false;
+	#endif
 
 	Boss[client].Active = false;
 }
