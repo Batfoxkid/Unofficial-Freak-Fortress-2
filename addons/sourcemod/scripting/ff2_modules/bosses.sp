@@ -60,10 +60,10 @@ void Bosses_Config()
 	Charset = 0;
 	for(int i; i<MAXSPECIALS; i++)
 	{
-		if(Special[i].Kv != INVALID_HANDLE)
-			delete Special[i].Kv;
+		if(Special[i].Cfg != INVALID_HANDLE)
+			DeleteCfg(Special[i].Cfg, true);
 
-		Special[i].Kv = INVALID_HANDLE;
+		Special[i].Cfg = null;
 		Special[i].Charset = -1;
 	}
 
@@ -124,11 +124,27 @@ void Bosses_Config()
 		CvarCharset.IntValue = -1;
 	}
 
-	KeyValues kv = new KeyValues("");
-	kv.ImportFromFile(filepath);
-
+	ConfigMap cfg = new ConfigMap(filepath);
 	BuildPath(Path_SM, filepath, PLATFORM_MAX_PATH, CONFIG_PATH);
+
 	int charset;
+	StringMapSnapshot snap = cfg.Snapshot();
+
+	int entries = snap.Length;
+	for(int i; i<entries; i++)
+	{
+		int length = snap.KeyBufferSize(i)+1;
+		char[] section = new char[length];
+		snap.GetKey(i, section, length);
+		PackVal val;
+		cfg.GetArray(section, val, sizeof(val));
+		if(val.tag != KeyValType_Section)
+			continue;
+
+		Charsets.SetString(charset, section);
+		
+		charset++;
+
 	do
 	{
 		kv.GetSectionName(config, sizeof(config));
@@ -191,24 +207,6 @@ void Bosses_Config()
 		Convars_NameSuffix(config);
 	}
 	#endif
-
-	if(FileExists("sound/saxton_hale/9000.wav", true))
-	{
-		AddFileToDownloadsTable("sound/saxton_hale/9000.wav");
-		PrecacheSound("saxton_hale/9000.wav", true);
-	}
-
-	PrecacheScriptSound("Announcer.AM_CapEnabledRandom");
-	PrecacheScriptSound("Announcer.AM_CapIncite01.mp3");
-	PrecacheScriptSound("Announcer.AM_CapIncite02.mp3");
-	PrecacheScriptSound("Announcer.AM_CapIncite03.mp3");
-	PrecacheScriptSound("Announcer.AM_CapIncite04.mp3");
-	PrecacheScriptSound("Announcer.RoundEnds5minutes");
-	PrecacheScriptSound("Announcer.RoundEnds2minutes");
-	PrecacheSound("weapons/barret_arm_zap.wav", true);
-	PrecacheSound("player/doubledonk.wav", true);
-	PrecacheSound("ambient/lightson.wav", true);
-	PrecacheSound("ambient/lightsoff.wav", true);
 }
 
 static void ProcessDirectory(const char[] base, const char[] current, const char[] matching, int pack, KeyValues kv=INVALID_HANDLE)
