@@ -27,6 +27,12 @@
 	bool KvGetBossAccess2(Handle kv, int client, char[] buffer, int length)
 	void KvGetLang(Handle kv, const char[] key, char[] buffer, int length, int client=0, const char[] defaul="=Failed name=")
 
+	ConfigMap Stocks:
+	TFClassType CfgGetClass(ConfigMap cfg, const char[] string)
+	int CfgGetBossAccess(ConfigMap cfg, int client, bool force=false)
+	bool CfgGetBossAccess2(ConfigMap cfg, int client, char[] buffer, int length)
+	void CfgGetLang(ConfigMap cfg, const char[] key, char[] buffer, int length, int client=0)
+
 	Entity Stocks:
 	bool ConfigureWorldModelOverride(int entity, const char[] model, bool wearable=false)
 	int FindEntityByClassname2(int startEnt, const char[] classname)
@@ -50,6 +56,7 @@
 
 	Other Stocks:
 	int OnlyScoutsLeft(int team)
+	SectionType GetSectionType(const char[] buffer)
 	void MultiClassname(TFClassType class, char[] name, int length)
 	void LogError2(const char[] buffer, any ...)
 	int GetZeroBoss()
@@ -360,6 +367,21 @@ stock TFClassType KvGetClass(Handle kv, const char[] string)
 	return class;
 }
 
+stock TFClassType CfgGetClass(ConfigMap cfg, const char[] string)
+{
+	static char buffer[24];
+	cfg.Get(string, buffer, sizeof(buffer));
+	TFClassType class = view_as<TFClassType>(StringToInt(buffer));
+	if(class != TFClass_Unknown)
+		return class;
+
+	class = TF2_GetClass(buffer);
+	if(class == TFClass_Unknown)
+		class = TFClass_Scout;
+
+	return class;
+}
+
 stock SectionType KvGetSectionType(Handle kv, char[] buffer="", int length=16)
 {
 	if(!KvGetSectionName(kv, buffer, length))
@@ -513,7 +535,7 @@ stock void KvGetLang(Handle kv, const char[] key, char[] buffer, int length, int
 		KvGetString(kv, key, buffer, length, defaul);
 }
 
-stock void CfgGetLang(ConfigMap cfg, const char[] key, char[] buffer, int length, int client=0, const char[] defaul="=Failed name=")
+stock void CfgGetLang(ConfigMap cfg, const char[] key, char[] buffer, int length, int client=0)
 {
 	static char language[20];
 	GetLanguageInfo(client ? GetClientLanguage(client) : GetServerLanguage(), language, sizeof(language), buffer, length);
@@ -532,9 +554,6 @@ stock void CfgGetLang(ConfigMap cfg, const char[] key, char[] buffer, int length
 
 	if(!buffer[0])
 		cfg.Get(key, buffer, length);
-
-	if(!buffer[0])
-		strcopy(buffer, length, defaul);
 }
 
 stock int CfgGetNum(ConfigMap cfg, const char[] key, int defaul=0)
