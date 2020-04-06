@@ -231,9 +231,11 @@ enum struct WeaponEnum
 	bool NoForce;
 }
 
+#include "ff2_modules/configmap.sp"
+
 enum struct SpecialEnum
 {
-	KeyValues Kv;
+	ConfigMap Cfg;
 	int Charset;
 	bool Precached;
 }
@@ -673,16 +675,37 @@ public void OnGameFrame()
 public void OnPlayerRunCmdPost(int nullVar1, int nullVar2, int nullVar3, const float nullVar4[3], const float nullVar5[3], int nullVar6, int nullVar7, int nullVar8, int nullVar9, int nullVar0, const int nullVar[2])
 #endif
 {
-	if(Enabled<=Game_Disabled || (Enabled==Game_Arena && CheckRoundState()!=1))
+	if(Enabled <= Game_Disabled)
 		return;
 
 	float engineTime = GetEngineTime();
-
 	static float hudAt;
 	if(hudAt > engineTime)
 		return;
 
 	hudAt = engineTime+SETTING_HUDDELAY;
+	float gameTime = GetGameTime();
+	if(Enabled == Game_Arena)
+	{
+		int roundState = CheckRoundState();
+		if(!roundState || roundState==2)
+		{
+			for(int client=1; client<=MaxClients; client++)
+			{
+				if(!IsValidClient(client))
+					continue;
+
+				if(Client[client].RefreshAt < gameTime)
+				{
+					Client[client].RefreshAt = FAR_FUTURE;
+					if(alive && !Client[client].Minion)
+						RefreshClient(client);
+				}
+			}
+			return;
+		}
+	}
+
 	bool sappers, found;
 	int max;
 	int best[10];
@@ -732,8 +755,11 @@ public void OnPlayerRunCmdPost(int nullVar1, int nullVar2, int nullVar3, const f
 		FormatEx(bestHud[i], sizeof(bestHud[]), "[%i] %N: %i", i+1, best[i], Client[best[index]].Damage);
 	}
 
-	int stattrack = CvarStatTrak.IntValue;
-	float gameTime = GetGameTime();
+	#if defined FF2_STATTRAK
+	int stattrack = StatEnabled ? CvarStatTrak.IntValue : 0;
+	#else
+	int stattrak;
+	#endif
 	char buffer[256];
 	for(int i; i<max; i++)
 	{
@@ -784,21 +810,50 @@ public void OnPlayerRunCmdPost(int nullVar1, int nullVar2, int nullVar3, const f
 			}
 
 			SetGlobalTransTarget(client);
-			SetHudTextParams(-1.0, 0.88, 0.35, 90, 255, 90, 255, 0, 0.35, 0.0, 0.1);
 
-			if(Boss[client].Active)
+			if(observer)
 			{
-			}
-			else
-			{
-				if(stattrack)
+				if(!Boss[client].Active)
 				{
-					FormatEx(buffer, sizeof(buffer), "%t", "Hud Stats", Client[client].Damage, Client[client].Healing, Client[client].Assist);
+					FormatEx(buffer, sizeof(buffer), "%t", "Hud Stats Spec", "It Is You", Client[client].Damage, Client[client].Healing, Client[client].Assist);
+				}
+				else if(stattrack)
+				{
+					FormatEx(buffer, sizeof(buffer), "%t", "Hud Boss Spec", "It Is You", Client[client].Stat[Stat_Win], Client[client].Stat[Stat_Lose], Client[client].Stat[Stat_Kill], Client[client].Stat[Stat_Death]);
 				}
 				else
 				{
-					FormatEx(buffer, sizeof(buffer), "%t", "Hud StatTrak", Damage[client], Healing[client], PlayerKills[client], PlayerMVPs[client]);
+					buffer[0] = 0;
 				}
+
+				static char buffer2[64];
+				if(!Boss[observer].Active)
+				{
+					GetClientName(client, buffer2, sizeof(buffer2));
+					SetHudTextParams(-1.0, 0.83, 0.35, 90, 255, 90, 255, 0, 0.35, 0.0, 0.1);
+					ShowSyncHudText(client, HudDamage, "%t\n%s", "Hud Stats Spec", buffer2, Client[observer].Damage, Client[observer].Healing, Client[observer].Assist, buffer);
+				}
+				else if(stattrack == 2)
+				{
+					GetClientName(client, buffer2, sizeof(buffer2));
+					SetHudTextParams(-1.0, 0.83, 0.35, 90, 255, 90, 255, 0, 0.35, 0.0, 0.1);
+					ShowSyncHudText(client, HudDamage, "%t\n%s", "Hud Boss Spec", buffer2, Client[observer].Stat[Stat_Win], Client[observer].Stat[Stat_Lose], Client[observer].Stat[Stat_Kill], Client[observer].Stat[Stat_Death], buffer);
+				}
+				else if(buffer[0])
+				{
+					SetHudTextParams(-1.0, 0.88, 0.35, 90, 255, 90, 255, 0, 0.35, 0.0, 0.1);
+					ShowSyncHudText(client, HudDamage, buffer);
+				}
+			}
+			else if(!Boss[client].Active)
+			{
+				SetHudTextParams(-1.0, 0.88, 0.35, 90, 255, 90, 255, 0, 0.35, 0.0, 0.1);
+				FormatEx(buffer, sizeof(buffer), "%t", "Hud Stats", Client[client].Damage, Client[client].Healing, Client[client].Assist);
+			}
+			else if(stattrak)
+			{
+				SetHudTextParams(-1.0, 0.88, 0.35, 90, 255, 90, 255, 0, 0.35, 0.0, 0.1);
+				FormatEx(buffer, sizeof(buffer), "%t", "Hud Boss", Client[client].[Stat_Win], Client[client].Stat[Stat_Lose], Client[client].Stat[Stat_Kill], Client[client].Stat[Stat_Death]);
 			}
 		}
 
@@ -1149,7 +1204,7 @@ public Action MainMenuC(int client, int args)
 	PrintToServer("");
 	PrintToServer("Weapon Attributes: %s", statusCheck ? "OK" : "TF2Attributes nor TF2Items are available");
 	PrintToServer("Wearable Weapons: %s", SDKEquipWearable==null ? "Failed to create call via Gamedata" : "OK");
-	PrintToServer("Boss KeyValues: %s", Enabled>Game_Disabled ? Special[0].Kv==INVALID_HANDLE ? "Failed to create boss KeyValues" : "OK" : "N/A");
+	PrintToServer("Boss KeyValues: %s", Enabled>Game_Disabled ? Special[0].Cfg==null ? "Failed to create boss ConfigMap" : "OK" : "N/A");
 	#if defined FF2_WEAPONS
 	PrintToServer("Weapon KeyValues: %s", Enabled>Game_Disabled ? WeaponKV==null ? "Failed to create weapon KeyValues" : "OK" : "N/A");
 	#endif

@@ -10,15 +10,15 @@
 
 #define FF2_STATTRAK
 
-static Cookie StatCookie;
 bool StatEnabled;
 ConVar CvarStatTrak;
-ConVar CvarStatPlayers;
+static Cookie StatCookie;
+static ConVar CvarStatPlayers;
 
 void StatTrak_Setup()
 {
-	CvarStatTrak = CreateConVar("ff2_stattrak", "0", "If to display StatTrak to players, 2 to make stats public to other players", _, true, 0.0, true, 2.0);
-	CvarStatPlayers = CreateConVar("ff2_stattrak_players", "10", "How many players to enable StatTrak", _, true, 0.0, true, float(MAXTF2PLAYERS));
+	CvarStatTrak = CreateConVar("ff2_stattrak", "0", "If to display StatTrak to players, 2 to also display in HUDs and chat", _, true, 0.0, true, 2.0);
+	CvarStatPlayers = CreateConVar("ff2_stattrak_players", "0", "How many players to enable StatTrak, 0 for 1/3 full server", _, true, 0.0, true, float(MAXTF2PLAYERS));
 
 	StatCookie = new Cookie("ff2_cookies_stattrak", "Your StatTrak stats", CookieAccess_Protected);
 
@@ -30,6 +30,10 @@ void StatTrak_Setup()
 
 void StatTrak_Check()
 {
+	int players = CvarStatPlayers.IntValue;
+	if(!players)
+		players = MaxClients/3;
+
 	StatEnabled = (Enabled==Game_Arena && Players>CvarStatPlayers.IntValue);
 }
 

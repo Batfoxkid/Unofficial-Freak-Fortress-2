@@ -365,6 +365,11 @@ stock SectionType KvGetSectionType(Handle kv, char[] buffer="", int length=16)
 	if(!KvGetSectionName(kv, buffer, length))
 		return Section_Unknown;
 
+	return GetSectionType(buffer);
+}
+
+stock SectionType GetSectionType(const char[] buffer)
+{
 	if(!StrContains(buffer, "sound_") || !StrContains(buffer, "catch_"))
 		return Section_Sound;
 
@@ -409,6 +414,26 @@ stock int KvGetBossAccess(Handle kv, int client, bool force=false)
 	return KvGetNum(kv, "hidden", owner ? 1 : 0) ? -2 : -1;
 }
 
+stock int CfgGetBossAccess(ConfigMap cfg, int client, bool force=false)
+{
+	static char buffer[16];
+	if(!force && cfg.GetInt("blocked"))
+		return -2;
+
+	bool donator = view_as<bool>(cfg.GetInt("donator"));
+	int admin = cfg.GetInt("admin");
+	bool owner = view_as<bool>(cfg.GetInt("owner"));
+	if(!(donator || admin || owner))
+		return cfg.GetInt("hidden") ? 0 : 1;
+
+	if(!((donator && !CheckCommandAccess(client, "ff2_donator_bosses", ADMFLAG_RESERVATION)) ||
+	     (owner && !CheckCommandAccess(client, "ff2_owner_bosses", ADMFLAG_ROOT)) ||
+	     (admin && !CheckCommandAccess(client, "ff2_admin_bosses", admin, true))))
+		return 1;
+
+	return cfg.GetInt("hidden", owner ? 1 : 0) ? -2 : -1;
+}
+
 stock bool KvGetBossAccess2(Handle kv, int client, char[] buffer, int length)
 {
 	if(KvGetNum(kv, "blocked"))
@@ -438,6 +463,35 @@ stock bool KvGetBossAccess2(Handle kv, int client, char[] buffer, int length)
 	return false;
 }
 
+stock bool CfgGetBossAccess2(ConfigMap cfg, int client, char[] buffer, int length)
+{
+	if(cfg.GetInt("blocked"))
+	{
+		FormatEx(buffer, length, "%T", "Deny Unknown", client);
+		return false;
+	}
+
+	bool donator = view_as<bool>(cfg.GetInt("donator"));
+	int admin = cfg.GetInt("admin");
+	bool owner = view_as<bool>(cfg.GetInt("owner"));
+	if(!(donator || admin>0 || owner))
+	{
+		if(!cfg.GetInt("hidden"))
+			return true;
+
+		FormatEx(buffer, length, "%T", "Deny Unknown", client);
+		return false;
+	}
+
+	if(!((donator && !CheckCommandAccess(client, "ff2_donator_bosses", ADMFLAG_RESERVATION)) ||
+	     (owner && !CheckCommandAccess(client, "ff2_owner_bosses", ADMFLAG_ROOT)) ||
+	     (admin>0 && !CheckCommandAccess(client, "ff2_admin_bosses", admin, true))))
+		return true;
+
+	FormatEx(buffer, length, "%T", cfg.GetInt("hidden", owner ? 1 : 0) ? "Deny Unknown" : "Deny Access", client);
+	return false;
+}
+
 stock void KvGetLang(Handle kv, const char[] key, char[] buffer, int length, int client=0, const char[] defaul="=Failed name=")
 {
 	static char language[20];
@@ -457,6 +511,48 @@ stock void KvGetLang(Handle kv, const char[] key, char[] buffer, int length, int
 
 	if(!buffer[0])
 		KvGetString(kv, key, buffer, length, defaul);
+}
+
+stock void CfgGetLang(ConfigMap cfg, const char[] key, char[] buffer, int length, int client=0, const char[] defaul="=Failed name=")
+{
+	static char language[20];
+	GetLanguageInfo(client ? GetClientLanguage(client) : GetServerLanguage(), language, sizeof(language), buffer, length);
+	Format(language, sizeof(language), "%s_%s", key, language);
+
+	cfg.Get(language, buffer, length);
+	if(buffer[0])
+		return;
+
+	if(client)
+	{
+		GetLanguageInfo(GetServerLanguage(), language, sizeof(language), buffer, length);
+		Format(language, sizeof(language), "%s_%s", key, language);
+		cfg.Get(language, buffer, length);
+	}
+
+	if(!buffer[0])
+		cfg.Get(key, buffer, length);
+
+	if(!buffer[0])
+		strcopy(buffer, length, defaul);
+}
+
+stock int CfgGetNum(ConfigMap cfg, const char[] key, int defaul=0)
+{
+	static char buffer[32];
+	if(!cfg.Get(key, buffer, sizeof(buffer)))
+		return defaul;
+
+	return StringToInt(buffer);
+}
+
+stock float CfgGetFloat(ConfigMap cfg, const char[] key, float defaul=0.0)
+{
+	static char buffer[32];
+	if(!cfg.Get(key, buffer, sizeof(buffer)))
+		return defaul;
+
+	return StringToFloat(buffer);
 }
 
 stock bool ConfigureWorldModelOverride(int entity, const char[] model, bool wearable=false)
@@ -787,296 +883,169 @@ stock bool PlayBossSound(int client, const char[] key, int mode=0, const char[] 
 	return true;
 }
 
-// TODO: Optimize the heck out of this thing
 stock bool GetBossSound(int client, const char[] key, int &type, char[] buffer, int bufferL, const char[] matching="", char[] name="", int nameL=32, char[] artist="", int artistL=32, float &duration=0.0)
 {
-	if(Boss[client].Special < 0)
-		return false;
-
-	Special[Boss[client].Special].Kv.Rewind();
-	if(!Special[Boss[client].Special].Kv.JumpToKey(key))
+	ConfigMap cfg = Special[Boss[client].Special].Cfg.GetSection(key);
+	if(cfg == null)
 		return false;
 
 	bool phrase = !StrContains(key, "catch_");
-	if(matching[0])
-	{
-		// Matching & New Syntax
-		ArrayList list = new ArrayList();
-		if(Special[Boss[client].Special].Kv.GotoFirstSubKey())
-		{
-			for(int i; ; i++)
-			{
-				Special[Boss[client].Special].Kv.GetString(phrase ? "vo" : "slot", buffer, bufferL);
-				if(!StrContains(buffer, matching, false))
-					list.Push(i);
+	StringMapSnapshot snap = cfg.Snapshot();
+	if(!snap)
+		return false;
 
-				if(Special[Boss[client].Special].Kv.GotoNextKey())
+	int entries = snap.Length;
+	if(!entries)
+	{
+		delete snap;
+		return false;
+	}
+
+	static char buffer3[7];
+	ArrayList list = new ArrayList();
+	for(int i; i<entries; i++)
+	{
+		int length = snap.KeyBufferSize(i)+1;
+		char[] buffer2 = new char[length];
+		snap.GetKey(i, buffer2, length);
+		PackVal val;
+		cfg.GetArray(buffer2, val, sizeof(val));
+		switch(val.tag)
+		{
+			case KeyValType_Value:
+			{
+				val.data.Reset();
+				val.data.ReadString(buffer3, sizeof(buffer3));
+
+				if(!IsCharNumeric(buffer3[0]) && StrContains(buffer3, "path"))	// "1", "2", "path1", "path2"
 					continue;
 
-				i = list.Length;
-				if(i < 1)
+				if(matching[0])
 				{
-					delete list;
-					return false;
-				}
+					ReplaceString(buffer3, sizeof(buffer3), "path", "");	// "1", "2", "1", "2"
+					Format(buffer3, sizeof(buffer3), phrase ? "vo%s" : "slot%s", buffer3);	// "vo1", "vo2", "slot1", "slot2"
 
-				i = list.Get(GetRandomInt(0, i-1));
-				delete list;
-				Special[Boss[client].Special].Kv.Rewind();
-				if(!Special[Boss[client].Special].Kv.JumpToKey(key))
-					return false;
-
-				while(i>0 && Special[Boss[client].Special].Kv.GotoNextKey())
-				{
-					i--;
-				}
-
-				if(!phrase)
-				{
-					Special[Boss[client].Special].Kv.GetString("overlay", buffer, bufferL);
-					if(buffer[0])
+					if(cfg.Get(buffer3, buffer, bufferL))
 					{
-						TFTeam team = TF2_GetClientTeam(client);
-						int flags = GetCommandFlags("r_screenoverlay");
-						SetCommandFlags("r_screenoverlay", flags & ~FCVAR_CHEAT);
-						for(int target=1; target<=MaxClients; target++)
-						{
-							if(IsValidClient(target) && TF2_GetClientTeam(target)!=team)
-								ClientCommand(target, "r_screenoverlay \"%s\"", buffer);
-						}
-						SetCommandFlags("r_screenoverlay", flags);
-
-						float time = Special[Boss[client].Special].Kv.GetFloat("duration", 2.0);
-						if(time > 0)
-							CreateTimer(time, Timer_RemoveOverlay, _, TIMER_FLAG_NO_MAPCHANGE);
+						if(StrContains(buffer, matching, false))
+							continue;
+					}
+					else
+					{
+						if(!StrEqual(matching, "0"))
+							continue;
 					}
 				}
 
-				if(!Special[Boss[client].Special].Kv.GetSectionName(buffer, bufferL))
-					return false;
-
-				if(phrase)
+				list.Push(val);
+			}
+			case KeyValType_Section:
+			{
+				if(matching[0])
 				{
-					type = Special[Boss[client].Special].Kv.GetNum("type", type);
-					duration = Special[Boss[client].Special].Kv.GetFloat("time");
-					if(type == 3)
-					{
-						Special[Boss[client].Special].Kv.GetString("name", name, nameL);
-						Special[Boss[client].Special].Kv.GetString("artist", artist, artistL);
-					}
+					if(!section.Get(phrase ? "vo" : "slot", buffer, bufferL))
+						strcopy(buffer, bufferL, "0");
+
+					if(StrContains(buffer, matching, false))
+						continue;
 				}
-				return true;
+
+				val.data.Reset();
+				val.data.WriteString(buffer2);
+				list.Push(val);
 			}
-		}
-
-		// Matching & Old Syntax
-		char buffer2[16];
-		for(int i=1; ; i++)
-		{
-			IntToString(i, buffer2, sizeof(buffer2));
-			Special[Boss[client].Special].Kv.GetString(buffer2, buffer, bufferL);
-			if(buffer[0])
-			{
-				FormatEx(buffer2, sizeof(buffer2), "%s%d", phrase ? "vo" : "slot", i);
-				Special[Boss[client].Special].Kv.GetString(buffer2, buffer, bufferL)
-				if(!StrContains(matching, buffer, false))
-					list.Push(i);
-
-				continue;
-			}
-
-			i = list.Length;
-			if(i < 1)
-			{
-				delete list;
-				return false;
-			}
-
-			i = list.Get(GetRandomInt(0, i-1));
-			delete list;
-			Special[Boss[client].Special].Kv.Rewind();
-			if(!Special[Boss[client].Special].Kv.JumpToKey(key))
-				return false;
-
-			FormatEx(buffer2, sizeof(buffer2), "%d_overlay", i);
-			Special[Boss[client].Special].Kv.GetString(buffer2, buffer, bufferL);
-			if(buffer[0])
-			{
-				//LogError2("[Boss] '%s' will be removed in the future, use newer syntax for this key", buffer2);
-
-				TFTeam team = TF2_GetClientTeam(client);
-				int flags = GetCommandFlags("r_screenoverlay");
-				SetCommandFlags("r_screenoverlay", flags & ~FCVAR_CHEAT);
-				for(int target=1; target<=MaxClients; target++)
-				{
-					if(IsValidClient(target) && TF2_GetClientTeam(target)!=team)
-						ClientCommand(target, "r_screenoverlay \"%s\"", buffer);
-				}
-				SetCommandFlags("r_screenoverlay", flags);
-
-				FormatEx(buffer2, sizeof(buffer2), "%i_overlay_time", i);
-				float time = Special[Boss[client].Special].Kv.GetFloat(buffer2, 2.0);
-				if(time > 0)
-					CreateTimer(time, Timer_RemoveOverlay, _, TIMER_FLAG_NO_MAPCHANGE);
-			}
-
-			IntToString(i, buffer2, sizeof(buffer2));
-			Special[Boss[client].Special].Kv.GetString(buffer2, buffer, bufferL);
-
-			if(!phrase)
-			{
-				FormatEx(buffer2, sizeof(buffer2), "%dmusic", i);
-				duration = Special[Boss[client].Special].Kv.GetFloat(buffer2, -1.0);
-				if(duration >= 0)
-					type = 3;
-
-				if(type == 3)
-				{
-					//LogError2("[Boss] '%s' will be removed in the future, use newer syntax for this key", buffer2);
-
-					FormatEx(buffer2, sizeof(buffer2), "%dname", i);
-					Special[Boss[client].Special].Kv.GetString(buffer2, name, nameL);
-
-					FormatEx(buffer2, sizeof(buffer2), "%dartist", i);
-					Special[Boss[client].Special].Kv.GetString(buffer2, artist, artistL);
-				}
-			}
-			return true;
 		}
 	}
 
-	// Non-Matching & New Syntax
-	int count;
-	if(Special[Boss[client].Special].Kv.GotoFirstSubKey())
+	if(list.Length < 1)
+		return false;
+
+	val = list.Get(GetRandomInt(0, list.Length-1));
+	if(val.tag == KeyValType_Value)
 	{
-		for(int i; ; i++)
-		{
-			Special[Boss[client].Special].Kv.GetString(phrase ? "vo" : "slot", buffer, bufferL)
-			if(!StrContains(buffer, matching, false))
-				count++;
+		val.data.Reset();
+		val.data.ReadString(buffer3, sizeof(buffer3));
+		cfg.Get(buffer3, buffer, bufferL);
 
-			if(Special[Boss[client].Special].Kv.GotoNextKey())
-				continue;
-
-			if(!count)
-				return false;
-
-			count = GetRandomInt(0, count-1);
-			Special[Boss[client].Special].Kv.Rewind();
-			if(!Special[Boss[client].Special].Kv.JumpToKey(key))
-				return false;
-
-			while(count>0 && Special[Boss[client].Special].Kv.GotoNextKey())
-			{
-				count--;
-			}
-
-			if(!phrase)
-			{
-				Special[Boss[client].Special].Kv.GetString("overlay", buffer, bufferL);
-				if(buffer[0])
-				{
-					TFTeam team = TF2_GetClientTeam(client);
-					i = GetCommandFlags("r_screenoverlay");
-					SetCommandFlags("r_screenoverlay", i & ~FCVAR_CHEAT);
-					for(int target=1; target<=MaxClients; target++)
-					{
-						if(IsValidClient(target) && TF2_GetClientTeam(target)!=team)
-							ClientCommand(target, "r_screenoverlay \"%s\"", buffer);
-					}
-					SetCommandFlags("r_screenoverlay", i);
-
-					float time = Special[Boss[client].Special].Kv.GetFloat("duration", 2.0);
-					if(time > 0)
-						CreateTimer(time, Timer_RemoveOverlay, _, TIMER_FLAG_NO_MAPCHANGE);
-				}
-			}
-
-			if(!Special[Boss[client].Special].Kv.GetSectionName(buffer, bufferL))
-				return false;
-
-			if(!phrase)
-			{
-				type = Special[Boss[client].Special].Kv.GetNum("type", type);
-				duration = Special[Boss[client].Special].Kv.GetFloat("time");
-				if(type == 3)
-				{
-					Special[Boss[client].Special].Kv.GetString("name", name, nameL);
-					Special[Boss[client].Special].Kv.GetString("artist", artist, artistL);
-				}
-			}
+		if(phrase)
 			return true;
-		}
-	}
 
-	// Non-Matching & Old Syntax
-	char buffer2[16];
-	for(int i=1; ; i++)
-	{
-		IntToString(i, buffer2, sizeof(buffer2));
-		Special[Boss[client].Special].Kv.GetString(buffer2, buffer, bufferL);
-		if(buffer[0])
+		ReplaceString(buffer3, sizeof(buffer3), "path", "");	// "1", "2"
+
+		char buffer2[PLATFORM_MAX_PATH];
+		FormatEx(buffer2, sizeof(buffer2), "%s_overlay", buffer3);	// "1_overlay", "2_overlay"
+		if(cfg.Get(buffer2, buffer2, sizeof(buffer2)))
 		{
-			FormatEx(buffer2, sizeof(buffer2), "%s%d", phrase ? "vo" : "slot", i);
-			Special[Boss[client].Special].Kv.GetString(buffer2, buffer, bufferL);
-			if(!StrContains(matching, buffer, false))
-				count++;
-
-			continue;
-		}
-
-		if(count < 1)
-			return false;
-
-		count = GetRandomInt(0, count-1);
-		Special[Boss[client].Special].Kv.Rewind();
-		if(!Special[Boss[client].Special].Kv.JumpToKey(key))
-			return false;
-
-		FormatEx(buffer2, sizeof(buffer2), "%d_overlay", count);
-		Special[Boss[client].Special].Kv.GetString(buffer2, buffer, bufferL);
-		if(buffer[0])
-		{
-			//LogError2("[Boss] '%s' will be removed in the future, use newer syntax for this key", buffer);
-
 			TFTeam team = TF2_GetClientTeam(client);
-			i = GetCommandFlags("r_screenoverlay");
-			SetCommandFlags("r_screenoverlay", i & ~FCVAR_CHEAT);
+			int flags = GetCommandFlags("r_screenoverlay");
+			SetCommandFlags("r_screenoverlay", flags & ~FCVAR_CHEAT);
 			for(int target=1; target<=MaxClients; target++)
 			{
 				if(IsValidClient(target) && TF2_GetClientTeam(target)!=team)
-					ClientCommand(target, "r_screenoverlay \"%s\"", buffer);
+					ClientCommand(target, "r_screenoverlay \"%s\"", buffer2);
 			}
-			SetCommandFlags("r_screenoverlay", i);
+			SetCommandFlags("r_screenoverlay", flags);
 
-			FormatEx(buffer2, sizeof(buffer2), "%i_overlay_time", count);
-			float time = Special[Boss[client].Special].Kv.GetFloat(buffer2, 2.0);
+			FormatEx(buffer2, sizeof(buffer2), "%s_overlay_time", buffer3);	// "1_overlay_time", "2_overlay_time"
+			float time = CfgGetFloat(cfg, buffer2);
 			if(time > 0)
 				CreateTimer(time, Timer_RemoveOverlay, _, TIMER_FLAG_NO_MAPCHANGE);
 		}
 
-		IntToString(count, buffer2, sizeof(buffer2));
-		Special[Boss[client].Special].Kv.GetString(buffer2, buffer, bufferL);
+		FormatEx(buffer2, sizeof(buffer2), "%dmusic", i);	// "1music", "2music"
+		duration = CfgGetFloat(cfg, buffer2, -1.0);
+		if(duration >= 0)
+			type = 3;
 
-		if(!phrase)
+		if(type == 3)
 		{
-			FormatEx(buffer2, sizeof(buffer2), "%dmusic", count);
-			duration = Special[Boss[client].Special].Kv.GetFloat(buffer2, -1.0);
-			if(duration >= 0)
-				type = 3;
+			FormatEx(buffer2, sizeof(buffer2), "%dname", i);
+			Special[Boss[client].Special].Kv.GetString(buffer2, name, nameL);
 
-			if(type == 3)
-			{
-				//LogError2("[Boss] '%s' will be removed in the future, use newer syntax for this buffer", buffer2);
-
-				FormatEx(buffer2, sizeof(buffer2), "%dname", count);
-				Special[Boss[client].Special].Kv.GetString(buffer2, name, nameL);
-	
-				FormatEx(buffer2, sizeof(buffer2), "%dartist", count);
-				Special[Boss[client].Special].Kv.GetString(buffer2, artist, artistL);
-			}
+			FormatEx(buffer2, sizeof(buffer2), "%dartist", i);
+			Special[Boss[client].Special].Kv.GetString(buffer2, artist, artistL);
 		}
-		break;
+		return true;
+	}
+
+	val.data.Reset();
+	val.data.ReadString(buffer, bufferL);
+
+	if(phrase)
+		return true;
+
+	char buffer2[PLATFORM_MAX_PATH];
+	FormatEx(buffer2, sizeof(buffer2), "%s.overlay", buffer);
+	if(cfg.Get(buffer2, buffer2, sizeof(buffer2)))
+	{
+		TFTeam team = TF2_GetClientTeam(client);
+		int flags = GetCommandFlags("r_screenoverlay");
+		SetCommandFlags("r_screenoverlay", flags & ~FCVAR_CHEAT);
+		for(int target=1; target<=MaxClients; target++)
+		{
+			if(IsValidClient(target) && TF2_GetClientTeam(target)!=team)
+				ClientCommand(target, "r_screenoverlay \"%s\"", buffer2);
+		}
+		SetCommandFlags("r_screenoverlay", flags);
+
+		FormatEx(buffer2, sizeof(buffer2), "%s.duration", buffer);
+		float time = CfgGetFloat(cfg, buffer2);
+		if(time > 0)
+			CreateTimer(time, Timer_RemoveOverlay, _, TIMER_FLAG_NO_MAPCHANGE);
+	}
+
+	FormatEx(buffer2, sizeof(buffer2), "%s.type", buffer);
+	type = CfgGetNum(buffer2, type);
+
+	FormatEx(buffer2, sizeof(buffer2), "%s.time", buffer);
+	duration = CfgGetNum(buffer2, 0.0);
+	if(type == 3)
+	{
+		FormatEx(buffer2, sizeof(buffer2), "%s.name", buffer);
+		cfg.Get(buffer2, name, nameL);
+
+		FormatEx(buffer2, sizeof(buffer2), "%s.artist", buffer);
+		cfg.Get(buffer2, artist, artistL);
 	}
 	return true;
 }

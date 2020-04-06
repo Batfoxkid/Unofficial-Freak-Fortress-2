@@ -650,15 +650,28 @@ void Bosses_Create(int client)
 {
 	Bosses_Prepare(Boss[client].Special);
 
-	Boss[client].RageDamage = RoundFloat(ParseFormula(Boss[client].Special, "ragedamage", DEFAULT_RAGEDAMAGE));
+	static char buffer[1024];
+	Special[Boss[client].Special].Kv.GetString("ragedamage", buffer, sizeof(buffer), DEFAULT_RAGEDAMAGE);
+	#if defined FF2_TIMESTEN
+	Boss[client].RageDamage = RoundFloat(ParseFormula(buffer, Players)*TimesTen_Value());
+	#else
+	Boss[client].RageDamage = RoundFloat(ParseFormula(buffer, Players));
+	#endif
 	Boss[client].Lives = Special[Boss[client].Special].Kv.GetNum("lives", 1);
 	if(Boss[client].Lives < 1)
 		Boss[client].Lives = 1;
 
 	Boss[client].MaxLives = Boss[client].Lives;
-	Boss[client].MaxHealth = RoundFloat(ParseFormula(Boss[client].Special, "health_formula", DEFAULT_HEALTH));
+	Special[Boss[client].Special].Kv.GetString("health_formula", buffer, sizeof(buffer), DEFAULT_HEALTH);
+	#if defined FF2_TIMESTEN
+	Boss[client].MaxHealth = RoundFloat(ParseFormula(buffer, Players)*TimesTen_Value());
+	if(Boss[client].MaxHealth < 1)
+		Boss[client].MaxHealth = RoundFloat((Pow((760.8+float(Players))*(float(Players)-1.0), 1.0341)+2046.0)*TimesTen_Value());
+	#else
+	Boss[client].MaxHealth = RoundFloat(ParseFormula(buffer, Players));
 	if(Boss[client].MaxHealth < 1)
 		Boss[client].MaxHealth = RoundFloat(Pow((760.8+float(Players))*(float(Players)-1.0), 1.0341)+2046.0);
+	#endif
 
 	Boss[client].Health = Boss[client].MaxHealth*Boss[client].Lives;
 
