@@ -238,6 +238,7 @@ enum struct SpecialEnum
 	ConfigMap Cfg;
 	int Charset;
 	bool Precached;
+	char File[PLATFORM_MAX_PATH];
 }
 
 SpecialEnum Special[MAXSPECIALS];
@@ -246,12 +247,12 @@ int Specials;
 
 bool LastMann;
 int Enabled;
-int RoundCount;
 int NextGamemode;
 int ArenaRoundsLeft;
 int Players;
 int BossPlayers;
 int MercPlayers;
+int Override;
 float HealthBarFor;
 TFTeam BossTeam;
 ArrayList Charsets;
@@ -373,6 +374,9 @@ public void OnPluginStart()
 	CreateConVar("ff2_oldjump", "1", "Backwards Compatibility ConVar", FCVAR_DONTRECORD, true, 0.0, true, 1.0);
 	CreateConVar("ff2_base_jumper_stun", "0", "Backwards Compatibility ConVar", FCVAR_DONTRECORD, true, 0.0, true, 1.0);
 	CreateConVar("ff2_solo_shame", "0", "Backwards Compatibility ConVar", FCVAR_DONTRECORD, true, 0.0, true, 1.0);
+
+	Override = -1;
+	ArenaRoundsLeft = -1;
 
 	#if defined FF2_TF2ATTRIBUTES
 	TF2Attributes_Setup();
@@ -646,6 +650,18 @@ public void OnRoundSetup(Event event, const char[] name, bool dontBroadcast)
 */
 	if(Enabled != Game_Arena)
 		return;
+
+	int client = GetNextBossPlayer();
+	if(!client)
+	{
+		Enabled = Game_Fun;
+		NextGamemode = Game_Arena;
+		return;
+	}
+
+	Boss[client].Active = true;
+	Boss[client].Special = Client[client].Selection;
+	Bosses_Create(client);
 
 	for(int client=1; client<=MaxClients; client++)
 	{
