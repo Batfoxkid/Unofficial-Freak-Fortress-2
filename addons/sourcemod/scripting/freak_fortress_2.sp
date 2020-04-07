@@ -246,6 +246,7 @@ int Specials;
 
 bool LastMann;
 int Enabled;
+int RoundCount;
 int NextGamemode;
 int ArenaRoundsLeft;
 int Players;
@@ -496,6 +497,8 @@ public void OnConfigsExecuted()
 		Enabled = Game_Disabled;
 	}
 
+	RoundCount = 
+
 	#if defined FF2_STEAMWORKS
 	if(Enabled == Game_Arena)
 		SteamWorks_Toggle(true);
@@ -591,6 +594,24 @@ public void OnRoundSetup(Event event, const char[] name, bool dontBroadcast)
 	if(Enabled <= Game_Disabled)
 		return;
 
+	float gameTime = GetGameTime();
+	static float time;
+	if(time > gameTime)	// teamplay_round_start can fire twice sometimes...
+		return;
+
+	time = gameTime+1.0;
+	for(int client; client<MAXTF2PLAYERS; client++)
+	{
+		Boss[client].Active = false;
+		Client[client].Minion = false;
+		Client[client].Voice[0] = 0;
+		Client[client].Damage = 0;
+		for(int i; i<MAXTF2PLAYERS; i++)
+		{
+			Client[client].Goombas[i] = 0;
+		}
+	}
+
 	if(NextGamemode != Game_Invalid)
 	{
 		Enabled = NextGamemode;
@@ -599,53 +620,53 @@ public void OnRoundSetup(Event event, const char[] name, bool dontBroadcast)
 			return;
 	}
 
-	bool teamHasPlayers[2];
+	#if defined FF2_TTS
+	TTS_Start();
+	#endif
+/*
+		if(IsValidClient(client) && GetClientTeam(client)>view_as<int>(TFTeam_Spectator))
+		{
+			Players++;
+			if(!IsFakeClient(client))
+				playing2++;
+
+			if(IsBoss(client))
+				bosses++;
+
+			if(GetClientTeam(client)==BossTeam)
+			{
+				playingboss++;
+			}
+			else
+			{
+				playingmerc++;
+			}
+		}
+	}
+*/
+	if(Enabled != Game_Arena)
+		return;
+
 	for(int client=1; client<=MaxClients; client++)
 	{
 		if(!IsValidClient(client))
 			continue;
 
-		int team = GetClientTeam(client);
-		if(team <= view_as<int>(TFTeam_Spectator))
+		if(Boss[client].Active)
+		{
+			AssignTeam(client, view_as<int>(Boss[client].Team));
 			continue;
+		}
 
-		teamHasPlayers[team-2] = true;
-		if(teamHasPlayers[0] && teamHasPlayers[1])
-			break;
+		if(GetClientTeam(client) == BossTeam)
+			Client[client].RefreshAt = gameTime+0.1;
 	}
 
-	if(!teamHasPlayers[0] || !teamHasPlayers[1])
+	for(int client=1; client<=MaxClients; client++)
 	{
-		float gameTime = GetGameTime();
-		for(int client=1; client<=MaxClients; client++)
-		{
-			if(!IsValidClient(client))
-				continue;
-
-			if(Boss[client].Active)
-			{
-				AssignTeam(client, view_as<int>(Boss[client].Team));
-				continue;
-			}
-
-			if(GetClientTeam(client) == BossTeam)
-				Client[client].RefreshAt = gameTime+0.1;
-		}
-
-		for(int client=1; client<=MaxClients; client++)
-		{
-			if(IsValidClient(client) && !IsBoss(client) && (GetClientTeam(client)!=OtherTeam && !Enabled3))
-				CreateTimer(0.1, Timer_MakeNotBoss, GetClientUserId(client), TIMER_FLAG_NO_MAPCHANGE);
-		}
-		return;	// NOTE: This is needed because OnRoundSetup gets fired a second time once both teams have players
+		if(IsValidClient(client) && !IsBoss(client) && (GetClientTeam(client)!=OtherTeam && !Enabled3))
+			CreateTimer(0.1, Timer_MakeNotBoss, GetClientUserId(client), TIMER_FLAG_NO_MAPCHANGE);
 	}
-
-	#if defined FF2_TTS
-	TTS_Start();
-	#endif
-
-	if(Enabled != Game_Arena)
-		return;
 }
 
 public Action OnPlayerHurt(Event event, const char[] name, bool dontBroadcast)
@@ -679,6 +700,7 @@ public void OnPlayerRunCmdPost(int nullVar1, int nullVar2, int nullVar3, const f
 		return;
 
 	float engineTime = GetEngineTime();
+
 	static float hudAt;
 	if(hudAt > engineTime)
 		return;
@@ -1110,7 +1132,11 @@ public Action MainMenuC(int client, int args)
 	  #endif
 	#endif
 	PrintToServer("Build: %s", BUILD_NUMBER);
+	#if defined FORK_SUB_REVISION
 	PrintToServer("Date: %s", FORK_DATE_REVISION);
+	#else
+	PrintToServer("Date: %s", DATE_REVISION);
+	#ebduf
 	PrintToServer("Status: %s", Enabled>Game_Disabled ? "Enabled" : "Disabled");
 
 	PrintToServer("");
