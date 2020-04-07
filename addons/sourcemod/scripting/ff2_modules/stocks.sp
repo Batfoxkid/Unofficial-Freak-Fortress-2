@@ -1,7 +1,6 @@
 /*
 	Client Stocks:
 	bool IsValidClient(int client, bool replaycheck=true)
-	bool IsInvuln(int client)
 	int GetIndexOfWeaponSlot(int client, int slot)
 	bool RemoveCond(int client, TFCond cond)
 	int GetClientCloakIndex(int client)
@@ -16,9 +15,13 @@
 	void AssignTeam(int client, int team)
 	int GetHealingTarget(int client, bool checkgun=false)
 	Action Timer_RemoveOverlay(Handle timer)
+	int GetZeroBoss()
 	void DoOverlay(int client, const char[] overlay)
 	int CreateAttachedAnnotation(int client, int entity, bool effect=true, float time, const char[] buffer, any ...)
 	void ShowGameText(int client, const char[] icon="leaderboard_streak", int color=0, const char[] buffer, any ...)
+	bool IsInvuln(int client)
+	int GetNextBossPlayer()
+	int GetRandBossClient()
 
 	KeyValues Stocks:
 	TFClassType KvGetClass(Handle kv, const char[] string)
@@ -59,8 +62,8 @@
 	SectionType GetSectionType(const char[] buffer)
 	void MultiClassname(TFClassType class, char[] name, int length)
 	void LogError2(const char[] buffer, any ...)
-	int GetZeroBoss()
 	int CheckRoundState()
+	int GetMatchingBoss(const char[] matching)
 */
 
 #define FF2_STOCKS
@@ -1118,4 +1121,32 @@ stock int GetRandBossClient()
 			winners[winner++] = client;
 	}
 	return winner ? winners[GetRandomInt(0, winner-1)] : 0;
+}
+
+stock int GetMatchingBoss(const char[] matching)
+{
+	int boss = -1;
+	static char buffer[64];
+	for(int i=Specials-1; i>=0; i--)	// We go backwards so in case of a wildcard, it's the first ones on the list
+	{
+		if(Special[i].Charset != Charset)
+			continue;
+
+		Special[i].Cfg.Get("name", buffer, sizeof(buffer));
+		if(StrEqual(buffer, matching, false))
+			return i;
+
+		if(StrContains(buffer, matching, false) != -1)
+		{
+			boss = i;
+			continue;
+		}
+
+		if(StrEqual(Special[i].File, matching, false))
+			return i;
+
+		if(StrContains(Special[i].File, matching, false) != -1)
+			boss = i;
+	}
+	return boss;
 }
