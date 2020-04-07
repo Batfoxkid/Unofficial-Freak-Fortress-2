@@ -1303,6 +1303,32 @@ KeyValues Bosses_ArgK(int client, const char[] ability, const char[] plugin)
 	return view_as<KeyValues>(INVALID_HANDLE);
 }
 
+// Type | 0: Leader Boss, 1: Companion Boss, 2: Other Boss
+int Bosses_GetSpecial(int client, int selection, int type)
+{
+	Action action;
+	Call_StartForward(OnSpecialSelected);
+	Call_PushCell(type ? client : 0);
+	int boss = selection;
+	Call_PushCellRef(boss);
+	static char buffer[64];
+	Special[selection].Cfg.Get("name", buffer, sizeof(buffer));
+	Call_PushStringEx(buffer, sizeof(buffer), SM_PARAM_STRING_UTF8|SM_PARAM_STRING_COPY, SM_PARAM_COPYBACK);
+	Call_PushCell(type!=1);
+	Call_Finish(action);
+	if(action == Plugin_Changed)
+	{
+		if(buffer[0])
+			GetMatchingBoss(buffer)
+
+		return boss;
+	}
+	else if(action == Plugin_Continue)
+	{
+		boss = selection;
+	}
+}
+
 static int GetRankingKills(int rank, int index, bool wearable)
 {
 	case -1:
