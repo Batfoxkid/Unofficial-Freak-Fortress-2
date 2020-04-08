@@ -310,7 +310,7 @@ static bool ParseTargetPath(const char[] key, char[] buffer, int buffer_len)
 	return n > 0;
 }
 
-static void DeleteCfg(ConfigMap& cfg, bool clear_only=false) {
+stock void DeleteCfg(ConfigMap& cfg, bool clear_only=false) {
 	if( cfg==null )
 		return;
 	

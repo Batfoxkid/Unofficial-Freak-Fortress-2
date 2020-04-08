@@ -817,7 +817,7 @@ void Bosses_Equip(int client)
 		int level = Special[Boss[client].Special].Kv.GetNum("level", -1);
 		bool override = view_as<bool>(Special[Boss[client].Special].Kv.GetNum("override"));
 		int rank = Special[Boss[client].Special].Kv.GetNum("rank", (level==-1 || override) ? -1 : 21);
-		int kills = GetRankingKills(rank, index, wearable);
+		int kills = rank>=0 ? GetRankingKills(rank, index, wearable) : -1;
 
 		if(level < 0)
 			level = 101;
@@ -1063,6 +1063,7 @@ void Bosses_Ability(int client, const char[] ability, const char[] plugin, int s
 	if(slot<=0 || slot>3)
 	{
 		Call_PushCell(3);
+		Call_PushCell(client);
 		Call_Finish(action);
 		return;
 	}
@@ -1095,18 +1096,10 @@ void Bosses_Ability(int client, const char[] ability, const char[] plugin, int s
 		if(Boss[client].Charge[slot] >= 0.0)
 		{
 			Call_PushCell(2);
+			Call_PushCell(client);
 			Call_Finish(action);
-			float charge;
-			KeyValues kv = Bosses_ArgK(client, ability, plugin);
-			if(kv == INVALID_HANDLE)
-			{
-				charge = 20.0/1.5;
-			}
-			else
-			{
-				charge = 20.0/kv.GetFloat("charge time", kv.GetFloat("arg1", 1.5)));
-			}
 
+			float charge = 20.0/Bosses_ArgF(client, ability, plugin, "charge time", 1, 1.5);
 			if(Boss[client].Charge[slot]+charge < 100.0)
 			{
 				Boss[client].Charge[slot] += charge;
@@ -1119,6 +1112,7 @@ void Bosses_Ability(int client, const char[] ability, const char[] plugin, int s
 		else
 		{
 			Call_PushCell(1);  //Status
+			Call_PushCell(client);
 			Call_Finish(action);
 			Boss[client].Charge[slot] += 0.2;
 		}
@@ -1132,20 +1126,19 @@ void Bosses_Ability(int client, const char[] ability, const char[] plugin, int s
 		if(angles[0] < -30.0)
 		{
 			Call_PushCell(3);
+			Call_PushCell(client);
 			Call_Finish(action);
-			KeyValues kv = Bosses_ArgK(client, ability, plugin);
-			if(kv != INVALID_HANDLE)
-			{
-				DataPack data;
-				CreateDataTimer(0.1, Bosses_UseBossCharge, data);
-				data.WriteCell(GetClientUserId(client));
-				data.WriteCell(slot);
-				data.WriteFloat(-1.0*kv.GetFloat("cooldown", kv.GetFloat("arg2", 5.0)));
-			}
+
+			DataPack data;
+			CreateDataTimer(0.1, Bosses_UseBossCharge, data);
+			data.WriteCell(GetClientUserId(client));
+			data.WriteCell(slot);
+			data.WriteFloat(-1.0*Bosses_ArgF(client, ability, plugin, "cooldown", 2, 5.0));
 		}
 		else
 		{
 			Call_PushCell(0);
+			Call_PushCell(client);
 			Call_Finish(action);
 			Boss[client].Charge[slot] = 0.0;
 		}
@@ -1155,128 +1148,214 @@ void Bosses_Ability(int client, const char[] ability, const char[] plugin, int s
 	if(Boss[client].Charge[slot] < 0.0)
 	{
 		Call_PushCell(1);
+		Call_PushCell(client);
 		Call_Finish(action);
 		Boss[client].Charge[slot] += 0.2;
 		return;
 	}
 
 	Call_PushCell(0);
+	Call_PushCell(client);
 	Call_Finish(action);
 }
 
 public Action Bosses_UseBossCharge(Handle timer, DataPack data)
 {
 	data.Reset();
-	Boss[GetClientOfUserId(data.ReadCell())].Charge[data.ReadCell()] = data.ReadFloat();
+	int client = GetClientOfUserId(data.ReadCell());
+	if(IsValidClient(client))
+		Boss[client].Charge[data.ReadCell()] = data.ReadFloat();
+
 	return Plugin_Continue;
 }
 
-int Bosses_ArgI(int client, const char[] ability, const char[] plugin, const char[] arg, int index=-1, int defaul=0)
+int Bosses_ArgI(int client, const char[] ability, const char[] plugin, const char[] arg="", int index=-1, int defaul=0)
 {
-	char buffer[64];
-	Special[Boss[client].Special].Kv.Rewind();
-	Special[Boss[client].Special].Kv.GotoFirstSubKey();
-	do
+	StringMapSnapshot snap = Special[Boss[client].Special].Cfg.Snapshot();
+	if(!snap)
+		return defaul;
+
+	int entries = snap.Length;
+	if(!entries)
 	{
-		if(KvGetSectionType(Special[Boss[client].Special].Kv, buffer, sizeof(buffer) != Section_Ability))
+		delete snap;
+		return defaul;
+	}
+
+	for(int i; i<entries; i++)
+	{
+		int length = snap.KeyBufferSize(i)+1;
+		char[] buffer = new char[length];
+		snap.GetKey(i, buffer, length);
+		PackVal val;
+		Special[Boss[client].Special].Cfg.GetArray(buffer, val, sizeof(val));
+		if(val.tag != KeyValType_Section)
 			continue;
 
+		if(GetSectionType(buffer, length) != Section_Ability)
+			continue;
+
+		val.data.Reset();
+		cfg = val.data.ReadCell();
+		if(cfg == null)
+			continue;
+
+		static char buffer2[64];
 		if(!StrContains(buffer, "ability"))
 		{
-			Special[Boss[client].Special].Kv.GetString("name", buffer, sizeof(buffer));
+			if(!cfg.Get("name", buffer2, sizeof(buffer2)) || !StrEqual(ability, buffer2, false))
+				continue;
+		}
+		else if(!StrEqual(ability, buffer, false))
+		{
 			continue;
 		}
 
-		if(plugin[0])
-		{
-			Special[Boss[client].Special].Kv.GetString("plugin_name", buffer, sizeof(buffer));
-			if(buffer[0] && !StrEqual(plugin, buffer))
-				continue;
-		}
+		if(plugin[0] && cfg.Get("plugin_name", buffer2, sizeof(buffer2)) && buffer2[0] && !StrEqual(plugin, buffer2, false))
+			continue;
+
+		delete snap;
+		if(arg[0] && cfg.Get(arg, buffer2, sizeof(buffer2)) && buffer2[0])
+			return StringToInt(buffer2);
 
 		if(index >= 0)
 		{
-			FormatEx(buffer, sizeof(buffer), "arg%d", index);
-			return Special[Boss[client].Special].Kv.GetNum(arg, Special[Boss[client].Special].Kv.GetNum(buffer, defaul));
+			char buffer3[10];
+			FormatEx(buffer3, sizeof(buffer3), "arg%d", index);
+			if(cfg.Get(buffer3, buffer2, sizeof(buffer2)) && buffer2[0])
+				return StringToInt(buffer2);
 		}
+		return defaul;
+	}
 
-		return Special[Boss[client].Special].Kv.GetNum(arg, defaul);
-	} while(Special[Boss[client].Special].Kv.GotoNextKey());
+	delete snap;
 	return defaul;
 }
 
-float Bosses_ArgF(int client, const char[] ability, const char[] plugin, const char[] arg, int index=-1, float defaul=0.0)
+float Bosses_ArgF(int client, const char[] ability, const char[] plugin, const char[] arg="", int index=-1, float defaul=0.0)
 {
-	char buffer[64];
-	Special[Boss[client].Special].Kv.Rewind();
-	Special[Boss[client].Special].Kv.GotoFirstSubKey();
-	do
+	StringMapSnapshot snap = Special[Boss[client].Special].Cfg.Snapshot();
+	if(!snap)
+		return defaul;
+
+	int entries = snap.Length;
+	if(!entries)
 	{
-		if(KvGetSectionType(Special[Boss[client].Special].Kv, buffer, sizeof(buffer) != Section_Ability))
+		delete snap;
+		return defaul;
+	}
+
+	for(int i; i<entries; i++)
+	{
+		int length = snap.KeyBufferSize(i)+1;
+		char[] buffer = new char[length];
+		snap.GetKey(i, buffer, length);
+		PackVal val;
+		Special[Boss[client].Special].Cfg.GetArray(buffer, val, sizeof(val));
+		if(val.tag != KeyValType_Section)
 			continue;
 
+		if(GetSectionType(buffer, length) != Section_Ability)
+			continue;
+
+		val.data.Reset();
+		cfg = val.data.ReadCell();
+		if(cfg == null)
+			continue;
+
+		static char buffer2[64];
 		if(!StrContains(buffer, "ability"))
 		{
-			Special[Boss[client].Special].Kv.GetString("name", buffer, sizeof(buffer));
+			if(!cfg.Get("name", buffer2, sizeof(buffer2)) || !StrEqual(ability, buffer2, false))
+				continue;
+		}
+		else if(!StrEqual(ability, buffer, false))
+		{
 			continue;
 		}
 
-		if(plugin[0])
-		{
-			Special[Boss[client].Special].Kv.GetString("plugin_name", buffer, sizeof(buffer));
-			if(buffer[0] && !StrEqual(plugin, buffer))
-				continue;
-		}
+		if(plugin[0] && cfg.Get("plugin_name", buffer2, sizeof(buffer2)) && buffer2[0] && !StrEqual(plugin, buffer2, false))
+			continue;
+
+		delete snap;
+		if(arg[0] && cfg.Get(arg, buffer2, sizeof(buffer2)) && buffer2[0])
+			return StringToFloat(buffer2);
 
 		if(index >= 0)
 		{
-			FormatEx(buffer, sizeof(buffer), "arg%d", index);
-			return Special[Boss[client].Special].Kv.GetFloat(arg, Special[Boss[client].Special].Kv.GetFloat(buffer, defaul));
+			char buffer3[10];
+			FormatEx(buffer3, sizeof(buffer3), "arg%d", index);
+			if(cfg.Get(buffer3, buffer2, sizeof(buffer2)) && buffer2[0])
+				return StringToFloat(buffer2);
 		}
+		return defaul;
+	}
 
-		return Special[Boss[client].Special].Kv.GetFloat(arg, defaul);
-	} while(Special[Boss[client].Special].Kv.GotoNextKey());
+	delete snap;
 	return defaul;
 }
 
-bool Bosses_ArgS(int client, const char[] ability, const char[] plugin, const char[] arg, int index=-1, char[] buffer, int length)
+bool Bosses_ArgS(int client, const char[] ability, const char[] plugin, const char[] arg="", int index=-1, char[] buffer, int length)
 {
-	Special[Boss[client].Special].Kv.Rewind();
-	Special[Boss[client].Special].Kv.GotoFirstSubKey();
-	do
+	StringMapSnapshot snap = Special[Boss[client].Special].Cfg.Snapshot();
+	if(!snap)
+		return false;
+
+	int entries = snap.Length;
+	if(!entries)
 	{
-		if(KvGetSectionType(Special[Boss[client].Special].Kv, buffer, length != Section_Ability))
+		delete snap;
+		return false;
+	}
+
+	char buffer3[64];
+	for(int i; i<entries; i++)
+	{
+		int length2 = snap.KeyBufferSize(i)+1;
+		char[] buffer2 = new char[length2];
+		snap.GetKey(i, buffer2, length2);
+		PackVal val;
+		Special[Boss[client].Special].Cfg.GetArray(buffer2, val, sizeof(val));
+		if(val.tag != KeyValType_Section)
 			continue;
 
-		if(!StrContains(buffer, "ability"))
-		{
-			Special[Boss[client].Special].Kv.GetString("name", buffer, length);
+		if(GetSectionType(buffer2, length) != Section_Ability)
 			continue;
-		}
 
-		if(plugin[0])
+		val.data.Reset();
+		cfg = val.data.ReadCell();
+		if(cfg == null)
+			continue;
+
+		if(!StrContains(buffer2, "ability"))
 		{
-			Special[Boss[client].Special].Kv.GetString("plugin_name", buffer, length);
-			if(buffer[0] && !StrEqual(plugin, buffer))
+			if(!cfg.Get("name", buffer3, sizeof(buffer3)) || !StrEqual(ability, buffer3, false))
 				continue;
 		}
-
-		Special[Boss[client].Special].Kv.GetString(arg, buffer, length);
-		if(!buffer[0] && index>=0)
+		else if(!StrEqual(ability, buffer2, false))
 		{
-			char key[8];
-			FormatEx(key, sizeof(key), "arg%d", index);
-			Special[Boss[client].Special].Kv.GetString(key, buffer, length);
+			continue;
 		}
 
-		return view_as<bool>(buffer[0]);
-	} while(Special[Boss[client].Special].Kv.GotoNextKey());
+		if(plugin[0] && cfg.Get("plugin_name", buffer3, sizeof(buffer3)) && buffer3[0] && !StrEqual(plugin, buffer3, false))
+			continue;
 
-	buffer[0] = 0;
+		delete snap;
+		if(arg[0] && cfg.Get(arg, buffer, length))
+			return true;
+
+		if(index < 0)
+			return false;
+
+		FormatEx(buffer3, sizeof(buffer3), "arg%d", index);
+		return cfg.Get(buffer3, buffer, length);
+	}
+
+	delete snap;
 	return false;
 }
 
-KeyValues Bosses_ArgK(int client, const char[] ability, const char[] plugin)
+/*KeyValues Bosses_ArgK(int client, const char[] ability, const char[] plugin)
 {
 	Special[Boss[client].Special].Kv.Rewind();
 	Special[Boss[client].Special].Kv.GotoFirstSubKey();
@@ -1301,6 +1380,59 @@ KeyValues Bosses_ArgK(int client, const char[] ability, const char[] plugin)
 		return Special[Boss[client].Special].Kv;
 	} while(Special[Boss[client].Special].Kv.GotoNextKey());
 	return view_as<KeyValues>(INVALID_HANDLE);
+}*/
+
+ConfigMap Bosses_ArgC(int client, const char[] ability, const char[] plugin)
+{
+	StringMapSnapshot snap = Special[Boss[client].Special].Cfg.Snapshot();
+	if(!snap)
+		return null;
+
+	int entries = snap.Length;
+	if(!entries)
+	{
+		delete snap;
+		return null;
+	}
+
+	for(int i; i<entries; i++)
+	{
+		int length = snap.KeyBufferSize(i)+1;
+		char[] buffer = new char[length];
+		snap.GetKey(i, buffer, length);
+		PackVal val;
+		Special[Boss[client].Special].Cfg.GetArray(buffer, val, sizeof(val));
+		if(val.tag != KeyValType_Section)
+			continue;
+
+		if(GetSectionType(buffer, length) != Section_Ability)
+			continue;
+
+		val.data.Reset();
+		cfg = val.data.ReadCell();
+		if(cfg == null)
+			continue;
+
+		static char buffer2[64];
+		if(!StrContains(buffer, "ability"))
+		{
+			if(!cfg.Get("name", buffer2, sizeof(buffer2)) || !StrEqual(ability, buffer2, false))
+				continue;
+		}
+		else if(!StrEqual(ability, buffer, false))
+		{
+			continue;
+		}
+
+		if(plugin[0] && cfg.Get("plugin_name", buffer2, sizeof(buffer2)) && buffer2[0] && !StrEqual(plugin, buffer2, false))
+			continue;
+
+		delete snap;
+		return cfg;
+	}
+
+	delete snap;
+	return null;
 }
 
 // Type | 0: Leader Boss, 1: Companion Boss, 2: Other Boss
@@ -1319,22 +1451,51 @@ int Bosses_GetSpecial(int client, int selection, int type)
 	if(action == Plugin_Changed)
 	{
 		if(buffer[0])
-			GetMatchingBoss(buffer)
-
+		{
+			int found = GetMatchingBoss(buffer);
+			if(found != -1)
+				boss = found;
+		}
+		else if(boss < -1)
+		{
+			boss = -1;
+		}
 		return boss;
 	}
-	else if(action == Plugin_Continue)
+
+	if(action != Plugin_Continue)
+		return -1;
+
+	if(type == 1)
+		return selection;
+
+	if(selection >= 0)
 	{
-		boss = selection;
+		if(Special[selection].Charset==Charset && CfgGetBossAccess(Special[selection].Cfg, client)==1)
+			return selection;
 	}
+
+	ArrayList list = new ArrayList();
+	for(boss=0; boss<Specials; boss++)
+	{
+		if(Special[selection].Charset==Charset && CfgGetBossAccess(Special[selection].Cfg, client)>=0)
+			list.Push(boss);
+	}
+
+	boss = list.Length;
+	if(boss < 1)
+	{
+		delete list;
+		return -1;
+	}
+
+	boss = list.Get(GetRandomInt(0, boss-1));
+	delete list;
+	return boss;
 }
 
 static int GetRankingKills(int rank, int index, bool wearable)
 {
-	case -1:
-	{
-		return -1;
-	}
 	case 0:
 	{
 		if(index==133 || index==444 || index==655)	// Gunboats, Mantreads, or Spirit of Giving

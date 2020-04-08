@@ -562,7 +562,7 @@ stock void CfgGetLang(ConfigMap cfg, const char[] key, char[] buffer, int length
 stock int CfgGetNum(ConfigMap cfg, const char[] key, int defaul=0)
 {
 	static char buffer[32];
-	if(!cfg.Get(key, buffer, sizeof(buffer)))
+	if(!cfg.Get(key, buffer, sizeof(buffer)) && buffer[0])
 		return defaul;
 
 	return StringToInt(buffer);
@@ -571,7 +571,7 @@ stock int CfgGetNum(ConfigMap cfg, const char[] key, int defaul=0)
 stock float CfgGetFloat(ConfigMap cfg, const char[] key, float defaul=0.0)
 {
 	static char buffer[32];
-	if(!cfg.Get(key, buffer, sizeof(buffer)))
+	if(!cfg.Get(key, buffer, sizeof(buffer)) && buffer[0])
 		return defaul;
 
 	return StringToFloat(buffer);

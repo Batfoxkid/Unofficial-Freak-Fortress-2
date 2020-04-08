@@ -242,7 +242,6 @@ enum struct SpecialEnum
 }
 
 SpecialEnum Special[MAXSPECIALS];
-ArrayList BossList;
 int Specials;
 
 bool LastMann;
