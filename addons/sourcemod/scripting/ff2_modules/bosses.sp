@@ -14,10 +14,10 @@
 	void Bosses_Model(int userid)
 	void Bosses_AbilitySlot(int client, int slot)
 	void Bosses_Ability(int client, const char[] ability, const char[] plugin, int slot, int buttonMode)
-	int Bosses_ArgI(int client, const char[] ability, const char[] plugin, const char[] arg, int index=-1, int defaul=0)
-	float Bosses_ArgF(int client, const char[] ability, const char[] plugin, const char[] arg, int index=-1, float defaul=0.0)
-	bool Bosses_ArgS(int client, const char[] ability, const char[] plugin, const char[] arg, int index=-1, char[] buffer, int length)
-	KeyValues Bosses_ArgK(int client, const char[] ability, const char[] plugin)
+	int Bosses_ArgI(int client, const char[] ability, const char[] plugin, const char[] arg="", int index=-1, int defaul=0)
+	float Bosses_ArgF(int client, const char[] ability, const char[] plugin, const char[] arg="", int index=-1, float defaul=0.0)
+	bool Bosses_ArgS(int client, const char[] ability, const char[] plugin, const char[] arg="", int index=-1, char[] buffer, int length)
+	ConfigMap Bosses_ArgC(int client, const char[] ability, const char[] plugin)
 */
 
 #define FF2_BOSSES
@@ -54,7 +54,7 @@ void Bosses_Setup()
 	AddCommandListener(Bosses_KermitSewerSlide, "spectate");
 }
 
-void Bosses_Config()
+public void Bosses_Config()
 {
 	Specials = 0;
 	Charset = 0;
@@ -87,6 +87,11 @@ void Bosses_Config()
 		{
 			Charset = -1;
 			CvarCharset.IntValue = -1;
+		}
+		else
+		{
+			Charset = 0;
+			CvarCharset.IntValue = 0;
 		}
 
 		ProcessDirectory(filepath, "", "", 0);
@@ -134,16 +139,63 @@ void Bosses_Config()
 	for(int i; i<entries; i++)
 	{
 		int length = snap.KeyBufferSize(i)+1;
-		char[] section = new char[length];
-		snap.GetKey(i, section, length);
+		char[] buffer = new char[length];
+		snap.GetKey(i, buffer, length);
 		PackVal val;
-		cfg.GetArray(section, val, sizeof(val));
+		cfg.GetArray(buffer, val, sizeof(val));
 		if(val.tag != KeyValType_Section)
 			continue;
 
-		Charsets.SetString(charset, section);
-		
+		val.data.Reset();
+		ConfigMap pack = val.data.ReadCell();
+		if(pack == null)
+			continue;
+
+		StringMapSnapshot snap2 = cfg.Snapshot();
+		if(snap2 == null)
+			continue;
+
+		int entries2 = snap2.Length;
+		if(!entires2)
+		{
+			delete snap2;
+			continue;
+		}
+
+		Charsets.SetString(charset, buffer);
+		for(int i2; i2<entries2; i2++)
+		{
+			length = snap.KeyBufferSize(i2)+1;
+			char[] buffer2 = new char[length];
+			snap.GetKey(i2, buffer2, length);
+			PackVal val;
+			cfg.GetArray(buffer2, val, sizeof(val));
+			switch(val.tag)
+			{
+				case KeyValType_Value:
+				{
+					val.data.Reset()
+					val.data.ReadString(config, sizeof(config));
+					if(StrContains(config, "*") == -1)
+					{
+						LoadCharacter(config, charset);
+					}
+					else
+					{
+						ReplaceString(config, PLATFORM_MAX_PATH, "*", "");
+						ProcessDirectory(filepath, "", config, charset);
+					}
+				}
+				case KeyValType_Section:
+				{
+					
+				}
+			}
+		}
+		delete snap2;
 		charset++;
+	}
+	delete snap;
 
 	do
 	{
@@ -209,7 +261,7 @@ void Bosses_Config()
 	#endif
 }
 
-static void ProcessDirectory(const char[] base, const char[] current, const char[] matching, int pack, KeyValues kv=INVALID_HANDLE)
+static void ProcessDirectory(const char[] base, const char[] current, const char[] matching, int pack)
 {
 	char file[PLATFORM_MAX_PATH];
 	FormatEx(file, PLATFORM_MAX_PATH, "%s/%s", base, current);
@@ -235,17 +287,8 @@ static void ProcessDirectory(const char[] base, const char[] current, const char
 			}
 
 			if(!StrContains(file, matching))
-			{
-				if(kv == INVALID_HANDLE)
-				{
-					LoadCharacter(file, pack);
-					continue;
-				}
+				LoadCharacter(file, pack);
 
-				KeyValues bosskv = LoadCharacter(file, pack);
-				if(bosskv != INVALID_HANDLE)
-					bosskv.Import(kv);
-			}
 			continue;
 		}
 
@@ -255,7 +298,7 @@ static void ProcessDirectory(const char[] base, const char[] current, const char
 		if(current[0])
 			Format(file, PLATFORM_MAX_PATH, "%s/%s", current, file);
 
-		ProcessDirectory(base, file, matching, pack, kv);
+		ProcessDirectory(base, file, matching, pack);
 	}
 	delete listing;
 }
@@ -1182,6 +1225,7 @@ int Bosses_ArgI(int client, const char[] ability, const char[] plugin, const cha
 		return defaul;
 	}
 
+	char buffer2[64];
 	for(int i; i<entries; i++)
 	{
 		int length = snap.KeyBufferSize(i)+1;
@@ -1200,7 +1244,6 @@ int Bosses_ArgI(int client, const char[] ability, const char[] plugin, const cha
 		if(cfg == null)
 			continue;
 
-		static char buffer2[64];
 		if(!StrContains(buffer, "ability"))
 		{
 			if(!cfg.Get("name", buffer2, sizeof(buffer2)) || !StrEqual(ability, buffer2, false))
@@ -1215,17 +1258,14 @@ int Bosses_ArgI(int client, const char[] ability, const char[] plugin, const cha
 			continue;
 
 		delete snap;
-		if(arg[0] && cfg.Get(arg, buffer2, sizeof(buffer2)) && buffer2[0])
-			return StringToInt(buffer2);
 
-		if(index >= 0)
+		i = defaul;
+		if((!arg[0] || !cfg.GetInt(arg, i)) && index>=0)
 		{
-			char buffer3[10];
-			FormatEx(buffer3, sizeof(buffer3), "arg%d", index);
-			if(cfg.Get(buffer3, buffer2, sizeof(buffer2)) && buffer2[0])
-				return StringToInt(buffer2);
+			FormatEx(buffer2, sizeof(buffer2), "arg%d", index);
+			cfg.GetInt(buffer2, i);
 		}
-		return defaul;
+		return i;
 	}
 
 	delete snap;
@@ -1245,6 +1285,7 @@ float Bosses_ArgF(int client, const char[] ability, const char[] plugin, const c
 		return defaul;
 	}
 
+	char buffer2[64];
 	for(int i; i<entries; i++)
 	{
 		int length = snap.KeyBufferSize(i)+1;
@@ -1263,7 +1304,6 @@ float Bosses_ArgF(int client, const char[] ability, const char[] plugin, const c
 		if(cfg == null)
 			continue;
 
-		static char buffer2[64];
 		if(!StrContains(buffer, "ability"))
 		{
 			if(!cfg.Get("name", buffer2, sizeof(buffer2)) || !StrEqual(ability, buffer2, false))
@@ -1278,17 +1318,14 @@ float Bosses_ArgF(int client, const char[] ability, const char[] plugin, const c
 			continue;
 
 		delete snap;
-		if(arg[0] && cfg.Get(arg, buffer2, sizeof(buffer2)) && buffer2[0])
-			return StringToFloat(buffer2);
 
-		if(index >= 0)
+		float value = defaul;
+		if((!arg[0] || !cfg.GetFloat(arg, value)) && index>=0)
 		{
-			char buffer3[10];
-			FormatEx(buffer3, sizeof(buffer3), "arg%d", index);
-			if(cfg.Get(buffer3, buffer2, sizeof(buffer2)) && buffer2[0])
-				return StringToFloat(buffer2);
+			FormatEx(buffer2, sizeof(buffer2), "arg%d", index);
+			cfg.GetFloat(buffer2, value);
 		}
-		return defaul;
+		return value;
 	}
 
 	delete snap;
