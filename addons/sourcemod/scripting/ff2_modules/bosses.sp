@@ -174,7 +174,7 @@ public void Bosses_Config()
 			{
 				case KeyValType_Value:
 				{
-					val.data.Reset()
+					val.data.Reset();
 					val.data.ReadString(config, sizeof(config));
 					if(StrContains(config, "*") == -1)
 					{
@@ -188,7 +188,15 @@ public void Bosses_Config()
 				}
 				case KeyValType_Section:
 				{
-					
+					if(StrContains(buffer2, "*") == -1)
+					{
+						LoadCharacter(buffer2, charset);
+					}
+					else
+					{
+						ReplaceString(buffer2, PLATFORM_MAX_PATH, "*", "");
+						ProcessDirectory(filepath, "", buffer2, charset);
+					}
 				}
 			}
 		}
@@ -196,61 +204,6 @@ public void Bosses_Config()
 		charset++;
 	}
 	delete snap;
-
-	do
-	{
-		kv.GetSectionName(config, sizeof(config));
-		Charsets.SetString(charset, config);
-
-		kv.GetString("1", config, PLATFORM_MAX_PATH);
-		if(config[0])
-		{
-			for(i=2; Specials<MAXSPECIALS && i<=MAXSPECIALS; i++)
-			{
-				if(config[0])
-				{
-					if(StrContains(config, "*") != -1)
-					{
-						ReplaceString(config, PLATFORM_MAX_PATH, "*", "");
-						ProcessDirectory(filepath, "", config, charset);
-						continue;
-					}
-					else
-					{
-						LoadCharacter(config, charset);
-					}
-				}
-
-				IntToString(i, key, sizeof(key));
-				kv.GetString(key, config, PLATFORM_MAX_PATH);
-			}
-			charset++;
-			continue;
-		}
-
-		kv.SavePosition();
-		kv.GotoFirstSubKey();
-		do
-		{
-			if(!kv.GetSectionName(config, PLATFORM_MAX_PATH))
-				break;
-
-			if(StrContains(config, "*") >= 0)
-			{
-				ReplaceString(config, PLATFORM_MAX_PATH, "*", "");
-				ProcessDirectory(filepath, "", config, charset, kv);
-				continue;
-			}
-
-			KeyValues bosskv = LoadCharacter(config, charset);
-			if(bosskv != INVALID_HANDLE)
-				bosskv.Import(kv);
-		} while(Specials<MAXSPECIALS && kv.GotoNextKey());
-		kv.GoBack();
-		charset++;
-	} while(kv.GotoNextKey())
-
-	delete kv;
 
 	#if defined FF2_CONVARS
 	if(Charset!=-1 && CvarNameChange.IntValue==2)
@@ -286,7 +239,7 @@ static void ProcessDirectory(const char[] base, const char[] current, const char
 				Format(file, PLATFORM_MAX_PATH, "%s/%s", current, file);
 			}
 
-			if(!StrContains(file, matching))
+			if(!matching[0] || !StrContains(file, matching))
 				LoadCharacter(file, pack);
 
 			continue;
