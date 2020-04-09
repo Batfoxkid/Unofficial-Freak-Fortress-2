@@ -7,7 +7,7 @@
 
 	Functions:
 	void Bosses_Setup()
-	void Bosses_Config()
+	void Bosses_Config(const char[] map)
 	void Bosses_Prepare(int boss)
 	void Bosses_Create(int client, int boss=-1)
 	void Bosses_Equip(int client, int boss)
@@ -54,14 +54,16 @@ void Bosses_Setup()
 	AddCommandListener(Bosses_KermitSewerSlide, "spectate");
 }
 
-public void Bosses_Config()
+void Bosses_Config(const char[] map)
 {
 	Specials = 0;
 	Charset = 0;
+	FirstPlayable = -1;
+	LastPlayable = -1;
 	for(int i; i<MAXSPECIALS; i++)
 	{
 		if(Special[i].Cfg != INVALID_HANDLE)
-			DeleteCfg(Special[i].Cfg, true);
+			DeleteCfg(Special[i].Cfg);
 
 		Special[i].Cfg = null;
 		Special[i].Charset = -1;
@@ -94,7 +96,7 @@ public void Bosses_Config()
 			CvarCharset.IntValue = 0;
 		}
 
-		ProcessDirectory(filepath, "", "", 0);
+		ProcessDirectory(filepath, "", "", 0, map);
 		return;
 	}
 
@@ -178,24 +180,24 @@ public void Bosses_Config()
 					val.data.ReadString(config, sizeof(config));
 					if(StrContains(config, "*") == -1)
 					{
-						LoadCharacter(config, charset);
+						LoadCharacter(config, charset, map);
 					}
 					else
 					{
 						ReplaceString(config, PLATFORM_MAX_PATH, "*", "");
-						ProcessDirectory(filepath, "", config, charset);
+						ProcessDirectory(filepath, "", config, charset, map);
 					}
 				}
 				case KeyValType_Section:
 				{
 					if(StrContains(buffer2, "*") == -1)
 					{
-						LoadCharacter(buffer2, charset);
+						LoadCharacter(buffer2, charset, map);
 					}
 					else
 					{
 						ReplaceString(buffer2, PLATFORM_MAX_PATH, "*", "");
-						ProcessDirectory(filepath, "", buffer2, charset);
+						ProcessDirectory(filepath, "", buffer2, charset, map);
 					}
 				}
 			}
@@ -214,7 +216,7 @@ public void Bosses_Config()
 	#endif
 }
 
-static void ProcessDirectory(const char[] base, const char[] current, const char[] matching, int pack)
+static void ProcessDirectory(const char[] base, const char[] current, const char[] matching, int pack, const char[] map)
 {
 	char file[PLATFORM_MAX_PATH];
 	FormatEx(file, PLATFORM_MAX_PATH, "%s/%s", base, current);
@@ -240,7 +242,7 @@ static void ProcessDirectory(const char[] base, const char[] current, const char
 			}
 
 			if(!matching[0] || !StrContains(file, matching))
-				LoadCharacter(file, pack);
+				LoadCharacter(file, pack, map);
 
 			continue;
 		}
@@ -251,12 +253,12 @@ static void ProcessDirectory(const char[] base, const char[] current, const char
 		if(current[0])
 			Format(file, PLATFORM_MAX_PATH, "%s/%s", current, file);
 
-		ProcessDirectory(base, file, matching, pack);
+		ProcessDirectory(base, file, matching, pac, map);
 	}
 	delete listing;
 }
 
-static void LoadCharacter(const char[] character, int charset)
+static void LoadCharacter(const char[] character, int charset, const char[] map)
 {
 	char config[PLATFORM_MAX_PATH];
 	FormatEx(config, sizeof(config), "%s/%s.cfg", CONFIG_PATH, character);
@@ -310,40 +312,110 @@ static void LoadCharacter(const char[] character, int charset)
 		return;
 	}
 
-	i = Special[Specials].Kv.GetNum("version_minor", StringToInt(MINOR_REVISION));
-	int x = Special[Specials].Kv.GetNum("version_stable", StringToInt(STABLE_REVISION));
-	if(i>StringToInt(MINOR_REVISION) || (x>StringToInt(STABLE_REVISION) && i==StringToInt(MINOR_REVISION)))
-	{
-		LogError2("[Boss] %s requires newer version of FF2 (at least %s.%i.%i)!", character, MAJOR_REVISION, i, x);
-		DeleteCfg(Special[Specials].Full);
-		return;
-	}
-
-	i = Special[Specials].Kv.GetNum("fversion", StringToInt(FORK_MAJOR_REVISION));
-	if(i != StringToInt(FORK_MAJOR_REVISION))
+	if(Special[Specials].Cfg.GetInt("fversion", i) && i!=StringToInt(MAJOR_REVISION))
 	{
 		LogError2("[Boss] %s is only compatible with %s FF2 v%i!", character, FORK_SUB_REVISION, i);
 		DeleteCfg(Special[Specials].Full);
 		return;
 	}
 
-	i = Special[Specials].Kv.GetNum("fversion_minor", StringToInt(FORK_MINOR_REVISION));
-	x = Special[Specials].Kv.GetNum("fversion_stable", StringToInt(FORK_STABLE_REVISION));
-	if(i>StringToInt(FORK_MINOR_REVISION) || (x>StringToInt(FORK_STABLE_REVISION) && i==StringToInt(FORK_MINOR_REVISION)))
+	if(Special[Specials].Cfg.GetInt("fversion_minor", i) && i>StringToInt(MINOR_REVISION))
 	{
-		LogError2("[Boss] %s requires newer version of %s FF2 (at least %s.%i.%i)!", character, FORK_SUB_REVISION, FORK_MAJOR_REVISION, i, x);
+		int x;
+		if(Special[Specials].Cfg.GetInt("fversion_stable", x))
+		{
+			LogError2("[Boss] %s requires newer version of %s FF2 (at least %s.%i.%i)!", character, FORK_SUB_REVISION, FORK_MAJOR_REVISION, i, x);
+		}
+		else
+		{
+			LogError2("[Boss] %s requires newer version of %s FF2 (at least %s.%i)!", character, FORK_SUB_REVISION, FORK_MAJOR_REVISION, i);
+		}
 		DeleteCfg(Special[Specials].Full);
 		return;
 	}
 
-	strcopy(Special[Specials].File, PLATFORM_MAX_PATH, character);
+	if(Special[Specials].Cfg.GetInt("fversion_stable", i) && i>StringToInt(FORK_STABLE_REVISION))
+	{
+		int x;
+		if(Special[Specials].Cfg.GetInt("fversion_minor", x))
+		{
+			LogError2("[Boss] %s requires newer version of %s FF2 (at least %s.%i.%i)!", character, FORK_SUB_REVISION, FORK_MAJOR_REVISION, x, i);
+		}
+		else
+		{
+			LogError2("[Boss] %s requires newer version of %s FF2 (at least %s.%s.%i)!", character, FORK_SUB_REVISION, FORK_MAJOR_REVISION, FORK_MINOR_REVISION, i);
+		}
+		DeleteCfg(Special[Specials].Full);
+		return;
+	}
+
 	if(Charset==charset && Enabled>Game_Disabled)
 	{
-		static char section[64];
-		if(charset != Charset)
+		ConfigMap cfg = Special[Specials].Full.GetSection("map_whitelist");
+		if(cfg == null)
 		{
-			if(Special[Specials].Kv.JumpToKey("map_whitelist"))
+			ConfigMap cfg = Special[Specials].Full.GetSection("map_blacklist");
+			if(cfg == null)
 			{
+				ConfigMap cfg = Special[Specials].Full.GetSection("map_exclude");
+				if(cfg != null)
+				{
+					
+				}
+			}
+			else
+			{
+				StringMapSnapshot snap = cfg.Snapshot();
+				if(snap)
+				{
+					int entries = snap.Length;
+					if(entries)
+					{
+						for(i=entries-1; i>=0; i--)
+						{
+							int length = snap.KeyBufferSize(i)+1;
+							char[] buffer = new char[length];
+							snap.GetKey(i, buffer, length);
+							PackVal val;
+							cfg.GetArray(buffer, val, sizeof(val));
+							if(val.tag!=KeyValType_Null && !StrContains(map, buffer, false))
+							{
+								Special[Specials].Blocked = true;
+								delete snap;
+								return;
+							}
+						}
+					}
+					delete snap;
+				}
+			}
+		}
+		else
+		{
+			StringMapSnapshot snap = cfg.Snapshot();
+			if(snap)
+			{
+				int entries = snap.Length;
+				if(entries)
+				{
+					for(i=entries-1; i>=0; i--)
+					{
+						int length = snap.KeyBufferSize(i)+1;
+						char[] buffer = new char[length];
+						snap.GetKey(i, buffer, length);
+						PackVal val;
+						cfg.GetArray(buffer, val, sizeof(val));
+						if(val.tag!=KeyValType_Null && !StrContains(map, buffer, false))
+						{
+							Special[Specials].Blocked = true;
+							delete snap;
+							return;
+						}
+					}
+				}
+				delete snap;
+			}
+
 				bool found;
 				char item[4];
 				for(i=1; ; i++)
@@ -361,9 +433,10 @@ static void LoadCharacter(const char[] character, int charset)
 				}
 
 				if(!found)
-					return INVALID_HANDLE;
-
-				Special[Specials].Kv.Rewind();
+				{
+					DeleteCfg(Special[Specials].Full);
+					return;
+				}
 			}
 			else if(Special[Specials].Kv.JumpToKey("map_blacklist"))
 			{
@@ -376,9 +449,11 @@ static void LoadCharacter(const char[] character, int charset)
 						break;
 
 					if(!StrContains(MapName, buffer))
-						return INVALID_HANDLE;
+					{
+						DeleteCfg(Special[Specials].Full);
+						return;
+					}
 				}
-				Special[Specials].Kv.Rewind();
 			}
 			else if(Special[Specials].Kv.JumpToKey("map_exclude"))
 			{
@@ -391,16 +466,20 @@ static void LoadCharacter(const char[] character, int charset)
 						break;
 
 					if(!StrContains(MapName, buffer))
-						return INVALID_HANDLE;
+					{
+						DeleteCfg(Special[Specials].Full);
+						return;
+					}
 				}
-				Special[Specials].Kv.Rewind();
 			}
 		}
 
-		Special[Specials].Kv.SetString("filename", character);
+		LastPlayable = Specials;
+		if(FirstPlayable == -1)
+			FirstPlayable = Specials;
+
 		Special[Specials].Kv.GetString("name", config, sizeof(config));
 		Special[Specials].Kv.GotoFirstSubKey();
-		BossList.Push(Specials);
 
 		char key[PLATFORM_MAX_PATH];
 		while(Special[Specials].Kv.GotoNextKey())
@@ -545,6 +624,8 @@ static void LoadCharacter(const char[] character, int charset)
 			}
 		}
 	}
+
+	strcopy(Special[Specials].File, PLATFORM_MAX_PATH, character);
 	Specials++;
 }
 
@@ -1491,14 +1572,14 @@ int Bosses_GetSpecial(int client, int selection, int type)
 
 	if(selection >= 0)
 	{
-		if(Special[selection].Charset==Charset && CfgGetBossAccess(Special[selection].Cfg, client)==1)
+		if(Special[selection].Charset==Charset && CheckBossAccess(client, selection)==1)
 			return selection;
 	}
 
 	ArrayList list = new ArrayList();
 	for(boss=0; boss<Specials; boss++)
 	{
-		if(Special[selection].Charset==Charset && CfgGetBossAccess(Special[selection].Cfg, client)>=0)
+		if(Special[selection].Charset==Charset && CheckBossAccess(client, selection)>=0)
 			list.Push(boss);
 	}
 

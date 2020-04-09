@@ -235,8 +235,10 @@ enum struct WeaponEnum
 
 enum struct SpecialEnum
 {
+	ConfigMap Full;
 	ConfigMap Cfg;
 	int Charset;
+	bool Blocked;
 	bool Precached;
 	char File[PLATFORM_MAX_PATH];
 }
@@ -252,6 +254,8 @@ int Players;
 int BossPlayers;
 int MercPlayers;
 int Override;
+int FirstPlayable;
+int LastPlayable;
 float HealthBarFor;
 TFTeam BossTeam;
 ArrayList Charsets;
@@ -500,7 +504,7 @@ public void OnConfigsExecuted()
 		Enabled = Game_Disabled;
 	}
 
-	RoundCount = 
+	RoundCount = GetTeamScore(view_as<int>(TFTeam_Red))+GetTeamScore(view_as<int>(TFTeam_Blue));
 
 	#if defined FF2_STEAMWORKS
 	if(Enabled == Game_Arena)
@@ -515,7 +519,7 @@ public void OnConfigsExecuted()
 	TTS_Check(buffer);
 	#endif
 
-	Bosses_Config();
+	Bosses_Config(buffer);
 }
 
 /*

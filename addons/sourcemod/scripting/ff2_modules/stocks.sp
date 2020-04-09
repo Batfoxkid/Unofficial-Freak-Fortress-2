@@ -33,8 +33,7 @@
 	ConfigMap Stocks:
 	TFClassType CfgGetClass(ConfigMap cfg, const char[] string)
 	int CfgGetBossAccess(ConfigMap cfg, int client, bool force=false)
-	bool CfgGetBossAccess2(ConfigMap cfg, int client, char[] buffer, int length)
-	void CfgGetLang(ConfigMap cfg, const char[] key, char[] buffer, int length, int client=0)
+	bool CfgGetLang(ConfigMap cfg, const char[] key, char[] buffer, int length, int client=0)
 
 	Entity Stocks:
 	bool ConfigureWorldModelOverride(int entity, const char[] model, bool wearable=false)
@@ -60,6 +59,8 @@
 	Other Stocks:
 	int OnlyScoutsLeft(int team)
 	SectionType GetSectionType(const char[] buffer)
+	int CheckBossAccess(int client, int boss, bool force=false)
+	bool CheckBossAccessMsg(int client, int boss, char[] buffer, int length)
 	void MultiClassname(TFClassType class, char[] name, int length)
 	void LogError2(const char[] buffer, any ...)
 	int CheckRoundState()
@@ -439,26 +440,6 @@ stock int KvGetBossAccess(Handle kv, int client, bool force=false)
 	return KvGetNum(kv, "hidden", owner ? 1 : 0) ? -2 : -1;
 }
 
-stock int CfgGetBossAccess(ConfigMap cfg, int client, bool force=false)
-{
-	static char buffer[16];
-	if(!force && cfg.GetInt("blocked"))
-		return -2;
-
-	bool donator = view_as<bool>(cfg.GetInt("donator"));
-	int admin = cfg.GetInt("admin");
-	bool owner = view_as<bool>(cfg.GetInt("owner"));
-	if(!(donator || admin || owner))
-		return cfg.GetInt("hidden") ? 0 : 1;
-
-	if(!((donator && !CheckCommandAccess(client, "ff2_donator_bosses", ADMFLAG_RESERVATION)) ||
-	     (owner && !CheckCommandAccess(client, "ff2_owner_bosses", ADMFLAG_ROOT)) ||
-	     (admin && !CheckCommandAccess(client, "ff2_admin_bosses", admin, true))))
-		return 1;
-
-	return cfg.GetInt("hidden", owner ? 1 : 0) ? -2 : -1;
-}
-
 stock bool KvGetBossAccess2(Handle kv, int client, char[] buffer, int length)
 {
 	if(KvGetNum(kv, "blocked"))
@@ -488,20 +469,50 @@ stock bool KvGetBossAccess2(Handle kv, int client, char[] buffer, int length)
 	return false;
 }
 
-stock bool CfgGetBossAccess2(ConfigMap cfg, int client, char[] buffer, int length)
+stock int CheckBossAccess(int client, int boss, bool force=false)
 {
-	if(cfg.GetInt("blocked"))
+	if(Special[boss].Blocked)
+		return -2;
+
+	int i;
+	if(!force && Special[boss].Cfg.GetInt("blocked", i) && i)
+		return -2;
+
+	bool donator = view_as<bool>(Special[boss].Cfg.GetInt("donator", i) && i);
+	bool owner = view_as<bool>(Special[boss].Cfg.GetInt("donator", i) && i);
+	if(!(donator || (Special[boss].Cfg.GetInt("admin", i) && i) || owner))
+		return (Special[boss].Cfg.GetInt("hidden", i) && i) ? 0 : 1;
+
+	if(!((donator && !CheckCommandAccess(client, "ff2_donator_bosses", ADMFLAG_RESERVATION)) ||
+	     (owner && !CheckCommandAccess(client, "ff2_owner_bosses", ADMFLAG_ROOT)) ||
+	     (i && !CheckCommandAccess(client, "ff2_admin_bosses", i, true))))
+		return 1;
+
+	i = owner ? 1 : 0;
+	Special[boss].Cfg.GetInt("hidden", i);
+	return i ? -2 : -1;
+}
+
+stock bool CheckBossAccessMsg(int client, int boss, char[] buffer, int length)
+{
+	if(Special[boss].Blocked)
+	{
+		FormatEx(buffer, length, "%T", "Deny Map", client);
+		return false;
+	}
+
+	int i;
+	if(Special[boss].Cfg.GetInt("blocked", i) && i)
 	{
 		FormatEx(buffer, length, "%T", "Deny Unknown", client);
 		return false;
 	}
 
-	bool donator = view_as<bool>(cfg.GetInt("donator"));
-	int admin = cfg.GetInt("admin");
-	bool owner = view_as<bool>(cfg.GetInt("owner"));
-	if(!(donator || admin>0 || owner))
+	bool donator = view_as<bool>(Special[boss].Cfg.GetInt("donator", i) && i);
+	bool owner = view_as<bool>(Special[boss].Cfg.GetInt("donator", i) && i);
+	if(!(donator || (Special[boss].Cfg.GetInt("admin", i) && i) || owner))
 	{
-		if(!cfg.GetInt("hidden"))
+		if(!Special[boss].Cfg.GetInt("hidden", i) || !i)
 			return true;
 
 		FormatEx(buffer, length, "%T", "Deny Unknown", client);
@@ -510,10 +521,12 @@ stock bool CfgGetBossAccess2(ConfigMap cfg, int client, char[] buffer, int lengt
 
 	if(!((donator && !CheckCommandAccess(client, "ff2_donator_bosses", ADMFLAG_RESERVATION)) ||
 	     (owner && !CheckCommandAccess(client, "ff2_owner_bosses", ADMFLAG_ROOT)) ||
-	     (admin>0 && !CheckCommandAccess(client, "ff2_admin_bosses", admin, true))))
+	     (i>0 && !CheckCommandAccess(client, "ff2_admin_bosses", i, true))))
 		return true;
 
-	FormatEx(buffer, length, "%T", cfg.GetInt("hidden", owner ? 1 : 0) ? "Deny Unknown" : "Deny Access", client);
+	i = owner ? 1 : 0;
+	Special[boss].Cfg.GetInt("hidden", i);
+	FormatEx(buffer, length, "%T", i ? "Deny Unknown" : "Deny Access", client);
 	return false;
 }
 
@@ -538,25 +551,24 @@ stock void KvGetLang(Handle kv, const char[] key, char[] buffer, int length, int
 		KvGetString(kv, key, buffer, length, defaul);
 }
 
-stock void CfgGetLang(ConfigMap cfg, const char[] key, char[] buffer, int length, int client=0)
+stock bool CfgGetLang(ConfigMap cfg, const char[] key, char[] buffer, int length, int client=0)
 {
 	static char language[20];
 	GetLanguageInfo(client ? GetClientLanguage(client) : GetServerLanguage(), language, sizeof(language), buffer, length);
 	Format(language, sizeof(language), "%s_%s", key, language);
 
-	cfg.Get(language, buffer, length);
-	if(buffer[0])
-		return;
+	if(cfg.Get(language, buffer, length))
+		return true;
 
 	if(client)
 	{
 		GetLanguageInfo(GetServerLanguage(), language, sizeof(language), buffer, length);
 		Format(language, sizeof(language), "%s_%s", key, language);
-		cfg.Get(language, buffer, length);
+		if(cfg.Get(language, buffer, length))
+			return true;
 	}
 
-	if(!buffer[0])
-		cfg.Get(key, buffer, length);
+	return cfg.Get(key, buffer, length);
 }
 
 stock int CfgGetNum(ConfigMap cfg, const char[] key, int defaul=0)
@@ -979,6 +991,7 @@ stock bool GetBossSound(int client, const char[] key, int &type, char[] buffer, 
 		}
 	}
 
+	delete snap;
 	if(list.Length < 1)
 		return false;
 
@@ -1022,10 +1035,10 @@ stock bool GetBossSound(int client, const char[] key, int &type, char[] buffer, 
 		if(type == 3)
 		{
 			FormatEx(buffer2, sizeof(buffer2), "%dname", i);
-			Special[Boss[client].Special].Kv.GetString(buffer2, name, nameL);
+			cfg.Get(buffer2, name, nameL);
 
 			FormatEx(buffer2, sizeof(buffer2), "%dartist", i);
-			Special[Boss[client].Special].Kv.GetString(buffer2, artist, artistL);
+			cfg.Get(buffer2, artist, artistL);
 		}
 		return true;
 	}
@@ -1102,16 +1115,26 @@ stock int GetNextBossPlayer()
 	return winner;
 }
 
-stock int GetRandBossClient()
+stock int GetRandBossClient(int boss=-1)
 {
 	int winner;
 	int[] winners = new int[MaxClients];
+	if(boss != -1)
+	{
+		for(int client=1; client<=MaxClients; client++)
+		{
+			if(IsValidClient(client) && !Boss[client].Active && Client[client].Pref[Pref_Boss]<Pref_Off && GetClientTeam(client)>view_as<int>(TFTeam_Spectator) && CheckBossAccess(client, boss, true)>=0)
+				winners[winner++] = client;
+		}
+		if(winner)
+			return winners[GetRandomInt(0, winner-1)];
+	}
+
 	for(int client=1; client<=MaxClients; client++)
 	{
 		if(IsValidClient(client) && !Boss[client].Active && Client[client].Pref[Pref_Boss]<Pref_Off && GetClientTeam(client)>view_as<int>(TFTeam_Spectator))
 			winners[winner++] = client;
 	}
-
 	if(winner)
 		return winners[GetRandomInt(0, winner-1)];
 
@@ -1127,9 +1150,9 @@ stock int GetMatchingBoss(const char[] matching)
 {
 	int boss = -1;
 	static char buffer[64];
-	for(int i=Specials-1; i>=0; i--)	// We go backwards so in case of a wildcard, it's the first ones on the list
+	for(int i=LastPlayable; i>=FirstPlayable; i--)	// We go backwards so in case of a wildcard, it's the first ones on the list
 	{
-		if(Special[i].Charset != Charset)
+		if(Special[i].Blocked)
 			continue;
 
 		Special[i].Cfg.Get("name", buffer, sizeof(buffer));
