@@ -256,138 +256,186 @@ static void ProcessDirectory(const char[] base, const char[] current, const char
 	delete listing;
 }
 
-static KeyValues LoadCharacter(const char[] character, int charset)
+static void LoadCharacter(const char[] character, int charset)
 {
-	static char config[PLATFORM_MAX_PATH];
-	BuildPath(Path_SM, config, sizeof(config), "%s/%s.cfg", CONFIG_PATH, character);
-	if(!FileExists(config))
+	char config[PLATFORM_MAX_PATH];
+	FormatEx(config, sizeof(config), "%s/%s.cfg", CONFIG_PATH, character);
+	Special[Specials].Full = new ConfigMap(config);
+	if(Special[Specials].Full == null)
+		return;
+
+	Special[Specials].Cfg = Special[Specials].Full.GetSection("character");
+	if(Special[Specials].Cfg == null)
 	{
-		LogError2("[Characters] Character %s does not exist!", character);
-		return INVALID_HANDLE;
+		LogError2("[Boss] %s is not a boss character", character);
+		DeleteCfg(Special[Specials].Full);
+		return;
 	}
 
-	Special[Specials].Kv = new KeyValues("character");
-	if(!Special[Specials].Kv.ImportFromFile(config))
+	int i;
+	if(Special[Specials].Cfg.GetInt("version", i) && i!=StringToInt(MAJOR_REVISION) && i!=99)	// 99 is Unofficial-only bosses
 	{
-		LogError2("[Characters] Character %s failed to be imported for KeyValues!", character);
-		return INVALID_HANDLE;
+		LogError2("[Boss] %s is only compatible with FF2 v%i!", character, i);
+		DeleteCfg(Special[Specials].Full);
+		return;
 	}
 
-	int i = Special[Specials].Kv.GetNum("version", StringToInt(MAJOR_REVISION));
-	if(i!=StringToInt(MAJOR_REVISION) && i!=99) // 99 for bosses made ONLY for this fork
+	if(Special[Specials].Cfg.GetInt("version_minor", i) && i>StringToInt(MINOR_REVISION))
 	{
-		LogError2("[Boss] Character %s is only compatible with FF2 v%i!", character, i);
-		return INVALID_HANDLE;
+		int x;
+		if(Special[Specials].Cfg.GetInt("version_stable", x))
+		{
+			LogError2("[Boss] %s requires newer version of FF2 (at least %s.%i.%i)!", character, MAJOR_REVISION, i, x);
+		}
+		else
+		{
+			LogError2("[Boss] %s requires newer version of FF2 (at least %s.%i)!", character, MAJOR_REVISION, i);
+		}
+		DeleteCfg(Special[Specials].Full);
+		return;
+	}
+
+	if(Special[Specials].Cfg.GetInt("version_stable", i) && i>StringToInt(STABLE_REVISION))
+	{
+		int x;
+		if(Special[Specials].Cfg.GetInt("version_minor", x))
+		{
+			LogError2("[Boss] %s requires newer version of FF2 (at least %s.%i.%i)!", character, MAJOR_REVISION, x, i);
+		}
+		else
+		{
+			LogError2("[Boss] %s requires newer version of FF2 (at least %s.%s.%i)!", character, MAJOR_REVISION, MINOR_REVISION, i);
+		}
+		DeleteCfg(Special[Specials].Full);
+		return;
 	}
 
 	i = Special[Specials].Kv.GetNum("version_minor", StringToInt(MINOR_REVISION));
 	int x = Special[Specials].Kv.GetNum("version_stable", StringToInt(STABLE_REVISION));
 	if(i>StringToInt(MINOR_REVISION) || (x>StringToInt(STABLE_REVISION) && i==StringToInt(MINOR_REVISION)))
 	{
-		LogError2("[Boss] Character %s requires newer version of FF2 (at least %s.%i.%i)!", character, MAJOR_REVISION, i, x);
-		return INVALID_HANDLE;
+		LogError2("[Boss] %s requires newer version of FF2 (at least %s.%i.%i)!", character, MAJOR_REVISION, i, x);
+		DeleteCfg(Special[Specials].Full);
+		return;
 	}
 
 	i = Special[Specials].Kv.GetNum("fversion", StringToInt(FORK_MAJOR_REVISION));
 	if(i != StringToInt(FORK_MAJOR_REVISION))
 	{
-		LogError2("[Boss] Character %s is only compatible with %s FF2 v%i!", character, FORK_SUB_REVISION, i);
-		return INVALID_HANDLE;
+		LogError2("[Boss] %s is only compatible with %s FF2 v%i!", character, FORK_SUB_REVISION, i);
+		DeleteCfg(Special[Specials].Full);
+		return;
 	}
 
 	i = Special[Specials].Kv.GetNum("fversion_minor", StringToInt(FORK_MINOR_REVISION));
 	x = Special[Specials].Kv.GetNum("fversion_stable", StringToInt(FORK_STABLE_REVISION));
 	if(i>StringToInt(FORK_MINOR_REVISION) || (x>StringToInt(FORK_STABLE_REVISION) && i==StringToInt(FORK_MINOR_REVISION)))
 	{
-		LogError2("[Boss] Character %s requires newer version of %s FF2 (at least %s.%i.%i)!", character, FORK_SUB_REVISION, FORK_MAJOR_REVISION, i, x);
-		return INVALID_HANDLE;
+		LogError2("[Boss] %s requires newer version of %s FF2 (at least %s.%i.%i)!", character, FORK_SUB_REVISION, FORK_MAJOR_REVISION, i, x);
+		DeleteCfg(Special[Specials].Full);
+		return;
 	}
 
-	if(Charset!=charset || Enabled<=Game_Disabled)
+	strcopy(Special[Specials].File, PLATFORM_MAX_PATH, character);
+	if(Charset==charset && Enabled>Game_Disabled)
 	{
-		Special[Specials].Kv.SetString("filename", character);
-		Specials++;
-		return Special[Specials-1].Kv;
-	}
-
-	static char section[64];
-	if(charset != Charset)
-	{
-		if(Special[Specials].Kv.JumpToKey("map_whitelist"))
+		static char section[64];
+		if(charset != Charset)
 		{
-			bool found;
-			char item[4];
-			for(i=1; ; i++)
+			if(Special[Specials].Kv.JumpToKey("map_whitelist"))
 			{
-				IntToString(i, item, sizeof(item));
-				Special[Specials].Kv.GetString(item, section, sizeof(section));
-				if(!buffer[0])
-					break;
-
-				if(StrContains(MapName, section))
-					continue;
-
-				found = true;
-				break;
-			}
-
-			if(!found)
-				return INVALID_HANDLE;
-
-			Special[Specials].Kv.Rewind();
-		}
-		else if(Special[Specials].Kv.JumpToKey("map_blacklist"))
-		{
-			char item[4];
-			for(i=1; ; i++)
-			{
-				IntToString(i, item, sizeof(item));
-				Special[Specials].Kv.GetString(item, section, sizeof(section));
-				if(!buffer[0])
-					break;
-
-				if(!StrContains(MapName, buffer))
-					return INVALID_HANDLE;
-			}
-			Special[Specials].Kv.Rewind();
-		}
-		else if(Special[Specials].Kv.JumpToKey("map_exclude"))
-		{
-			char item[6];
-			for(i=1; ; i++)
-			{
-				FormatEx(item, sizeof(item), "map%d", i);
-				Special[Specials].Kv.GetString(item, section, sizeof(section));
-				if(!buffer[0])
-					break;
-
-				if(!StrContains(MapName, buffer))
-					return INVALID_HANDLE;
-			}
-			Special[Specials].Kv.Rewind();
-		}
-	}
-
-	Special[Specials].Kv.SetString("filename", character);
-	Special[Specials].Kv.GetString("name", config, sizeof(config));
-	Special[Specials].Kv.GotoFirstSubKey();
-	BossList.Push(Specials);
-
-	char key[PLATFORM_MAX_PATH];
-	while(Special[Specials].Kv.GotoNextKey())
-	{
-		static char section[16];
-		SectionType type = KvGetSectionType(Special[Specials].Kv, section, sizeof(section));
-		switch(type)
-		{
-			case Section_Download:
-			{
-				if(Special[Specials].Kv.GotoFirstSubKey())
+				bool found;
+				char item[4];
+				for(i=1; ; i++)
 				{
-					do
+					IntToString(i, item, sizeof(item));
+					Special[Specials].Kv.GetString(item, section, sizeof(section));
+					if(!buffer[0])
+						break;
+
+					if(StrContains(MapName, section))
+						continue;
+
+					found = true;
+					break;
+				}
+
+				if(!found)
+					return INVALID_HANDLE;
+
+				Special[Specials].Kv.Rewind();
+			}
+			else if(Special[Specials].Kv.JumpToKey("map_blacklist"))
+			{
+				char item[4];
+				for(i=1; ; i++)
+				{
+					IntToString(i, item, sizeof(item));
+					Special[Specials].Kv.GetString(item, section, sizeof(section));
+					if(!buffer[0])
+						break;
+
+					if(!StrContains(MapName, buffer))
+						return INVALID_HANDLE;
+				}
+				Special[Specials].Kv.Rewind();
+			}
+			else if(Special[Specials].Kv.JumpToKey("map_exclude"))
+			{
+				char item[6];
+				for(i=1; ; i++)
+				{
+					FormatEx(item, sizeof(item), "map%d", i);
+					Special[Specials].Kv.GetString(item, section, sizeof(section));
+					if(!buffer[0])
+						break;
+
+					if(!StrContains(MapName, buffer))
+						return INVALID_HANDLE;
+				}
+				Special[Specials].Kv.Rewind();
+			}
+		}
+
+		Special[Specials].Kv.SetString("filename", character);
+		Special[Specials].Kv.GetString("name", config, sizeof(config));
+		Special[Specials].Kv.GotoFirstSubKey();
+		BossList.Push(Specials);
+
+		char key[PLATFORM_MAX_PATH];
+		while(Special[Specials].Kv.GotoNextKey())
+		{
+			static char section[16];
+			SectionType type = KvGetSectionType(Special[Specials].Kv, section, sizeof(section));
+			switch(type)
+			{
+				case Section_Download:
+				{
+					if(Special[Specials].Kv.GotoFirstSubKey())
 					{
-						if(!Special[Specials].Kv.GetSectionName(config, sizeof(config)))
-							continue;
+						do
+						{
+							if(!Special[Specials].Kv.GetSectionName(config, sizeof(config)))
+								continue;
+
+							if(FileExists(config, true))
+							{
+								AddFileToDownloadsTable(config);
+								continue;
+							}
+
+							LogError2("[Boss] Character %s is missing file '%s' in section '%s'!", character, config, section);
+						} while(Special[Specials].Kv.GotoNextKey());
+						Special[boss].Kv.GoBack();
+						continue;
+					}
+
+					for(i=1; ; i++)
+					{
+						IntToString(i, key, sizeof(key));
+						Special[Specials].Kv.GetString(key, config, sizeof(config));
+						if(!config[0])
+							break;
 
 						if(FileExists(config, true))
 						{
@@ -396,36 +444,41 @@ static KeyValues LoadCharacter(const char[] character, int charset)
 						}
 
 						LogError2("[Boss] Character %s is missing file '%s' in section '%s'!", character, config, section);
-					} while(Special[Specials].Kv.GotoNextKey());
-					Special[boss].Kv.GoBack();
-					continue;
+					}
 				}
-
-				for(i=1; ; i++)
+				case Section_Model:
 				{
-					IntToString(i, key, sizeof(key));
-					Special[Specials].Kv.GetString(key, config, sizeof(config));
-					if(!config[0])
-						break;
-
-					if(FileExists(config, true))
+					static const char extensions[][] = {".mdl", ".dx80.vtx", ".dx90.vtx", ".sw.vtx", ".vvd", ".phy"};
+					if(Special[Specials].Kv.GotoFirstSubKey())
 					{
-						AddFileToDownloadsTable(config);
+						do
+						{
+							if(!Special[Specials].Kv.GetSectionName(config, sizeof(config)))
+								continue;
+
+							for(x=0; x<sizeof(extensions); x++)
+							{
+								FormatEx(key, PLATFORM_MAX_PATH, "%s%s", config, extensions[x]);
+								if(FileExists(key, true))
+								{
+									AddFileToDownloadsTable(key);
+								}
+								else if(StrContains(key, ".phy") == -1)
+								{
+									LogError2("[Boss] Character %s is missing file '%s' in section '%s'!", character, key, section);
+								}
+							}
+						} while(Special[Specials].Kv.GotoNextKey());
+						Special[boss].Kv.GoBack();
 						continue;
 					}
 
-					LogError2("[Boss] Character %s is missing file '%s' in section '%s'!", character, config, section);
-				}
-			}
-			case Section_Model:
-			{
-				static const char extensions[][] = {".mdl", ".dx80.vtx", ".dx90.vtx", ".sw.vtx", ".vvd", ".phy"};
-				if(Special[Specials].Kv.GotoFirstSubKey())
-				{
-					do
+					for(i=1; ; i++)
 					{
-						if(!Special[Specials].Kv.GetSectionName(config, sizeof(config)))
-							continue;
+						IntToString(i, key, sizeof(key));
+						Special[Specials].Kv.GetString(key, config, sizeof(config));
+						if(!config[0])
+							break;
 
 						for(x=0; x<sizeof(extensions); x++)
 						{
@@ -439,83 +492,60 @@ static KeyValues LoadCharacter(const char[] character, int charset)
 								LogError2("[Boss] Character %s is missing file '%s' in section '%s'!", character, key, section);
 							}
 						}
-					} while(Special[Specials].Kv.GotoNextKey());
-					Special[boss].Kv.GoBack();
-					continue;
+					}
 				}
-
-				for(i=1; ; i++)
+				case Section_Material:
 				{
-					IntToString(i, key, sizeof(key));
-					Special[Specials].Kv.GetString(key, config, sizeof(config));
-					if(!config[0])
-						break;
-
-					for(x=0; x<sizeof(extensions); x++)
+					if(Special[Specials].Kv.GotoFirstSubKey())
 					{
-						FormatEx(key, PLATFORM_MAX_PATH, "%s%s", config, extensions[x]);
+						do
+						{
+							if(!Special[Specials].Kv.GetSectionName(config, sizeof(config)))
+								continue;
+
+							if(FileExists(config, true))
+							{
+								AddFileToDownloadsTable(config);
+								continue;
+							}
+
+							LogError2("[Boss] Character %s is missing file '%s' in section '%s'!", character, config, section);
+						} while(Special[Specials].Kv.GotoNextKey());
+						Special[boss].Kv.GoBack();
+						continue;
+					}
+
+					for(i=1; ; i++)
+					{
+						IntToString(i, key, sizeof(key));
+						Special[Specials].Kv.GetString(key, config, sizeof(config));
+						if(!config[0])
+							break;
+
+						FormatEx(key, sizeof(key), "%s.vtf", config);
 						if(FileExists(key, true))
 						{
 							AddFileToDownloadsTable(key);
 						}
-						else if(StrContains(key, ".phy") == -1)
+						else
 						{
 							LogError2("[Boss] Character %s is missing file '%s' in section '%s'!", character, key, section);
 						}
-					}
-				}
-			}
-			case Section_Material:
-			{
-				if(Special[Specials].Kv.GotoFirstSubKey())
-				{
-					do
-					{
-						if(!Special[Specials].Kv.GetSectionName(config, sizeof(config)))
-							continue;
 
-						if(FileExists(config, true))
+						FormatEx(key, sizeof(key), "%s.vmt", config);
+						if(FileExists(key, true))
 						{
-							AddFileToDownloadsTable(config);
+							AddFileToDownloadsTable(key);
 							continue;
 						}
 
-						LogError2("[Boss] Character %s is missing file '%s' in section '%s'!", character, config, section);
-					} while(Special[Specials].Kv.GotoNextKey());
-					Special[boss].Kv.GoBack();
-					continue;
-				}
-
-				for(i=1; ; i++)
-				{
-					IntToString(i, key, sizeof(key));
-					Special[Specials].Kv.GetString(key, config, sizeof(config));
-					if(!config[0])
-						break;
-
-					FormatEx(key, sizeof(key), "%s.vtf", config);
-					if(FileExists(key, true))
-					{
-						AddFileToDownloadsTable(key);
-					}
-					else
-					{
 						LogError2("[Boss] Character %s is missing file '%s' in section '%s'!", character, key, section);
 					}
-
-					FormatEx(key, sizeof(key), "%s.vmt", config);
-					if(FileExists(key, true))
-					{
-						AddFileToDownloadsTable(key);
-						continue;
-					}
-
-					LogError2("[Boss] Character %s is missing file '%s' in section '%s'!", character, key, section);
 				}
 			}
 		}
 	}
-	return Special[Specials++].Kv;
+	Specials++;
 }
 
 void Bosses_Prepare(int boss)
