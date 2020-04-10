@@ -6,7 +6,8 @@
 	void DHook_Setup(GameData gameData)
 
 	Credits:
-	Ragenewb
+	Ragenewb - Healing/Regen
+	TF:GO - SetWinningTeam
 */
 
 #if !defined _dhooks_included
@@ -15,6 +16,8 @@
 
 #define FF2_DHOOKS
 
+static Handle TeamHook;
+
 void DHook_Setup(GameData gameData)
 {
 	if(GetFeatureStatus(FeatureType_Native, "DHookCreateDetour") != FeatureStatus_Available)
@@ -22,18 +25,18 @@ void DHook_Setup(GameData gameData)
 
 	Handle hook = DHookCreateDetourEx(gameData, "CTFPlayer::RegenThink", CallConv_THISCALL, ReturnType_Void, ThisPointer_CBaseEntity);
 	if(!hook || !DHookEnableDetour(hook, false, DHook_Regen))
-		LogError2("[Gamedata] Could not load detour for CTFPlayer::RegenThink.");
+		LogError2("[Gamedata] Could not load detour for CTFPlayer::RegenThink");
 
 	hook = DHookCreateDetourEx(gameData, "CWeaponMedigun::AllowedToHealTarget", CallConv_THISCALL, ReturnType_Bool, ThisPointer_CBaseEntity);
 	if(hook)
 	{
 		DHookAddParam(hook, HookParamType_CBaseEntity);
 		if(!DHookEnableDetour(hook, false, DHook_Healing))
-			LogError2("[Gamedata] Could not load detour for CWeaponMedigun::AllowedToHealTarget.");
+			LogError2("[Gamedata] Could not load detour for CWeaponMedigun::AllowedToHealTarget");
 	}
 	else
 	{
-		LogError2("[Gamedata] Could not load detour for CWeaponMedigun::AllowedToHealTarget.");
+		LogError2("[Gamedata] Could not load detour for CWeaponMedigun::AllowedToHealTarget");
 	}
 
 	hook = DHookCreateDetourEx(gameData, "CObjectDispenser::CouldHealTarget", CallConv_THISCALL, ReturnType_Bool, ThisPointer_CBaseEntity);
@@ -41,12 +44,34 @@ void DHook_Setup(GameData gameData)
 	{
 		DHookAddParam(hook, HookParamType_CBaseEntity);
 		if(!DHookEnableDetour(hook, false, DHook_Healing))
-			LogError2("[Gamedata] Could not load detour for CObjectDispenser::CouldHealTarget.");
+			LogError2("[Gamedata] Could not load detour for CObjectDispenser::CouldHealTarget");
 	}
 	else
 	{
-		LogError2("[Gamedata] Could not load detour for CObjectDispenser::CouldHealTarget.");
+		LogError2("[Gamedata] Could not load detour for CObjectDispenser::CouldHealTarget");
 	}
+
+	int offset = gameData.GetOffset("CTFGameRules::SetWinningTeam");
+	TeamHook = DHookCreate(offset, HookType_GameRules, ReturnType_Void, ThisPointer_Ignore);
+	if(TeamHook)
+	{
+		DHookAddParam(TeamHook, HookParamType_Int);
+		DHookAddParam(TeamHook, HookParamType_Int);
+		DHookAddParam(TeamHook, HookParamType_Bool);
+		DHookAddParam(TeamHook, HookParamType_Bool);
+		DHookAddParam(TeamHook, HookParamType_Bool);
+		DHookAddParam(TeamHook, HookParamType_Bool);
+	}
+	else
+	{
+		LogError2("[Gamedata] Could not find CTFGameRules::SetWinningTeam");
+	}
+}
+
+void DHook_MapStart()
+{
+	if(TeamHook)
+		DHookGamerules(TeamHook, false, _, DHook_SetWinningTeam);
 }
 
 public MRESReturn DHook_Regen(int client)
@@ -74,6 +99,11 @@ public MRESReturn DHook_Healing(int client, Handle handle, Handle params)
 
 	DHookSetReturn(handle, false);
 	return MRES_Supercede;
+}
+
+public MRESReturn Hook_SetWinningTeam(Handle params)
+{
+	return Enabled ? MRES_Supercede : MRES_Ignored;
 }
 
 static Handle DHookCreateDetourEx(Handle gameData, const char[] name, CallingConvention call, ReturnType type, ThisPointerType pointer)

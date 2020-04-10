@@ -268,6 +268,7 @@ BossEnum Boss[MAXTF2PLAYERS];
 ConVar CvarVersion;
 ConVar CvarEnabled;
 ConVar CvarDebug;
+ConVar CvarSpecTeam;
 
 GlobalForward PreAbility;
 GlobalForward OnAbility;
@@ -373,6 +374,8 @@ public void OnPluginStart()
 	CvarVersion = CreateConVar("ff2_version", PLUGIN_VERSION, "Freak Fortress 2 Version", FCVAR_NOTIFY|FCVAR_DONTRECORD);
 	CvarEnabled = CreateConVar("ff2_enabled", "1", "Backwards Compatibility ConVar", FCVAR_DONTRECORD, true, 0.0, true, 2.0);
 	CvarDebug = CreateConVar("ff2_debug", "1", "If to display debug outputs", FCVAR_NOTIFY, true, 0.0, true, 1.0);
+
+	CvarSpecTeam = CreateConVar("ff2_game_spec", "1", "If to handle spectator teams as real fighting teams", _, true, 0.0, true, 1.0);
 
 	CreateConVar("ff2_oldjump", "1", "Backwards Compatibility ConVar", FCVAR_DONTRECORD, true, 0.0, true, 1.0);
 	CreateConVar("ff2_base_jumper_stun", "0", "Backwards Compatibility ConVar", FCVAR_DONTRECORD, true, 0.0, true, 1.0);

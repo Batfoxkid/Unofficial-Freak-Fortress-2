@@ -46,7 +46,7 @@ void Bosses_Setup()
 	CvarCrits = CreateConVar("ff2_boss_crits", "0", "If bosses can perform random crits", _, true, 0.0, true, 1.0);
 	CvarHealing = CreateConVar("ff2_boss_healing", "0", "If bosses can be healed by Medics, packs, etc. (Requires DHooks to disable)", _, true, 0.0, true, 1.0);
 	CvarSewerSlide = CreateConVar("ff2_boss_suicide", "0", "If bosses can suicide during the round", _, true, 0.0, true, 1.0);
-	CvarTeam = CreateConVar("ff2_boss_team", "3", "Default boss team, 1 for random team", _, true, 1.0, true, 3.0);
+	CvarTeam = CreateConVar("ff2_boss_team", "3", "Default boss team, 4 for random team", _, true, 0.0, true, 4.0);
 
 	AddCommandListener(Bosses_Rage, "voicemenu");
 	AddCommandListener(Bosses_KermitSewerSlide, "kill");
@@ -450,145 +450,6 @@ static void LoadCharacter(const char[] character, int charset, const char[] map)
 			}
 			delete snap;
 		}
-			static char section[16];
-			SectionType type = KvGetSectionType(Special[Specials].Kv, section, sizeof(section));
-			switch(type)
-			{
-				case Section_Download:
-				{
-					if(Special[Specials].Kv.GotoFirstSubKey())
-					{
-						do
-						{
-							if(!Special[Specials].Kv.GetSectionName(config, sizeof(config)))
-								continue;
-
-							if(FileExists(config, true))
-							{
-								AddFileToDownloadsTable(config);
-								continue;
-							}
-
-							LogError2("[Boss] Character %s is missing file '%s' in section '%s'!", character, config, section);
-						} while(Special[Specials].Kv.GotoNextKey());
-						Special[boss].Kv.GoBack();
-						continue;
-					}
-
-					for(i=1; ; i++)
-					{
-						IntToString(i, key, sizeof(key));
-						Special[Specials].Kv.GetString(key, config, sizeof(config));
-						if(!config[0])
-							break;
-
-						if(FileExists(config, true))
-						{
-							AddFileToDownloadsTable(config);
-							continue;
-						}
-
-						LogError2("[Boss] Character %s is missing file '%s' in section '%s'!", character, config, section);
-					}
-				}
-				case Section_Model:
-				{
-					static const char extensions[][] = {".mdl", ".dx80.vtx", ".dx90.vtx", ".sw.vtx", ".vvd", ".phy"};
-					if(Special[Specials].Kv.GotoFirstSubKey())
-					{
-						do
-						{
-							if(!Special[Specials].Kv.GetSectionName(config, sizeof(config)))
-								continue;
-
-							for(x=0; x<sizeof(extensions); x++)
-							{
-								FormatEx(key, PLATFORM_MAX_PATH, "%s%s", config, extensions[x]);
-								if(FileExists(key, true))
-								{
-									AddFileToDownloadsTable(key);
-								}
-								else if(StrContains(key, ".phy") == -1)
-								{
-									LogError2("[Boss] Character %s is missing file '%s' in section '%s'!", character, key, section);
-								}
-							}
-						} while(Special[Specials].Kv.GotoNextKey());
-						Special[boss].Kv.GoBack();
-						continue;
-					}
-
-					for(i=1; ; i++)
-					{
-						IntToString(i, key, sizeof(key));
-						Special[Specials].Kv.GetString(key, config, sizeof(config));
-						if(!config[0])
-							break;
-
-						for(x=0; x<sizeof(extensions); x++)
-						{
-							FormatEx(key, PLATFORM_MAX_PATH, "%s%s", config, extensions[x]);
-							if(FileExists(key, true))
-							{
-								AddFileToDownloadsTable(key);
-							}
-							else if(StrContains(key, ".phy") == -1)
-							{
-								LogError2("[Boss] Character %s is missing file '%s' in section '%s'!", character, key, section);
-							}
-						}
-					}
-				}
-				case Section_Material:
-				{
-					if(Special[Specials].Kv.GotoFirstSubKey())
-					{
-						do
-						{
-							if(!Special[Specials].Kv.GetSectionName(config, sizeof(config)))
-								continue;
-
-							if(FileExists(config, true))
-							{
-								AddFileToDownloadsTable(config);
-								continue;
-							}
-
-							LogError2("[Boss] Character %s is missing file '%s' in section '%s'!", character, config, section);
-						} while(Special[Specials].Kv.GotoNextKey());
-						Special[boss].Kv.GoBack();
-						continue;
-					}
-
-					for(i=1; ; i++)
-					{
-						IntToString(i, key, sizeof(key));
-						Special[Specials].Kv.GetString(key, config, sizeof(config));
-						if(!config[0])
-							break;
-
-						FormatEx(key, sizeof(key), "%s.vtf", config);
-						if(FileExists(key, true))
-						{
-							AddFileToDownloadsTable(key);
-						}
-						else
-						{
-							LogError2("[Boss] Character %s is missing file '%s' in section '%s'!", character, key, section);
-						}
-
-						FormatEx(key, sizeof(key), "%s.vmt", config);
-						if(FileExists(key, true))
-						{
-							AddFileToDownloadsTable(key);
-							continue;
-						}
-
-						LogError2("[Boss] Character %s is missing file '%s' in section '%s'!", character, key, section);
-					}
-				}
-			}
-		}
 	}
 
 	strcopy(Special[Specials].File, PLATFORM_MAX_PATH, character);
@@ -838,18 +699,16 @@ void Bosses_Create(int client)
 		int team = Special[Boss[client].Special].Kv.GetNum("team", -1);
 		if(team < 0)
 		{
-			switch(CvarTeam.IntValue)
+			if(CvarTeam.IntValue == 4)
 			{
-				case 1:		Client[client].Team = GetRandomInt(0, 1) ? TFTeam_Red : TFTeam_Blue;
-				case 2:		Client[client].Team = TFTeam_Red;
-				default:	Client[client].Team = TFTeam_Blue;
+				Client[client].Team = GetRandomInt(0, 1) ? TFTeam_Red : TFTeam_Blue;
+			}
+			else
+			{
+				Client[client].Team = view_as<TFTeam>(CvarTeam.IntValue);
 			}
 		}
-		else if(!team)
-		{
-			Client[client].Team = TFTeam_Unassigned;
-		}
-		else if(team == 1)
+		else if(team > 3)
 		{
 			Client[client].Team = GetRandomInt(0, 1) ? TFTeam_Red : TFTeam_Blue;
 		}
@@ -862,6 +721,8 @@ void Bosses_Create(int client)
 	{
 		Client[client].Team = GetRandomInt(0, 1) ? TFTeam_Red : TFTeam_Blue;
 	}
+
+	BossTeam = Client[client].Team;
 
 	SetEntProp(client, Prop_Send, "m_bGlowEnabled", 0);
 	TF2_RemovePlayerDisguise(client);
