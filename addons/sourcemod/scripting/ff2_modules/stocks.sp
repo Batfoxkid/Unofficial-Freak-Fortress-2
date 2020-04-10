@@ -120,10 +120,10 @@ enum SectionType
 	Section_Map,		// map_
 	Section_Weapon,		// tf_ | saxxy
 	Section_Sound,		// sound_ | catch_
+	Section_Precache,	// mod_precache
 	Section_Download,	// download
 	Section_Model,		// mod_download
-	Section_Material,	// mat_download
-	Section_Precache	// mod_precache
+	Section_Material	// mat_download
 };
 
 stock bool IsValidClient(int client, bool replaycheck=true)

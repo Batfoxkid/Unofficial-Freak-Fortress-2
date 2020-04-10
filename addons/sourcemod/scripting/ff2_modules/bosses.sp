@@ -351,19 +351,14 @@ static void LoadCharacter(const char[] character, int charset, const char[] map)
 
 	if(Charset==charset && Enabled>Game_Disabled)
 	{
-		ConfigMap cfg = Special[Specials].Full.GetSection("map_whitelist");
+		ConfigMap cfg = Special[Specials].Cfg.GetSection("map_whitelist");
 		if(cfg == null)
 		{
-			ConfigMap cfg = Special[Specials].Full.GetSection("map_blacklist");
+			cfg = Special[Specials].Cfg.GetSection("map_blacklist");
 			if(cfg == null)
-			{
-				ConfigMap cfg = Special[Specials].Full.GetSection("map_exclude");
-				if(cfg != null)
-				{
-					
-				}
-			}
-			else
+				cfg = Special[Specials].Cfg.GetSection("map_exclude");
+
+			if(cfg != null)
 			{
 				StringMapSnapshot snap = cfg.Snapshot();
 				if(snap)
@@ -371,19 +366,19 @@ static void LoadCharacter(const char[] character, int charset, const char[] map)
 					int entries = snap.Length;
 					if(entries)
 					{
-						for(i=entries-1; i>=0; i--)
+						for(i=0; i<entries; i++)
 						{
 							int length = snap.KeyBufferSize(i)+1;
 							char[] buffer = new char[length];
 							snap.GetKey(i, buffer, length);
 							PackVal val;
 							cfg.GetArray(buffer, val, sizeof(val));
-							if(val.tag!=KeyValType_Null && !StrContains(map, buffer, false))
-							{
-								Special[Specials].Blocked = true;
-								delete snap;
-								return;
-							}
+							if(val.tag==KeyValType_Null || StrContains(map, buffer, false))
+								continue;
+
+							Special[Specials].Blocked = true;
+							delete snap;
+							return;
 						}
 					}
 					delete snap;
@@ -398,79 +393,29 @@ static void LoadCharacter(const char[] character, int charset, const char[] map)
 				int entries = snap.Length;
 				if(entries)
 				{
-					for(i=entries-1; i>=0; i--)
+					bool found;
+					for(i=0; i<entries; i++)
 					{
 						int length = snap.KeyBufferSize(i)+1;
 						char[] buffer = new char[length];
 						snap.GetKey(i, buffer, length);
 						PackVal val;
 						cfg.GetArray(buffer, val, sizeof(val));
-						if(val.tag!=KeyValType_Null && !StrContains(map, buffer, false))
-						{
-							Special[Specials].Blocked = true;
-							delete snap;
-							return;
-						}
+						if(val.tag==KeyValType_Null || StrContains(map, buffer, false))
+							continue;
+
+						found = true;
+						break;
+					}
+
+					if(!found)
+					{
+						Special[Specials].Blocked = true;
+						delete snap;
+						return;
 					}
 				}
 				delete snap;
-			}
-
-				bool found;
-				char item[4];
-				for(i=1; ; i++)
-				{
-					IntToString(i, item, sizeof(item));
-					Special[Specials].Kv.GetString(item, section, sizeof(section));
-					if(!buffer[0])
-						break;
-
-					if(StrContains(MapName, section))
-						continue;
-
-					found = true;
-					break;
-				}
-
-				if(!found)
-				{
-					DeleteCfg(Special[Specials].Full);
-					return;
-				}
-			}
-			else if(Special[Specials].Kv.JumpToKey("map_blacklist"))
-			{
-				char item[4];
-				for(i=1; ; i++)
-				{
-					IntToString(i, item, sizeof(item));
-					Special[Specials].Kv.GetString(item, section, sizeof(section));
-					if(!buffer[0])
-						break;
-
-					if(!StrContains(MapName, buffer))
-					{
-						DeleteCfg(Special[Specials].Full);
-						return;
-					}
-				}
-			}
-			else if(Special[Specials].Kv.JumpToKey("map_exclude"))
-			{
-				char item[6];
-				for(i=1; ; i++)
-				{
-					FormatEx(item, sizeof(item), "map%d", i);
-					Special[Specials].Kv.GetString(item, section, sizeof(section));
-					if(!buffer[0])
-						break;
-
-					if(!StrContains(MapName, buffer))
-					{
-						DeleteCfg(Special[Specials].Full);
-						return;
-					}
-				}
 			}
 		}
 
@@ -478,12 +423,33 @@ static void LoadCharacter(const char[] character, int charset, const char[] map)
 		if(FirstPlayable == -1)
 			FirstPlayable = Specials;
 
-		Special[Specials].Kv.GetString("name", config, sizeof(config));
-		Special[Specials].Kv.GotoFirstSubKey();
-
 		char key[PLATFORM_MAX_PATH];
-		while(Special[Specials].Kv.GotoNextKey())
+		StringMapSnapshot snap = cfg.Snapshot();
+		if(snap)
 		{
+			int entries = snap.Length;
+			if(entries)
+			{
+				for(i=0; i<entries; i++)
+				{
+					int length = snap.KeyBufferSize(i)+1;
+					char[] buffer = new char[length];
+					snap.GetKey(i, buffer, length);
+					PackVal val;
+					cfg.GetArray(buffer, val, sizeof(val));
+					if(val.tag != KeyValType_Section)
+						continue;
+
+					SectionType type = GetSectionType(buffer);
+					if(type < Section_Download)
+						continue;
+
+					val.data.Reset();
+					DownloadSection(val.data.ReadCell(), type);
+				}
+			}
+			delete snap;
+		}
 			static char section[16];
 			SectionType type = KvGetSectionType(Special[Specials].Kv, section, sizeof(section));
 			switch(type)
@@ -627,6 +593,40 @@ static void LoadCharacter(const char[] character, int charset, const char[] map)
 
 	strcopy(Special[Specials].File, PLATFORM_MAX_PATH, character);
 	Specials++;
+}
+
+static void DownloadSection(ConfigMap cfg, SectionType type)
+{
+	StringMapSnapshot snap = cfg.Snapshot();
+	if(!snap)
+		return;
+
+	int entries = snap.Length;
+	if(entries)
+	{
+		for(int i; i<entries; i++)
+		{
+			int length = snap.KeyBufferSize(i)+1;
+			char[] buffer = new char[length];
+			snap.GetKey(i, buffer, length);
+			PackVal val;
+			cfg.GetArray(buffer, val, sizeof(val));
+			switch(type)
+			{
+				case Section_Download:
+				{
+					if(FileExists(config, true))
+					{
+						AddFileToDownloadsTable(config);
+						continue;
+					}
+
+					LogError2("[Boss] Character %s is missing file '%s' in section '%s'!", character, config, section);
+				}
+			}
+		}
+	}
+	delete snap;
 }
 
 void Bosses_Prepare(int boss)
