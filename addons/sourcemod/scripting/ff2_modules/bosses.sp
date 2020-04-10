@@ -9,8 +9,8 @@
 	void Bosses_Setup()
 	void Bosses_Config(const char[] map)
 	void Bosses_Prepare(int boss)
-	void Bosses_Create(int client, int boss=-1)
-	void Bosses_Equip(int client, int boss)
+	void Bosses_Create(int client)
+	void Bosses_Equip(int client)
 	void Bosses_Model(int userid)
 	void Bosses_AbilitySlot(int client, int slot)
 	void Bosses_Ability(int client, const char[] ability, const char[] plugin, int slot, int buttonMode)
@@ -445,7 +445,7 @@ static void LoadCharacter(const char[] character, int charset, const char[] map)
 						continue;
 
 					val.data.Reset();
-					DownloadSection(val.data.ReadCell(), type);
+					DownloadSection(val.data.ReadCell(), type, character);
 				}
 			}
 			delete snap;
@@ -595,7 +595,7 @@ static void LoadCharacter(const char[] character, int charset, const char[] map)
 	Specials++;
 }
 
-static void DownloadSection(ConfigMap cfg, SectionType type)
+static void DownloadSection(ConfigMap cfg, SectionType type, const char[] character)
 {
 	StringMapSnapshot snap = cfg.Snapshot();
 	if(!snap)
@@ -604,6 +604,7 @@ static void DownloadSection(ConfigMap cfg, SectionType type)
 	int entries = snap.Length;
 	if(entries)
 	{
+		char key[PLATFORM_MAX_PATH];
 		for(int i; i<entries; i++)
 		{
 			int length = snap.KeyBufferSize(i)+1;
@@ -611,17 +612,57 @@ static void DownloadSection(ConfigMap cfg, SectionType type)
 			snap.GetKey(i, buffer, length);
 			PackVal val;
 			cfg.GetArray(buffer, val, sizeof(val));
+			if(val.tag == KeyValType_Null)
+				continue;
+
 			switch(type)
 			{
 				case Section_Download:
 				{
-					if(FileExists(config, true))
+					if(FileExists(buffer, true))
 					{
-						AddFileToDownloadsTable(config);
+						AddFileToDownloadsTable(buffer);
 						continue;
 					}
 
-					LogError2("[Boss] Character %s is missing file '%s' in section '%s'!", character, config, section);
+					LogError2("[Boss] %s is missing file '%s' in section 'download'", character, buffer);
+				}
+				case Section_Model:
+				{
+					static const char extensions[][] = {".mdl", ".dx80.vtx", ".dx90.vtx", ".sw.vtx", ".vvd", ".phy"};
+					for(int x=0; x<sizeof(extensions); x++)
+					{
+						FormatEx(key, PLATFORM_MAX_PATH, "%s%s", config, extensions[x]);
+						if(FileExists(key, true))
+						{
+							AddFileToDownloadsTable(key);
+						}
+						else if(StrContains(key, ".phy") == -1)
+						{
+							LogError2("[Boss] %s is missing file '%s' in section 'mod_download'", character, key);
+						}
+					}
+				}
+				case Section_Material:
+				{
+					FormatEx(key, sizeof(key), "%s.vtf", buffer);
+					if(FileExists(key, true))
+					{
+						AddFileToDownloadsTable(key);
+					}
+					else
+					{
+						LogError2("[Boss] %s is missing file '%s' in section 'mat_download'", character, key);
+					}
+
+					FormatEx(key, sizeof(key), "%s.vmt", buffer);
+					if(FileExists(key, true))
+					{
+						AddFileToDownloadsTable(key);
+						continue;
+					}
+
+					LogError2("[Boss] %s is missing file '%s' in section 'mat_download'", character, key);
 				}
 			}
 		}
