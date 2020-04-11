@@ -25,8 +25,8 @@
 #define CONFIG_PATH		"config/freak_fortress_2"
 #define CHARSET_FILE		"data/freak_fortress_2/characters.cfg"
 #define DEFAULT_ATTRIBUTES	"2 ; 3.1 ; 68 ; %d ; 275 ; 1"
-#define DEFAULT_RAGEDAMAGE	"1900"
-#define DEFAULT_HEALTH		"(((760.8+n)*(n-1))^1.0341)+2046"
+#define DEFAULT_RAGEDAMAGE	"1900.0"
+#define DEFAULT_HEALTH		"(Pow((760.8+float(Players))*(Players-1.0), 1.0341)+2046.0)"
 #define MAX_CHARSET_LENGTH	42
 
 ConVar CvarCharset;
@@ -277,7 +277,7 @@ static void LoadCharacter(const char[] character, int charset, const char[] map)
 	int i;
 	if(Special[Specials].Cfg.GetInt("version", i) && i!=StringToInt(MAJOR_REVISION) && i!=99)	// 99 is Unofficial-only bosses
 	{
-		LogError2("[Boss] %s is only compatible with FF2 v%i!", character, i);
+		LogError2("[Boss] %s is only compatible with FF2 v%i", character, i);
 		DeleteCfg(Special[Specials].Full);
 		return;
 	}
@@ -287,11 +287,11 @@ static void LoadCharacter(const char[] character, int charset, const char[] map)
 		int x;
 		if(Special[Specials].Cfg.GetInt("version_stable", x))
 		{
-			LogError2("[Boss] %s requires newer version of FF2 (at least %s.%i.%i)!", character, MAJOR_REVISION, i, x);
+			LogError2("[Boss] %s requires newer version of FF2 (at least %s.%i.%i)", character, MAJOR_REVISION, i, x);
 		}
 		else
 		{
-			LogError2("[Boss] %s requires newer version of FF2 (at least %s.%i)!", character, MAJOR_REVISION, i);
+			LogError2("[Boss] %s requires newer version of FF2 (at least %s.%i)", character, MAJOR_REVISION, i);
 		}
 		DeleteCfg(Special[Specials].Full);
 		return;
@@ -302,11 +302,11 @@ static void LoadCharacter(const char[] character, int charset, const char[] map)
 		int x;
 		if(Special[Specials].Cfg.GetInt("version_minor", x))
 		{
-			LogError2("[Boss] %s requires newer version of FF2 (at least %s.%i.%i)!", character, MAJOR_REVISION, x, i);
+			LogError2("[Boss] %s requires newer version of FF2 (at least %s.%i.%i)", character, MAJOR_REVISION, x, i);
 		}
 		else
 		{
-			LogError2("[Boss] %s requires newer version of FF2 (at least %s.%s.%i)!", character, MAJOR_REVISION, MINOR_REVISION, i);
+			LogError2("[Boss] %s requires newer version of FF2 (at least %s.%s.%i)", character, MAJOR_REVISION, MINOR_REVISION, i);
 		}
 		DeleteCfg(Special[Specials].Full);
 		return;
@@ -314,7 +314,7 @@ static void LoadCharacter(const char[] character, int charset, const char[] map)
 
 	if(Special[Specials].Cfg.GetInt("fversion", i) && i!=StringToInt(MAJOR_REVISION))
 	{
-		LogError2("[Boss] %s is only compatible with %s FF2 v%i!", character, FORK_SUB_REVISION, i);
+		LogError2("[Boss] %s is only compatible with %s FF2 v%i", character, FORK_SUB_REVISION, i);
 		DeleteCfg(Special[Specials].Full);
 		return;
 	}
@@ -324,11 +324,11 @@ static void LoadCharacter(const char[] character, int charset, const char[] map)
 		int x;
 		if(Special[Specials].Cfg.GetInt("fversion_stable", x))
 		{
-			LogError2("[Boss] %s requires newer version of %s FF2 (at least %s.%i.%i)!", character, FORK_SUB_REVISION, FORK_MAJOR_REVISION, i, x);
+			LogError2("[Boss] %s requires newer version of %s FF2 (at least %s.%i.%i)", character, FORK_SUB_REVISION, FORK_MAJOR_REVISION, i, x);
 		}
 		else
 		{
-			LogError2("[Boss] %s requires newer version of %s FF2 (at least %s.%i)!", character, FORK_SUB_REVISION, FORK_MAJOR_REVISION, i);
+			LogError2("[Boss] %s requires newer version of %s FF2 (at least %s.%i)", character, FORK_SUB_REVISION, FORK_MAJOR_REVISION, i);
 		}
 		DeleteCfg(Special[Specials].Full);
 		return;
@@ -339,11 +339,11 @@ static void LoadCharacter(const char[] character, int charset, const char[] map)
 		int x;
 		if(Special[Specials].Cfg.GetInt("fversion_minor", x))
 		{
-			LogError2("[Boss] %s requires newer version of %s FF2 (at least %s.%i.%i)!", character, FORK_SUB_REVISION, FORK_MAJOR_REVISION, x, i);
+			LogError2("[Boss] %s requires newer version of %s FF2 (at least %s.%i.%i)", character, FORK_SUB_REVISION, FORK_MAJOR_REVISION, x, i);
 		}
 		else
 		{
-			LogError2("[Boss] %s requires newer version of %s FF2 (at least %s.%s.%i)!", character, FORK_SUB_REVISION, FORK_MAJOR_REVISION, FORK_MINOR_REVISION, i);
+			LogError2("[Boss] %s requires newer version of %s FF2 (at least %s.%s.%i)", character, FORK_SUB_REVISION, FORK_MAJOR_REVISION, FORK_MINOR_REVISION, i);
 		}
 		DeleteCfg(Special[Specials].Full);
 		return;
@@ -424,7 +424,7 @@ static void LoadCharacter(const char[] character, int charset, const char[] map)
 			FirstPlayable = Specials;
 
 		char key[PLATFORM_MAX_PATH];
-		StringMapSnapshot snap = cfg.Snapshot();
+		StringMapSnapshot snap = Special[Specials].Cfg.Snapshot();
 		if(snap)
 		{
 			int entries = snap.Length;
@@ -436,7 +436,7 @@ static void LoadCharacter(const char[] character, int charset, const char[] map)
 					char[] buffer = new char[length];
 					snap.GetKey(i, buffer, length);
 					PackVal val;
-					cfg.GetArray(buffer, val, sizeof(val));
+					Special[Specials].Cfg.GetArray(buffer, val, sizeof(val));
 					if(val.tag != KeyValType_Section)
 						continue;
 
@@ -493,7 +493,7 @@ static void DownloadSection(ConfigMap cfg, SectionType type, const char[] charac
 					static const char extensions[][] = {".mdl", ".dx80.vtx", ".dx90.vtx", ".sw.vtx", ".vvd", ".phy"};
 					for(int x=0; x<sizeof(extensions); x++)
 					{
-						FormatEx(key, PLATFORM_MAX_PATH, "%s%s", config, extensions[x]);
+						FormatEx(key, sizeof(key), "%s%s", config, extensions[x]);
 						if(FileExists(key, true))
 						{
 							AddFileToDownloadsTable(key);
@@ -531,173 +531,87 @@ static void DownloadSection(ConfigMap cfg, SectionType type, const char[] charac
 	delete snap;
 }
 
-void Bosses_Prepare(int boss)
-{
-	if(Special[boss].Precached)
-		return;
-
-	Special[boss].Kv.Rewind();
-
-	char filePath[PLATFORM_MAX_PATH];
-	Special[boss].Kv.GetString("model", filePath, sizeof(filePath));
-	if(FileExists(filePath, true))
-	{
-		PrecacheModel(filePath);
-	}
-	else
-	{
-		char bossName[MAX_TARGET_LENGTH];
-		Special[boss].Kv.GetString("filename", bossName, sizeof(bossName));
-		LogError2("[Boss] Character %s is missing file '%s' in \"model\"!", bossName, filePath);
-	}
-
-	Special[boss].Kv.GoFirstSubKey();
-	char key[8];
-	while(Special[boss].Kv.GotoNextKey())
-	{
-		static char file[PLATFORM_MAX_PATH], section[16];
-		SectionType type = KvGetSectionType(Special[Specials].Kv, section, sizeof(section));
-		switch(type)
-		{
-			case Section_Sound:
-			{
-				if(Special[boss].Kv.GotoFirstSubKey())
-				{
-					do
-					{
-						if(!Special[boss].Kv.GetSectionName(file, sizeof(file)))
-							continue;
-
-						FormatEx(filePath, sizeof(filePath), "sound/%s", file);
-						if(FileExists(filePath, true))
-						{
-							PrecacheSound(file);
-							continue;
-						}
-
-						char bossName[MAX_TARGET_LENGTH];
-						Special[boss].Kv.GetString("filename", bossName, sizeof(bossName));
-						LogError2("[Boss] Character %s is missing file '%s' in section '%s'!", bossName, filePath, section);
-					} while(Special[Specials].Kv.GotoNextKey());
-					Special[boss].Kv.GoBack();
-					continue;
-				}
-
-				for(int i=1; ; i++)
-				{
-					IntToString(i, key, sizeof(key));
-					Special[boss].Kv.GetString(key, file, sizeof(file));
-					if(!file[0])
-					{
-						FormatEx(key, sizeof(key), "path%d", i);
-						Special[boss].Kv.GetString(key, file, sizeof(file));
-						if(!file[0])
-							break;
-					}
-
-					FormatEx(filePath, sizeof(filePath), "sound/%s", file);
-					if(FileExists(filePath, true))
-					{
-						PrecacheSound(file);
-						continue;
-					}
-
-					char bossName[MAX_TARGET_LENGTH];
-					Special[boss].Kv.GetString("filename", bossName, sizeof(bossName));
-					LogError2("[Boss] Character %s is missing file '%s' in section '%s'!", bossName, filePath, section);
-				}
-			}
-			case Section_Precache:
-			{
-				if(Special[boss].Kv.GotoFirstSubKey())
-				{
-					do
-					{
-						if(!Special[boss].Kv.GetSectionName(file, sizeof(file)))
-							continue;
-
-						if(FileExists(file, true))
-						{
-							PrecacheModel(file);
-							continue;
-						}
-
-						char bossName[MAX_TARGET_LENGTH];
-						Special[boss].Kv.GetString("filename", bossName, sizeof(bossName));
-						LogError2("[Boss] Character %s is missing file '%s' in section '%s'!", bossName, file, section);
-					} while(Special[Specials].Kv.GotoNextKey());
-					Special[boss].Kv.GoBack();
-					continue;
-				}
-
-				for(int i=1; ; i++)
-				{
-					IntToString(i, key, sizeof(key));
-					Special[boss].Kv.GetString(key, file, sizeof(file));
-					if(!file[0])
-						break;
-
-					if(FileExists(file, true))
-					{
-						PrecacheModel(file);
-						continue;
-					}
-
-					char bossName[MAX_TARGET_LENGTH];
-					Special[boss].Kv.GetString("filename", bossName, sizeof(bossName));
-					LogError2("[Boss] Character %s is missing file '%s' in section '%s'!", bossName, file, section);
-				}
-			}
-		}
-	}
-	Special[boss].Precached = true;
-}
-
 void Bosses_Create(int client)
 {
 	Bosses_Prepare(Boss[client].Special);
 
 	static char buffer[1024];
-	Special[Boss[client].Special].Kv.GetString("ragedamage", buffer, sizeof(buffer), DEFAULT_RAGEDAMAGE);
-	#if defined FF2_TIMESTEN
-	Boss[client].RageDamage = RoundFloat(ParseFormula(buffer, Players)*TimesTen_Value());
-	#else
-	Boss[client].RageDamage = RoundFloat(ParseFormula(buffer, Players));
-	#endif
-	Boss[client].Lives = Special[Boss[client].Special].Kv.GetNum("lives", 1);
-	if(Boss[client].Lives < 1)
+	if(Special[Boss[client].Special].Cfg.Get("ragedamage", buffer, sizeof(buffer)))
+	{
+		#if defined FF2_TIMESTEN
+		Boss[client].RageDamage = RoundFloat(ParseFormula(buffer, Players)*TimesTen_Value());
+		#else
+		Boss[client].RageDamage = RoundFloat(ParseFormula(buffer, Players));
+		#endif
+	}
+	else
+	{
+		Boss[client].RageDamage = RoundFloat(DEFAULT_RAGEDAMAGE);
+	}
+
+	int i;
+	if(Special[Boss[client].Special].Cfg.GetInt("lives", i))
+	{
+		if(i > 1)
+		{
+			Boss[client].Lives = i;
+		}
+		else
+		{
+			Boss[client].Lives = 1;
+		}
+	}
+	else
+	{
 		Boss[client].Lives = 1;
+	}
 
 	Boss[client].MaxLives = Boss[client].Lives;
-	Special[Boss[client].Special].Kv.GetString("health_formula", buffer, sizeof(buffer), DEFAULT_HEALTH);
-	#if defined FF2_TIMESTEN
-	Boss[client].MaxHealth = RoundFloat(ParseFormula(buffer, Players)*TimesTen_Value());
-	if(Boss[client].MaxHealth < 1)
-		Boss[client].MaxHealth = RoundFloat((Pow((760.8+float(Players))*(float(Players)-1.0), 1.0341)+2046.0)*TimesTen_Value());
-	#else
-	Boss[client].MaxHealth = RoundFloat(ParseFormula(buffer, Players));
-	if(Boss[client].MaxHealth < 1)
-		Boss[client].MaxHealth = RoundFloat(Pow((760.8+float(Players))*(float(Players)-1.0), 1.0341)+2046.0);
-	#endif
+	if(Special[Boss[client].Special].Cfg.Get("health_formula", buffer, sizeof(buffer)))
+	{
+		#if defined FF2_TIMESTEN
+		Boss[client].MaxHealth = RoundFloat(ParseFormula(buffer, Players)*TimesTen_Value());
+		#else
+		Boss[client].MaxHealth = RoundFloat(ParseFormula(buffer, Players));
+		#endif
+
+		if(Boss[client].MaxHealth < 1)
+			#if defined FF2_TIMESTEN
+			Boss[client].MaxHealth = RoundFloat(DEFAULT_HEALTH*TimesTen_Value());
+			#else
+			Boss[client].MaxHealth = RoundFloat(DEFAULT_HEALTH);
+			#endif
+	}
+	else
+	{
+		#if defined FF2_TIMESTEN
+		Boss[client].MaxHealth = RoundFloat(DEFAULT_HEALTH*TimesTen_Value());
+		#else
+		Boss[client].MaxHealth = RoundFloat(DEFAULT_HEALTH);
+		#endif
+	}
 
 	Boss[client].Health = Boss[client].MaxHealth*Boss[client].Lives;
 
-	Boss[client].Triple = view_as<bool>(Special[Boss[client].Special].Kv.GetNum("triple", CvarTriple.IntValue));
-	Boss[client].Knockback = Special[Boss[client].Special].Kv.GetNum("knockback", Special[Boss[client].Special].Kv.GetNum("rocketjump", CvarKnockback.IntValue));
-	Boss[client].Crits = Special[Boss[client].Special].Kv.GetNum("crits", CvarCrits.IntValue);
-	Boss[client].Healing = view_as<bool>(Special[Boss[client].Special].Kv.GetNum("healing", CvarHealing.IntValue));
+	Boss[client].Triple = Special[Boss[client].Special].Cfg.GetInt("triple", i) ? view_as<bool>(i) : CvarTriple.BoolValue;
+	Boss[client].Crits = Special[Boss[client].Special].Cfg.GetInt("crits", i) ? view_as<bool>(i) : CvarCrits.BoolValue;
+	Boss[client].Healing = Special[Boss[client].Special].Cfg.GetInt("healing", i) ? view_as<bool>(i) : CvarHealing.BoolValue;
+	Boss[client].Knockback = Special[Boss[client].Special].Cfg.GetInt("knockback", i) ? i : Special[Boss[client].Special].Cfg.GetInt("rocketjump", i) ? i : CvarKnockback.IntValue;
 
-	Boss[client].Voice = !Special[Boss[client].Special].Kv.GetNum("sound_block_vo");
-	Boss[client].RageMode = Special[Boss[client].Special].Kv.GetNum("ragemode");
-	Boss[client].RageMax = Special[Boss[client].Special].Kv.GetFloat("ragemax", 100.0);
-	Boss[client].RageMin = Special[Boss[client].Special].Kv.GetFloat("ragemin", 100.0);
-	Boss[client].Class = KvGetClass(Special[Boss[client].Special].Kv, "class");
-	Boss[client].MaxSpeed = Special[Boss[client].Special].Kv.GetFloat("maxspeed", 340.0);
-	Client[client].Team = view_as<TFTeam>(Special[Boss[client].Special].Kv.GetNum("bossteam"));
+	Boss[client].Voice = Special[Boss[client].Special].Cfg.GetInt("sound_block_vo", i) ? !i : true;
+	Boss[client].RageMode = Special[Boss[client].Special].Cfg.GetInt("ragemode", i) ? view_as<bool>(i) : false;
+
+	float f;
+	Boss[client].RageMode = Special[Boss[client].Special].Cfg.GetFloat("ragemode", f) ? f : 100.0;
+	Boss[client].RageMax = Special[Boss[client].Special].Cfg.GetFloat("ragemax", f) ? f : 100.0;
+	Boss[client].RageMin = Special[Boss[client].Special].Cfg.GetFloat("ragemin", f) ? f : 100.0;
+	Boss[client].MaxSpeed = Special[Boss[client].Special].Cfg.GetFloat("maxspeed", f) ? f : 340.0;
+
+	Boss[client].Class = CfgGetClass(Special[Boss[client].Special].Cfg, "class");
+	Client[client].Team = Special[Boss[client].Special].Cfg.GetInt("bossteam", i) ? view_as<TFTeam>(i) : TFTeam_Unassigned;
 	if(Client[client].Team == TFTeam_Unassigned)
 	{
-		int team = Special[Boss[client].Special].Kv.GetNum("team", -1);
-		if(team < 0)
+		if(!Special[Boss[client].Special].Cfg.GetInt("team", i) || i<0)
 		{
 			if(CvarTeam.IntValue == 4)
 			{
@@ -708,13 +622,13 @@ void Bosses_Create(int client)
 				Client[client].Team = view_as<TFTeam>(CvarTeam.IntValue);
 			}
 		}
-		else if(team > 3)
+		else if(i > 3)
 		{
 			Client[client].Team = GetRandomInt(0, 1) ? TFTeam_Red : TFTeam_Blue;
 		}
 		else
 		{
-			Client[client].Team = view_as<TFTeam>(team);
+			Client[client].Team = view_as<TFTeam>(i);
 		}
 	}
 	else if(Client[client].Team == TFTeam_Spectator)
@@ -788,6 +702,95 @@ void Bosses_Create(int client)
 	}
 
 	Boss[client].Leader = !var;
+}
+
+void Bosses_Prepare(int boss)
+{
+	if(Special[boss].Precached)
+		return;
+
+	char file[PLATFORM_MAX_PATH];
+	if(Special[boss].Cfg.Get("model", file, sizeof(file)))
+	{
+		if(FileExists(file, true))
+		{
+			PrecacheModel(file);
+		}
+		else
+		{
+			LogError2("[Boss] %s is missing file '%s' in 'model'", Special[boss].File, file);
+		}
+	}
+
+	Special[boss].Precached = true;
+	StringMapSnapshot snap = Special[boss].Cfg.Snapshot();
+	if(!snap)
+		return;
+
+	int entries = snap.Length;
+	if(entries)
+	{
+		for(int i; i<entries; i++)
+		{
+			int length = snap.KeyBufferSize(i)+1;
+			char[] buffer = new char[length];
+			snap.GetKey(i, buffer, length);
+			PackVal val;
+			Special[boss].Cfg.GetArray(buffer, val, sizeof(val));
+			if(val.tag == KeyValType_Null)
+				continue;
+
+			SectionType type = SectionType(buffer);
+			if(type!=Section_Sound && type!=Section_Precache)
+				continue;
+
+			val.data.Reset();
+			cfg = val.data.ReadCell();
+			if(cfg == null)
+				continue;
+
+			StringMapSnapshot snap2 = cfg.Snapshot();
+			if(!snap2)
+				continue;
+
+			int entries2 = snap2.Length;
+			if(entries2)
+			{
+				for(int i2; i2<entries; i2++)
+				{
+					int length2 = snap2.KeyBufferSize(i2)+1;
+					char[] buffer2 = new char[length2];
+					snap2.GetKey(i2, buffer2, length2);
+					PackVal val2;
+					cfg.GetArray(buffer2, val2, sizeof(val2));
+					if(val2.tag == KeyValType_Null)
+						continue;
+
+					if(type == Special[boss].Cfg)
+					{
+						FormatEx(file, sizeof(file), "sound/%s", buffer2);
+						if(FileExists(file, true))
+						{
+							PrecacheSound(buffer2);
+							continue;
+						}
+
+						LogError2("[Boss] %s is missing file '%s' in section '%s'", Special[boss].File, file, buffer);
+					}
+
+					if(FileExists(buffer2, true))
+					{
+						PrecacheModel(buffer2);
+						continue;
+					}
+
+					LogError2("[Boss] %s is missing file '%s' in section '%s'", Special[boss].File, buffer2, buffer);
+				}
+			}
+			delete snap2;
+		}
+	}
+	delete snap;
 }
 
 void Bosses_Equip(int client)
