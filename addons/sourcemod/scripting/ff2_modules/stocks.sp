@@ -826,7 +826,7 @@ stock int CheckRoundState()
 			return -1;
 
 		case RoundState_StartGame, RoundState_Preround:
-			return 0;
+			return Enabled==Game_Arena ? 0 : 1;	// Treat setup times like Payload/CP as active
 
 		case RoundState_RoundRunning, RoundState_Stalemate:
 			return 1;
