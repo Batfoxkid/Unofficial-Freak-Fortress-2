@@ -1,9 +1,7 @@
 /*
-	Required:
-	sdkhooks.sp
-
 	Functions:
 	void DHook_Setup(GameData gameData)
+	void DHook_MapStart()
 
 	Credits:
 	Ragenewb - Healing/Regen
@@ -103,7 +101,10 @@ public MRESReturn DHook_Healing(int client, Handle handle, Handle params)
 
 public MRESReturn Hook_SetWinningTeam(Handle params)
 {
-	return Enabled ? MRES_Supercede : MRES_Ignored;
+	if(Enabled != Game_Arena)
+		return MRES_Ignored;
+
+	return EndRound ? MRES_Ignored : MRES_Supercede;
 }
 
 static Handle DHookCreateDetourEx(Handle gameData, const char[] name, CallingConvention call, ReturnType type, ThisPointerType pointer)

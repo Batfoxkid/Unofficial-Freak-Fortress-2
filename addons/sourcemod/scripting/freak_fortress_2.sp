@@ -52,7 +52,7 @@
 	machines or high populated
 	servers.
 */
-#define SETTING_HUDDELAY	0.25	// Interval of clients' HUD
+#define SETTING_HUDDELAY	0.2	// Interval of clients' HUD
 #define SETTING_TICKMODE	-1	// -1 for OnGameFrame, 0 for OnPlayerRunCmdPost, >0 for a Timer with that duration
 
 
@@ -247,6 +247,7 @@ SpecialEnum Special[MAXSPECIALS];
 int Specials;
 
 bool LastMann;
+bool EndRound;
 int Enabled;
 int NextGamemode;
 int ArenaRoundsLeft;
@@ -472,6 +473,10 @@ public void OnMapStart()
 		AddFileToDownloadsTable("sound/saxton_hale/9000.wav");
 		PrecacheSound("saxton_hale/9000.wav", true);
 	}
+
+	#if defined FF2_DHOOKS
+	DHook_MapStart();
+	#endif
 
 	#if SETTING_TICKMODE>0
 	CreateTimer(SETTING_TICKMODE, OnGameTimer, _, TIMER_FLAG_NO_MAPCHANGE);
@@ -1104,6 +1109,37 @@ void ResetClientVars(int client)
 	#endif
 
 	Boss[client].Active = false;
+}
+
+void CheckAlivePlayers()
+{
+	Players = 0;
+	MercPlayers = 0;
+	BossPlayers = 0;
+	EndRound = false;
+	int players[view_as<int>(TFTeam)];
+	bool spec = CvarSpecTeam.BoolValue;
+	for(int client=1; client<=MaxClients; client++)
+	{
+		if(!IsValidClient(client) || !IsPlayerAlive(client))
+			continue;
+
+		int team = GetClientTeam(client);
+		if(!spec && !Boss[client].Active && team<=view_as<int>(TFTeam_Spectator))
+			continue;
+
+		Players++;
+		players[team]++;
+	}
+
+	int found;
+	for(int i; i<view_as<int>(TFTeam); i++)
+	{
+		if(players[i])
+			found++;
+	}
+
+	EndRound = found<2;
 }
 
 public Action MainMenuC(int client, int args)
