@@ -1095,26 +1095,50 @@ stock bool IsInvuln(int client)
 	return !GetEntProp(client, Prop_Data, "m_takedamage");
 }
 
+stock void SortQueuePoints(int[] array, int size)
+{
+	int client = 1;
+	for(int i; i<size; i++)
+	{
+		for(; client<=MaxClients; client++)
+		{
+			if(!IsValidClient(client) || Boss[client].Active || Client[client].Pref[Pref_Boss]>=Pref_Off || GetClientTeam(client)<=view_as<int>(TFTeam_Spectator))
+				continue;
+
+			array[i] = client;
+			break;
+		}
+
+		if(client > MaxClients)
+			array[i] = 0;
+	}
+
+	SortCustom1D(array, size, SortQueuePoints1D);
+}
+
+public int SortQueuePoints1D(int elem1, int elem2, const int[] array, Handle handle)
+{
+	if(!elem1)
+		return elem2 ? 1 : 0;
+
+	if(Client[elem1].Queue > Client[elem2].Queue)
+		return -1;
+
+	return (Client[elem1].Queue==Client[elem2].Queue) ? 0 : 1;
+}
+
 stock int GetNextBossPlayer()
 {
 	int winner;
 	for(int client=1; client<=MaxClients; client++)
 	{
-		if(IsValidClient(client) && !Boss[client].Active && Client[client].Pref[Pref_Boss]<Pref_Off && GetClientTeam(client)>view_as<int>(TFTeam_Spectator) && (!winner || Client[client].Queue>=Client[winner].Queue))
+		if(IsValidClient(client) && !Boss[client].Active && GetClientTeam(client)>view_as<int>(TFTeam_Spectator) && (!winner || Client[client].Queue>=Client[winner].Queue))
 			winner = client;
-	}
-
-	if(!winner)	// Ignore the boss toggle pref if we can't find available clients
-	{
-		for(int client=1; client<=MaxClients; client++)
-		{
-			if(IsValidClient(client) && !Boss[client].Active && GetClientTeam(client)>view_as<int>(TFTeam_Spectator) && (!winner || Client[client].Queue>=Client[winner].Queue))
-				winner = client;
-		}
 	}
 	return winner;
 }
 
+// TODO: Change this so in case where we don't recheck valid clients, boss, etc.
 stock int GetRandBossClient(int boss=-1)
 {
 	int winner;
@@ -1123,12 +1147,20 @@ stock int GetRandBossClient(int boss=-1)
 	{
 		for(int client=1; client<=MaxClients; client++)
 		{
-			if(IsValidClient(client) && !Boss[client].Active && Client[client].Pref[Pref_Boss]<Pref_Off && GetClientTeam(client)>view_as<int>(TFTeam_Spectator) && CheckBossAccess(client, boss, true)>=0)
+			if(IsValidClient(client) && !Boss[client].Active && Client[client].Pref[Pref_Boss]<Pref_Off && Client[client].Pref[Pref_Duo]<Pref_Off && GetClientTeam(client)>view_as<int>(TFTeam_Spectator) && CheckBossAccess(client, boss, true)>=0)
 				winners[winner++] = client;
 		}
 		if(winner)
 			return winners[GetRandomInt(0, winner-1)];
 	}
+
+	for(int client=1; client<=MaxClients; client++)
+	{
+		if(IsValidClient(client) && !Boss[client].Active && Client[client].Pref[Pref_Boss]<Pref_Off && Client[client].Pref[Pref_Duo]<Pref_Off && GetClientTeam(client)>view_as<int>(TFTeam_Spectator))
+			winners[winner++] = client;
+	}
+	if(winner)
+		return winners[GetRandomInt(0, winner-1)];
 
 	for(int client=1; client<=MaxClients; client++)
 	{
@@ -1146,15 +1178,15 @@ stock int GetRandBossClient(int boss=-1)
 	return winner ? winners[GetRandomInt(0, winner-1)] : 0;
 }
 
-stock int GetMatchingBoss(const char[] matching)
+stock int GetMatchingBoss(const char[] matching, bool file=true)
 {
 	int boss = -1;
-	static char buffer[64];
 	for(int i=LastPlayable; i>=FirstPlayable; i--)	// We go backwards so in case of a wildcard, it's the first ones on the list
 	{
 		if(Special[i].Blocked)
 			continue;
 
+		static char buffer[64];
 		Special[i].Cfg.Get("name", buffer, sizeof(buffer));
 		if(StrEqual(buffer, matching, false))
 			return i;
@@ -1164,6 +1196,9 @@ stock int GetMatchingBoss(const char[] matching)
 			boss = i;
 			continue;
 		}
+
+		if(!file)
+			continue;
 
 		if(StrEqual(Special[i].File, matching, false))
 			return i;

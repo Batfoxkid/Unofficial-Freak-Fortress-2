@@ -187,7 +187,7 @@ void Music_Stop(int client)
 	Client[client].BGM[0] = 0;
 }
 
-void Music_Override(int client, const char[] path, float time, char[] name, char[] artist)
+void Music_Override(int client, const char[] path, float time, const char[] name, const char[] artist)
 {
 	if(Client[client].BGM[0])
 		StopSound(client, SNDCHAN_AUTO, Client[client].BGM);
@@ -199,11 +199,24 @@ void Music_Override(int client, const char[] path, float time, char[] name, char
 
 	SetGlobalTransTarget(client);
 
-	if(!name[0])
-		Format(name, 64, "%t", "Music Name");
+	char name2[64], artist2[64];
+	if(name[0])
+	{
+		strcopy(name2, sizeof(name2), name);
+	}
+	else
+	{
+		FormatEx(name2, sizeof(name2), "%t", "Music Name");
+	}
 
-	if(!artist[0])
-		Format(artist, 64, "%t", "Music Artist");
+	if(artist[0])
+	{
+		strcopy(artist2, sizeof(artist2), artist);
+	}
+	else
+	{
+		FormatEx(artist2, sizeof(artist2), "%t", "Music Artist");
+	}
 
 	FPrintToChat(client, "%t", "Music Info", artist, name);
 }

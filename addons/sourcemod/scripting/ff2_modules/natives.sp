@@ -65,7 +65,7 @@ void Native_Setup()
 
 public any Native_IsEnabled(Handle plugin, int numParams)
 {
-	return Enabled>Game_Disabled;
+	return Enabled==Game_Arena;
 }
 
 public any Native_FF2Version(Handle plugin, int numParams)
@@ -135,7 +135,7 @@ public any Native_GetIndex(Handle plugin, int numParams)
 public any Native_GetTeam(Handle plugin, int numParams)
 {
 	int client = GetZeroBoss();
-	return client==-1 ? view_as<int>(TFTeam_Blue) : view_as<int>(Client[client].Team);
+	return client==-1 ? BossTeam : Client[client].Team;
 }
 
 public any Native_GetSpecial(Handle plugin, int numParams)
@@ -167,10 +167,9 @@ public any Native_GetSpecial(Handle plugin, int numParams)
 		index = Boss[index].Special;
 	}
 
-	Special[index].Kv.Rewind();
-	Special[index].Kv.GetString("name", buffer, length);
+	bool result = Special[index].Cfg.Get("name", buffer, length);
 	SetNativeString(2, buffer, length);
-	return true;
+	return result;
 }
 
 public any Native_GetName(Handle plugin, int numParams)
@@ -202,10 +201,13 @@ public any Native_GetName(Handle plugin, int numParams)
 		index = Boss[index].Special;
 	}
 
-	Special[index].Kv.Rewind();
-	KvGetLang(Special[index].Kv, "name", buffer, length, GetNativeCell(5));
+	int client = GetNativeCell(5);
+	if(!IsValidClient(client))
+		client = 0;
+
+	bool result = CfgGetLang(Special[index].Cfg, "name", buffer, length, client);
 	SetNativeString(2, buffer, length);
-	return true;
+	return result;
 }
 
 public any Native_GetBossHealth(Handle plugin, int numParams)
@@ -357,30 +359,54 @@ public any Native_GetRageDist(Handle plugin, int numParams)
 	GetNativeString(3, ability, sizeof(ability));
 	if(ability[0])
 	{
-		char name[64];
-		for(int i=1; i<=MAXRANDOMS; i++)
+		StringMapSnapshot snap = Special[Boss[client].Special].Cfg.Snapshot();
+		if(snap)
 		{
-			FormatEx(name, sizeof(name), "ability%i", i);
-			if(!Special[Boss[client].Special].Kv.JumpToKey(name))
-				continue;
-
-			Special[Boss[client].Special].Kv.GetString("name", name, sizeof(name));
-			if(!StrEqual(ability, name))
+			int entries = snap.Length;
+			if(entries)
 			{
-				Special[Boss[client].Special].Kv.GoBack();
-				continue;
+				for(int i; i<entries; i++)
+				{
+					int length = snap.KeyBufferSize(i)+1;
+					char[] buffer = new char[length];
+					snap.GetKey(i, buffer, length);
+					PackVal val;
+					Special[Boss[client].Special].Cfg.GetArray(buffer, val, sizeof(val));
+					if(val.tag!=KeyValType_Section || SectionType(buffer)!=Section_Ability)
+						continue;
+
+					val.data.Reset();
+					ConfigMap cfg = val.data.ReadCell();
+					if(cfg == null)
+						continue;
+
+					if(StrContains(buffer, "ability"))
+					{
+						if(!StrEqual(ability, buffer))
+							continue;
+					}
+					else
+					{
+						static char buffer2[64];
+						if(!cfg.Get("name", buffer2, sizeof(buffer2)) || !StrEqual(ability, buffer2))
+							continue;
+					}
+
+					float value;
+					if(!cfg.GetFloat("dist", value) || value<0)
+						break;
+
+					delete snap;
+					return value;
+				}
 			}
-
-			float see = Special[Boss[client].Special].Kv.GetFloat("dist", -1.0);
-			if(see < 0)
-				break;
-
-			return see;
+			delete snap;
 		}
 	}
 
-	Special[Boss[client].Special].Kv.Rewind();
-	return Special[Boss[client].Special].Kv.GetFloat("ragedist", 400.0);
+	float value = 400.0;
+	Special[Boss[client].Special].Cfg.GetFloat("ragedist", value);
+	return value;
 }
 
 public any Native_HasAbility(Handle plugin, int numParams)
@@ -393,103 +419,146 @@ public any Native_HasAbility(Handle plugin, int numParams)
 	GetNativeString(2, plugin, sizeof(plugin));
 	GetNativeString(3, ability, sizeof(ability));
 
-	Special[Boss[client].Special].Kv.Rewind();
-	Special[Boss[client].Special].Kv.GotoFirstSubKey();
-	do
+	StringMapSnapshot snap = Special[Boss[client].Special].Cfg.Snapshot();
+	if(!snap)
+		return false;
+
+	int entries = snap.Length;
+	if(entries)
 	{
-		static char name[64];
-		if(KvGetSectionType(Special[Boss[client].Special].Kv, name, sizeof(name)) != Section_Ability)
-			continue;
+		for(int i; i<entries; i++)
+		{
+			int length = snap.KeyBufferSize(i)+1;
+			char[] buffer = new char[length];
+			snap.GetKey(i, buffer, length);
+			PackVal val;
+			Special[Boss[client].Special].Cfg.GetArray(buffer, val, sizeof(val));
+			if(val.tag!=KeyValType_Section || SectionType(buffer)!=Section_Ability)
+				continue;
 
-		if(!StrContains(name, "ability"))
-			Special[Boss[client].Special].Kv.GetString("name", name, sizeof(name));
+			val.data.Reset();
+			ConfigMap cfg = val.data.ReadCell();
+			if(cfg == null)
+				continue;
 
-		if(!StrEqual(ability, name))
-			continue;
+			static char buffer2[64];
+			if(StrContains(buffer, "ability"))
+			{
+				if(!StrEqual(ability, buffer))
+					continue;
+			}
+			else
+			{
+				if(!cfg.Get("name", buffer2, sizeof(buffer2)) || !StrEqual(ability, buffer2))
+					continue;
+			}
 
-		if(!plugin[0])
+			if(plugin[0] && cfg.Get("plugin_name", buffer2, sizeof(buffer2)) && !StrEqual(plugin, buffer2))
+				continue;
+
+			delete snap;
 			return true;
-
-		Special[Boss[client].Special].Kv.GetString("plugin_name", name, sizeof(name));
-		if(!name[0] || StrEqual(plugin, name))
-			return true;
-	} while(Special[Boss[client].Special].Kv.GotoNextKey());
+		}
+	}
+	delete snap;
 	return false;
 }
 
 public any Native_DoAbility(Handle plugin, int numParams)
 {
-	static char plugin_name[64];
-	static char ability_name[64];
-	GetNativeString(2, plugin_name, sizeof(plugin_name));
-	GetNativeString(3, ability_name, sizeof(ability_name));
-	UseAbility(ability_name, plugin_name, GetNativeCell(1), GetNativeCell(4), GetNativeCell(5));
+	int client = BossToClient(GetNativeCell(1));
+	if(!IsValidClient(client))
+		return;
+
+	static char ability[64], plugin[64];
+	GetNativeString(2, plugin, sizeof(plugin));
+	GetNativeString(3, ability, sizeof(ability));
+	Bosses_Ability(client, ability, plugin, GetNativeCell(4), GetNativeCell(5));
 }
 
 public any Native_GetAbilityArgument(Handle plugin, int numParams)
 {
-	static char plugin_name[64];
-	static char ability_name[64];
-	GetNativeString(2, plugin_name, sizeof(plugin_name));
-	GetNativeString(3, ability_name, sizeof(ability_name));
-	return GetAbilityArgument(GetNativeCell(1), plugin_name, ability_name, GetNativeCell(4), GetNativeCell(5));
+	int client = BossToClient(GetNativeCell(1));
+	if(client<0 || client>=MAXTF2PLAYERS)
+		return;
+
+	static char ability[64], plugin[64];
+	GetNativeString(2, plugin, sizeof(plugin));
+	GetNativeString(3, ability, sizeof(ability));
+	return Bosses_ArgI(client, ability, plugin, _, GetNativeCell(4), GetNativeCell(5));
 }
 
 public any Native_GetAbilityArgumentFloat(Handle plugin, int numParams)
 {
-	static char plugin_name[64];
-	static char ability_name[64];
-	GetNativeString(2, plugin_name, sizeof(plugin_name));
-	GetNativeString(3, ability_name, sizeof(ability_name));
-	return GetAbilityArgumentFloat(GetNativeCell(1), plugin_name, ability_name, GetNativeCell(4), GetNativeCell(5));
+	int client = BossToClient(GetNativeCell(1));
+	if(client<0 || client>=MAXTF2PLAYERS)
+		return;
+
+	static char ability[64], plugin[64];
+	GetNativeString(2, plugin, sizeof(plugin));
+	GetNativeString(3, ability, sizeof(ability));
+	return Bosses_ArgF(client, ability, plugin, _, GetNativeCell(4), GetNativeCell(5));
 }
 
 public any Native_GetAbilityArgumentString(Handle plugin, int numParams)
 {
-	static char plugin_name[64];
-	GetNativeString(2, plugin_name, sizeof(plugin_name));
-	static char ability_name[64];
-	GetNativeString(3, ability_name, sizeof(ability_name));
-	int dstrlen = GetNativeCell(6);
-	char[] s = new char[dstrlen+1];
-	GetAbilityArgumentString(GetNativeCell(1), plugin_name, ability_name, GetNativeCell(4), s, dstrlen);
-	SetNativeString(5, s, dstrlen);
+	int client = BossToClient(GetNativeCell(1));
+	if(client<0 || client>=MAXTF2PLAYERS)
+		return;
+
+	static char ability[64], plugin[64];
+	GetNativeString(2, plugin, sizeof(plugin));
+	GetNativeString(3, ability, sizeof(ability));
+
+	int length = GetNativeCell(6);
+	char[] buffer = new char[length+1];
+
+	Bosses_ArgS(client, ability, plugin, _, GetNativeCell(4), buffer, length);
+	SetNativeString(5, buffer, length);
 }
 
 public any Native_GetArgNamedI(Handle plugin, int numParams)
 {
-	static char plugin_name[64];
-	static char ability_name[64];
-	static char argument[64];
-	GetNativeString(2, plugin_name, sizeof(plugin_name));
-	GetNativeString(3, ability_name, sizeof(ability_name));
-	GetNativeString(4, argument, sizeof(argument));
-	return GetArgumentI(GetNativeCell(1), plugin_name, ability_name, argument, GetNativeCell(5));
+	int client = BossToClient(GetNativeCell(1));
+	if(client<0 || client>=MAXTF2PLAYERS)
+		return;
+
+	static char ability[64], plugin[64], arg[64];
+	GetNativeString(2, plugin, sizeof(plugin));
+	GetNativeString(3, ability, sizeof(ability));
+	GetNativeString(4, arg, sizeof(arg));
+	return Bosses_ArgI(client, ability, plugin, arg, _, GetNativeCell(5));
 }
 
 public any Native_GetArgNamedF(Handle plugin, int numParams)
 {
-	static char plugin_name[64];
-	static char ability_name[64];
-	static char argument[64];
-	GetNativeString(2, plugin_name, sizeof(plugin_name));
-	GetNativeString(3, ability_name, sizeof(ability_name));
-	GetNativeString(4, argument, sizeof(argument));
-	return GetArgumentF(GetNativeCell(1), plugin_name, ability_name, argument, GetNativeCell(5));
+	int client = BossToClient(GetNativeCell(1));
+	if(client<0 || client>=MAXTF2PLAYERS)
+		return;
+
+	static char ability[64], plugin[64], arg[64];
+	GetNativeString(2, plugin, sizeof(plugin));
+	GetNativeString(3, ability, sizeof(ability));
+	GetNativeString(4, arg, sizeof(arg));
+	return Bosses_ArgF(client, ability, plugin, arg, _, GetNativeCell(5));
 }
 
 public any Native_GetArgNamedS(Handle plugin, int numParams)
 {
-	static char plugin_name[64];
-	static char ability_name[64];
-	static char argument[64];
-	GetNativeString(2, plugin_name, sizeof(plugin_name));
-	GetNativeString(3, ability_name, sizeof(ability_name));
-	GetNativeString(4, argument, sizeof(argument));
-	int dstrlen = GetNativeCell(6);
-	char[] s = new char[dstrlen+1];
-	GetArgumentS(GetNativeCell(1), plugin_name, ability_name, argument, s, dstrlen);
-	SetNativeString(5, s, dstrlen);
+	int client = BossToClient(GetNativeCell(1));
+	if(client<0 || client>=MAXTF2PLAYERS)
+		return;
+
+	static char ability[64], plugin[64], arg[64];
+	GetNativeString(2, plugin, sizeof(plugin));
+	GetNativeString(3, ability, sizeof(ability));
+	GetNativeString(4, arg, sizeof(arg));
+
+	int length = GetNativeCell(6);
+	char[] buffer = new char[length+1];
+
+	Bosses_ArgS(client, ability, plugin, arg, _, buffer, length);
+	SetNativeString(5, buffer, length);
 }
 
 public any Native_GetDamage(Handle plugin, int numParams)
@@ -621,7 +690,7 @@ public any Native_GetSpecialKV(Handle plugin, int numParams)
 		if(!index)
 		{
 			index = GetZeroBoss();
-			if(index < 1)
+			if(index == -1)
 				return INVALID_HANDLE;
 		}
 		else if(index>=MAXTF2PLAYERS || !Boss[index].Active)
@@ -632,12 +701,31 @@ public any Native_GetSpecialKV(Handle plugin, int numParams)
 		index = Boss[index].Special;
 	}
 
-	return view_as<Handle>(Special[index].Kv);
+	static Handle kv;
+	if(kv != INVALID_HANDLE)
+		delete kv;
+
+	kv = CreateKeyValues("character");
+	char config[PLATFORM_MAX_PATH];
+	FormatEx(config, sizeof(config), "%s/%s.cfg", CONFIG_PATH, Special[index].File);
+	FileToKeyValues(kv, config);
+	return kv;
 }
 
 public any Native_StartMusic(Handle plugin, int numParams)
 {
 	int client = GetNativeCell(1);
+	if(!client)
+	{
+		float engineTime = GetEngineTime();
+		for(int client=1; client<=MaxClients; client++)
+		{
+			if(IsValidClient(client))
+				Music_Play(client, engineTime, -1);
+		}
+		return;
+	}
+
 	if(IsValidClient(client))
 		Music_Play(client, GetEngineTime(), -1);
 }
@@ -645,6 +733,16 @@ public any Native_StartMusic(Handle plugin, int numParams)
 public any Native_StopMusic(Handle plugin, int numParams)
 {
 	int client = GetNativeCell(1);
+	if(!client)
+	{
+		for(int client=1; client<=MaxClients; client++)
+		{
+			if(IsValidClient(client))
+				Music_Stop(client);
+		}
+		return;
+	}
+
 	if(IsValidClient(client))
 		Music_Stop(client);
 }
@@ -664,33 +762,47 @@ public any Native_RandomSound(Handle plugin, int numParams)
 	char[] keyvalue = new char[++kvLength];
 	GetNativeString(1, keyvalue, kvLength);
 
+	static char name[64], artist[64];
+	int type;
+	float duration;
 	bool soundExists;
 	if(!StrContains(keyvalue, "sound_ability", false))
 	{
-		int slot = GetNativeCell(5);
-		soundExists = RandomSoundAbility(keyvalue, sound, length, boss, slot);
+		char slot[4];
+		IntToString(GetNativeCell(5), slot, sizeof(slot));
+		soundExists = GetBossSound(client, keyvalue, type, sound, length, slot, name, sizeof(name), artist, sizeof(artist), duration);
 	}
 	else
 	{
-		soundExists = RandomSound(keyvalue, sound, length, boss);
+		soundExists = GetBossSound(client, keyvalue, type, sound, length, _, , name, sizeof(name), artist, sizeof(artist), duration);
 	}
 	SetNativeString(2, sound, length);
-	return soundExists;
+
+	if(type != 3)
+		return soundExists;
+
+	#if defined FF2_MUSIC
+	for(client=1; client<=MaxClients; client++)
+	{
+		if(IsValidClient(client))
+			Music_Override(client, sound, duration, name, artist);
+	}
+	#endif
+	return false;
 }
 
 public any Native_EmitVoiceToAll(Handle plugin, int numParams)
 {
 	int kvLength;
 	GetNativeStringLength(1, kvLength);
-	kvLength++;
-	char[] keyvalue = new char[kvLength];
+	char[] keyvalue = new char[++kvLength];
 	GetNativeString(1, keyvalue, kvLength);
 
-	float origin[3], dir[3];
-	GetNativeArray(9, origin, 3);
-	GetNativeArray(10, dir, 3);
+	static float origin[3], dir[3];
+	GetNativeArray(9, origin, sizeof(origin));
+	GetNativeArray(10, dir, sizeof(dir));
 
-	EmitSoundToAllExcept(keyvalue, GetNativeCell(2), GetNativeCell(3), GetNativeCell(4), GetNativeCell(5), GetNativeCell(6), GetNativeCell(7), GetNativeCell(8), origin, dir, GetNativeCell(11), GetNativeCell(12));
+	EmitVoiceToAll(keyvalue, GetNativeCell(2), GetNativeCell(3), GetNativeCell(4), GetNativeCell(5), GetNativeCell(6), GetNativeCell(7), GetNativeCell(8), origin, dir, GetNativeCell(11), GetNativeCell(12));
 }
 
 public any Native_GetClientGlow(Handle plugin, int numParams)
@@ -786,14 +898,14 @@ public any Native_Debug(Handle plugin, int numParams)
 public any Native_SetCheats(Handle plugin, int numParams)
 {
 	#if defined FF2_STATTRAK
-	StatEnabled = GetNativeCell(1);
+	StatEnabled = !GetNativeCell(1);
 	#endif
 }
 
 public any Native_GetCheats(Handle plugin, int numParams)
 {
 	#if defined FF2_STATTRAK
-	return StatEnabled;
+	return !StatEnabled;
 	#else
 	return false;
 	#endif
@@ -801,56 +913,49 @@ public any Native_GetCheats(Handle plugin, int numParams)
 
 public any Native_MakeBoss(Handle plugin, int numParams)
 {
-	/*int client = GetNativeCell(1);
+	int client = GetNativeCell(1);
 	if(!IsValidClient(client))
 		return;
 
-	int boss = GetNativeCell(2);
-	if(boss == -1)
-	{
-		boss = GetBossIndex(client);
-		if(boss < 0)
-			return;
+	Client[client].RefreshAt = GetGameTime()+0.1;
 
-		Boss[boss] = 0;
-		BossSwitched[boss] = false;
-		CreateTimer(0.1, Timer_MakeNotBoss, GetClientUserId(client), TIMER_FLAG_NO_MAPCHANGE);
+	if(GetNativeCell(2) < 0)
+	{
+		Boss[client].Active = false;
 		return;
 	}
 
 	int special = GetNativeCell(3);
-	if(special >= 0)
-		Incoming[boss] = special;
+	if(special < 0)
+	{
+		special = Bosses_GetSpecial(client, Client[client].Selection, 2);
+	}
+	else
+	{
+		special = Bosses_GetSpecial(client, special, 1);
+	}
 
-	Boss[boss] = client;
-	HasEquipped[boss] = false;
-	BossSwitched[boss] = GetNativeCell(4);
-	PickCharacter(boss, boss);
-	CreateTimer(0.1, Timer_MakeBoss, boss, TIMER_FLAG_NO_MAPCHANGE);*/
+	if(special == -1)
+		return;
+
+	Boss[client].Special = special;
+	Boss[client].Active = true;
 }
 
 public any Native_ChooseBoss(Handle plugin, int numParams)
 {
 	int client = GetNativeCell(1);
-	if(client<0 || client>=MAXTF2PLAYERS)
+	if(!IsValidClient(client))
 		return false;
 
 	static char buffer[64];
 	GetNativeString(2, buffer, sizeof(buffer));
-
-	for(int i; i<Specials; i++)
+	if(buffer[0])
 	{
-		if(Special[i].Charset != Charset)
-			continue;
-
-		static char buffer2[64];
-		Special[i].Kv.GetString(buffer2, sizeof(buffer2));
-		if(!StrEqual(buffer, buffer2))
-			continue;
-
-		Client[client].Selection = i;
-		return KvGetBossAccess(Special[i].Kv, client)>=0;
+		Client[client].Selection = GetMatchingBoss(buffer);
+		return (Client[client].Selection!=-1 && CfgGetBossAccess(Special[i].Cfg, client)>=0);
 	}
+
 	Client[client].Selection = -1;
 	return false;
 }
@@ -860,8 +965,8 @@ static int BossToClient(int boss)
 	if(!boss)
 		return GetZeroBoss();
 
-	if(boss>0 && boss<MAXTF2PLAYERS)
-		return boss;
+	if(boss<0 || boss>=MAXTF2PLAYERS)
+		return -1;
 
-	return -1;
+	return Boss[boss].Active ? boss : -1;
 }

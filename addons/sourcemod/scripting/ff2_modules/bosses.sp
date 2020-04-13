@@ -531,7 +531,7 @@ static void DownloadSection(ConfigMap cfg, SectionType type, const char[] charac
 	delete snap;
 }
 
-void Bosses_Create(int client)
+void Bosses_Create(int client, TFTeam team)
 {
 	Bosses_Prepare(Boss[client].Special);
 
@@ -608,46 +608,26 @@ void Bosses_Create(int client)
 	Boss[client].MaxSpeed = Special[Boss[client].Special].Cfg.GetFloat("maxspeed", f) ? f : 340.0;
 
 	Boss[client].Class = CfgGetClass(Special[Boss[client].Special].Cfg, "class");
-	Client[client].Team = Special[Boss[client].Special].Cfg.GetInt("bossteam", i) ? view_as<TFTeam>(i) : TFTeam_Unassigned;
-	if(Client[client].Team == TFTeam_Unassigned)
-	{
-		if(!Special[Boss[client].Special].Cfg.GetInt("team", i) || i<0)
-		{
-			if(CvarTeam.IntValue == 4)
-			{
-				Client[client].Team = GetRandomInt(0, 1) ? TFTeam_Red : TFTeam_Blue;
-			}
-			else
-			{
-				Client[client].Team = view_as<TFTeam>(CvarTeam.IntValue);
-			}
-		}
-		else if(i > 3)
-		{
-			Client[client].Team = GetRandomInt(0, 1) ? TFTeam_Red : TFTeam_Blue;
-		}
-		else
-		{
-			Client[client].Team = view_as<TFTeam>(i);
-		}
-	}
-	else if(Client[client].Team == TFTeam_Spectator)
-	{
-		Client[client].Team = GetRandomInt(0, 1) ? TFTeam_Red : TFTeam_Blue;
-	}
-
-	BossTeam = Client[client].Team;
 
 	SetEntProp(client, Prop_Send, "m_bGlowEnabled", 0);
 	TF2_RemovePlayerDisguise(client);
 	TF2_SetPlayerClass(client, Boss[client].Class, _, !GetEntProp(client, Prop_Send, "m_iDesiredPlayerClass") ? true : false);
 
-	int i = Special[Boss[client].Special].Kv.GetNum("sapper", CvarSapper.IntValue);
+	if(!Special[Boss[client].Special].Cfg.GetInt("sapper", i))
+		i = CvarSapper.IntValue;
+
 	Boss[client].Sapper = (i==1 || i>2);
 
-	i = Special[Boss[client].Special].Kv.GetNum("pickups");
-	Boss[client].HealthKits = (i==1 || i>2);
-	Boss[client].AmmoKits = i>1;
+	if(Special[Boss[client].Special].Cfg.GetInt("pickups", i))
+	{
+		Boss[client].HealthKits = (i==1 || i>2);
+		Boss[client].AmmoKits = i>1;
+	}
+	else
+	{
+		Boss[client].HealthKits = false;
+		Boss[client].AmmoKits = false;
+	}
 
 	Boss[client].Killstreak = 0;
 	Boss[client].RPSHealth = 0;
@@ -655,10 +635,10 @@ void Bosses_Create(int client)
 	Boss[client].Charge[0] = 0.0;
 	Boss[client].Hazard = 0.0;
 
-	RequestFrame(Bosses_Model, client);
+	RequestFrame(Bosses_Model, GetClientUserId(client));
 
-	Boss[client].Cosmetics = view_as<bool>(Special[Boss[client].Special].Kv.GetNum("cosmetics"));
-	i = -1;
+	Boss[client].Cosmetics = (Special[Boss[client].Special].Cfg.GetInt("cosmetics", i) && i);
+	i = MaxClients+1;
 	while((i=FindEntityByClassname2(i, "tf_wear*")) != -1)
 	{
 		if(GetEntPropEnt(i, Prop_Send, "m_hOwnerEntity") != client)
@@ -682,7 +662,7 @@ void Bosses_Create(int client)
 		}
 	}
 
-	i = -1;
+	i = MaxClients+1;
 	while((i=FindEntityByClassname2(i, "tf_powerup_bottle")) != -1)
 	{
 		if(GetEntPropEnt(i, Prop_Send, "m_hOwnerEntity") == client)
@@ -691,17 +671,53 @@ void Bosses_Create(int client)
 
 	Bosses_Equip(client);
 
-	bool var;
+	bool nonLeader;
 	for(int target=1; target<=MaxClients; target++)
 	{
 		if(!Boss[target].Active || !Boss[target].Leader)
 			continue;
 
-		var = true;
+		nonLeader = true;
 		break;
 	}
 
-	Boss[client].Leader = !var;
+	Client[client].Team = Special[Boss[client].Special].Cfg.GetInt("bossteam", i) ? view_as<TFTeam>(i) : TFTeam_Unassigned;
+	if(Client[client].Team == TFTeam_Unassigned)
+	{
+		if(!Special[Boss[client].Special].Cfg.GetInt("team", i) || i<0)
+		{
+			if(team == 4)
+			{
+				Client[client].Team = GetRandomInt(0, 1) ? TFTeam_Red : TFTeam_Blue;
+			}
+			else
+			{
+				Client[client].Team = view_as<TFTeam>(team);
+			}
+		}
+		else if(i > 3)
+		{
+			Client[client].Team = GetRandomInt(0, 1) ? TFTeam_Red : TFTeam_Blue;
+		}
+		else
+		{
+			Client[client].Team = view_as<TFTeam>(i);
+		}
+	}
+	else if(Client[client].Team == TFTeam_Spectator)
+	{
+		Client[client].Team = GetRandomInt(0, 1) ? TFTeam_Red : TFTeam_Blue;
+	}
+
+	if(nonLeader)
+	{
+		Boss[client].Leader = false;
+	}
+	else
+	{
+		BossTeam = Client[client].Team;
+		Boss[client].Leader = true;
+	}
 }
 
 void Bosses_Prepare(int boss)
@@ -796,145 +812,185 @@ void Bosses_Prepare(int boss)
 void Bosses_Equip(int client)
 {
 	TF2_RemoveAllWeapons(client);
-	Special[Boss[client].Special].Kv.Rewind();
-	Special[Boss[client].Special].Kv.GotoFirstSubKey();
-	char attributes[PLATFORM_MAX_PATH];
-	do
+	StringMapSnapshot snap = Special[Boss[client].Special].Cfg.Snapshot();
+	if(!snap)
+		return;
+
+	int entries = snap.Length;
+	if(entries)
 	{
-		static char classname[MAX_CLASSNAME_LENGTH];
-		if(!Special[Boss[client].Special].Kv.GetSectionName(classname, sizeof(classname))
-			continue;
-
-		bool wearable;
-		if(StrContains(classname, "tf_") && !StrEqual(classname, "saxxy"))
+		bool first;
+		char attributes[PLATFORM_MAX_PATH];
+		for(int i; i<entries; i++)
 		{
-			if(StrContains(classname, "weapon"))
-			{
-				if(StrContains(classname, "wearable"))
-					continue;
-
-				wearable = true;
-			}
-
-			Special[Boss[client].Special].Kv.GetString("name", classname, sizeof(classname), wearable ? "tf_wearable" : "saxxy");
-		}
-
-		MultiClassname(TF2_GetPlayerClass(client), classname, sizeof(classname));
-		wearable = view_as<bool>(StrContains(classname, "tf_weap"));
-
-		if(wearable && SDKEquipWearable==null)
-			continue;
-
-		int index = Special[Boss[client].Special].Kv.GetNum("index");
-		int level = Special[Boss[client].Special].Kv.GetNum("level", -1);
-		bool override = view_as<bool>(Special[Boss[client].Special].Kv.GetNum("override"));
-		int rank = Special[Boss[client].Special].Kv.GetNum("rank", (level==-1 || override) ? -1 : 21);
-		int kills = rank>=0 ? GetRankingKills(rank, index, wearable) : -1;
-
-		if(level < 0)
-			level = 101;
-
-		Special[Boss[client].Special].Kv.GetString("attributes", attributes, sizeof(attributes));
-		if(kills >= 0)
-		{
-			if(attributes[0])
-			{
-				if(override)
-				{
-					Format(attributes, sizeof(attributes), "214 ; %f ; %s", view_as<float>(kills), attributes);
-				}
-				else
-				{
-					Format(attributes, sizeof(attributes), "%s ; 214 ; %f ; %s", DEFAULT_ATTRIBUTES, TF2_GetPlayerClass(client)==TFClass_Scout ? 1 : 2, view_as<float>(kills), attributes);
-				}
-			}
-			else
-			{
-				if(override)
-				{
-					FormatEx(attributes, sizeof(attributes), "214 ; %f", view_as<float>(kills));
-				}
-				else
-				{
-					FormatEx(attributes, sizeof(attributes), "%s ; 214 ; %f", DEFAULT_ATTRIBUTES, TF2_GetPlayerClass(client)==TFClass_Scout ? 1 : 2, view_as<float>(kills));
-				}
-			}
-		}
-		else if(!override)
-		{
-			if(attributes[0])
-			{
-				Format(attributes, sizeof(attributes), "%s ; %s", DEFAULT_ATTRIBUTES, TF2_GetPlayerClass(client)==TFClass_Scout ? 1 : 2, attributes);
-			}
-			else
-			{
-				FormatEx(attributes, sizeof(attributes), DEFAULT_ATTRIBUTES, TF2_GetPlayerClass(client)==TFClass_Scout ? 1 : 2);
-			}
-		}
-
-		#if defined FF2_TF2ITEMS
-		index = (TF2Items && !wearable) ? TF2Items_SpawnWeapon(client, classname, index, level, Special[Boss[client].Special].Kv.GetNum("quality", 5), attributes) : SDK_SpawnWeapon(client, classname, index, level, Special[Boss[client].Special].Kv.GetNum("quality", 5), attributes);
-		#else
-		index = SDK_SpawnWeapon(client, classname, index, level, Special[Boss[client].Special].Kv.GetNum("quality", 5), attributes);
-		#endif
-		if(index == -1)
-			continue;
-
-		if(!wearable)
-		{
-			FF2_SetAmmo(client, index, Special[Boss[client].Special].Kv.GetNum("ammo", -1), Special[Boss[client].Special].Kv.GetNum("clip", -1));
-			if(index!=735 && StrEqual(classname, "tf_weapon_builder", false))
-			{
-				SetEntProp(index, Prop_Send, "m_aBuildableObjectTypes", 1, _, 0);
-				SetEntProp(index, Prop_Send, "m_aBuildableObjectTypes", 1, _, 1);
-				SetEntProp(index, Prop_Send, "m_aBuildableObjectTypes", 1, _, 2);
-				SetEntProp(index, Prop_Send, "m_aBuildableObjectTypes", 0, _, 3);
-			}
-			else if(index==735 || StrEqual(classname, "tf_weapon_sapper", false))
-			{
-				SetEntProp(index, Prop_Send, "m_iObjectType", 3);
-				SetEntProp(index, Prop_Data, "m_iSubType", 3);
-				SetEntProp(index, Prop_Send, "m_aBuildableObjectTypes", 0, _, 0);
-				SetEntProp(index, Prop_Send, "m_aBuildableObjectTypes", 0, _, 1);
-				SetEntProp(index, Prop_Send, "m_aBuildableObjectTypes", 0, _, 2);
-				SetEntProp(index, Prop_Send, "m_aBuildableObjectTypes", 1, _, 3);
-			}
-		}
-
-		if(Special[Boss[client].Special].Kv.GetNum("show", wearable ? 1 : 0))
-		{
-			Special[Boss[client].Special].Kv.GetString("worldmodel", attributes, sizeof(attributes));
-			if(attributes[0])
-				ConfigureWorldModelOverride(index, attributes, wearable);
-
-			SetEntProp(index, Prop_Send, "m_bValidatedAttachedEntity", 1);
-		}
-		else
-		{
-			SetEntProp(index, Prop_Send, "m_bValidatedAttachedEntity", 0);
-			SetEntProp(index, Prop_Send, "m_iWorldModelIndex", -1);
-			SetEntPropFloat(index, Prop_Send, "m_flModelScale", 0.001);
-			SetEntProp(index, Prop_Send, "m_nModelIndexOverrides", -1, _, 0);
-		}
-
-		static int rgba[4];
-		rgba[0] = Special[Boss[client].Special].Kv.GetNum("alpha", 255);
-		rgba[1] = Special[Boss[client].Special].Kv.GetNum("red", 255);
-		rgba[2] = Special[Boss[client].Special].Kv.GetNum("green", 255);
-		rgba[3] = Special[Boss[client].Special].Kv.GetNum("blue", 255);
-
-		for(level=0; level<4; level++)
-		{
-			if(rgba[level] == 255)
+			int length = snap.KeyBufferSize(i)+1;
+			char[] buffer = new char[length];
+			snap.GetKey(i, buffer, length);
+			PackVal val;
+			Special[Boss[client].Special].Cfg.GetArray(buffer, val, sizeof(val));
+			if(val.tag!=KeyValType_Section || SectionType(buffer)!=Section_Weapon)
 				continue;
 
-			SetEntityRenderMode(index, RENDER_TRANSCOLOR);
-			SetEntityRenderColor(index, rgba[1], rgba[2], rgba[3], rgba[0]);
-			break;
-		}
+			val.data.Reset();
+			ConfigMap cfg = val.data.ReadCell();
+			if(cfg == null)
+				continue;
 
-		SetEntPropEnt(client, Prop_Send, "m_hActiveWeapon", index);
-	} while(Special[Boss[client].Special].Kv.GotoNextKey());
+			bool wearable;
+			static char classname[MAX_CLASSNAME_LENGTH];
+			if(StrContains(buffer, "tf_") && !StrEqual(buffer, "saxxy"))
+			{
+				if(StrContains(buffer, "weapon"))
+				{
+					if(StrContains(buffer, "wearable"))
+						continue;
+
+					wearable = true;
+				}
+
+				if(!cfg.Get("name", classname, sizeof(classname));
+					strcopy(classname, sizeof(classname), wearable ? "tf_wearable" : "saxxy");
+			}
+			else
+			{
+				strcopy(classname, sizeof(classname), buffer);
+			}
+
+			MultiClassname(TF2_GetPlayerClass(client), classname, sizeof(classname));
+			wearable = view_as<bool>(StrContains(classname, "tf_weap"));
+
+			if(wearable && SDKEquipWearable==null)
+				continue;
+
+			int index;
+			cfg.GetInt("index", index);
+
+			int level = -1;
+			cfg.GetInt("level", level);
+
+			int quality = 5;
+			cfg.GetInt("quality", quality);
+
+			bool override = (cfg.GetInt("override", length) && length);
+
+			int rank = (level==-1 || override) ? -1 : 21;
+			cfg.GetInt("rank", rank);
+
+			int kills = rank>=0 ? GetRankingKills(rank, index, wearable) : -1;
+
+			if(level < 0)
+				level = 101;
+
+			if(kills >= 0)
+			{
+				if(cfg.Get("attributes", attributes, sizeof(attributes)))
+				{
+					if(override)
+					{
+						Format(attributes, sizeof(attributes), "214 ; %f ; %s", view_as<float>(kills), attributes);
+					}
+					else
+					{
+						Format(attributes, sizeof(attributes), "%s ; 214 ; %f ; %s", DEFAULT_ATTRIBUTES, TF2_GetPlayerClass(client)==TFClass_Scout ? 1 : 2, view_as<float>(kills), attributes);
+					}
+				}
+				else
+				{
+					if(override)
+					{
+						FormatEx(attributes, sizeof(attributes), "214 ; %f", view_as<float>(kills));
+					}
+					else
+					{
+						FormatEx(attributes, sizeof(attributes), "%s ; 214 ; %f", DEFAULT_ATTRIBUTES, TF2_GetPlayerClass(client)==TFClass_Scout ? 1 : 2, view_as<float>(kills));
+					}
+				}
+			}
+			else if(!override)
+			{
+				if(cfg.Get("attributes", attributes, sizeof(attributes)))
+				{
+					Format(attributes, sizeof(attributes), "%s ; %s", DEFAULT_ATTRIBUTES, TF2_GetPlayerClass(client)==TFClass_Scout ? 1 : 2, attributes);
+				}
+				else
+				{
+					FormatEx(attributes, sizeof(attributes), DEFAULT_ATTRIBUTES, TF2_GetPlayerClass(client)==TFClass_Scout ? 1 : 2);
+				}
+			}
+			else if(!cfg.Get("attributes", attributes, sizeof(attributes)))
+			{
+				attributes[0] = 0;
+			}
+
+			#if defined FF2_TF2ITEMS
+			index = (TF2Items && !wearable) ? TF2Items_SpawnWeapon(client, classname, index, level, quality, attributes) : SDK_SpawnWeapon(client, classname, index, level, quality, attributes);
+			#else
+			index = SDK_SpawnWeapon(client, classname, index, level, quality, attributes);
+			#endif
+			if(index == -1)
+				continue;
+
+			if(!wearable)
+			{
+				level = -1;
+				kills = -1;
+				if(cfg.GetInt("ammo", level) || cfg.GetInt("clip", kills))
+					FF2_SetAmmo(client, index, level, kills);
+	
+				if(index!=735 && StrEqual(classname, "tf_weapon_builder", false))
+				{
+					SetEntProp(index, Prop_Send, "m_aBuildableObjectTypes", 1, _, 0);
+					SetEntProp(index, Prop_Send, "m_aBuildableObjectTypes", 1, _, 1);
+					SetEntProp(index, Prop_Send, "m_aBuildableObjectTypes", 1, _, 2);
+					SetEntProp(index, Prop_Send, "m_aBuildableObjectTypes", 0, _, 3);
+				}
+				else if(index==735 || StrEqual(classname, "tf_weapon_sapper", false))
+				{
+					SetEntProp(index, Prop_Send, "m_iObjectType", 3);
+					SetEntProp(index, Prop_Data, "m_iSubType", 3);
+					SetEntProp(index, Prop_Send, "m_aBuildableObjectTypes", 0, _, 0);
+					SetEntProp(index, Prop_Send, "m_aBuildableObjectTypes", 0, _, 1);
+					SetEntProp(index, Prop_Send, "m_aBuildableObjectTypes", 0, _, 2);
+					SetEntProp(index, Prop_Send, "m_aBuildableObjectTypes", 1, _, 3);
+				}
+			}
+
+			level = wearable ? 1 : 0;
+			Special[Boss[client].Special].Cfg.GetInt("show", level);
+			if(level)
+			{
+				if(Special[Boss[client].Special].Cfg.Get("worldmodel", attributes, sizeof(attributes)))
+					ConfigureWorldModelOverride(index, attributes, wearable);
+
+				SetEntProp(index, Prop_Send, "m_bValidatedAttachedEntity", 1);
+			}
+			else
+			{
+				SetEntProp(index, Prop_Send, "m_bValidatedAttachedEntity", 0);
+				SetEntPropFloat(index, Prop_Send, "m_flModelScale", 0.001);
+				//SetEntProp(index, Prop_Send, "m_iWorldModelIndex", -1);
+				//SetEntProp(index, Prop_Send, "m_nModelIndexOverrides", -1, _, 0);
+			}
+
+			int rgba[4] = {255, 255, 255, 255};
+			override = Special[Boss[client].Special].Cfg.GetInt("alpha", rgba[0]);
+			override = (Special[Boss[client].Special].Cfg.GetInt("red", rgba[1]) || override);
+			override = (Special[Boss[client].Special].Cfg.GetInt("green", rgba[2]) || override);
+			override = (Special[Boss[client].Special].Cfg.GetInt("blue", rgba[3]) || override);
+			if(override)
+			{
+				SetEntityRenderMode(index, RENDER_TRANSCOLOR);
+				SetEntityRenderColor(index, rgba[1], rgba[2], rgba[3], rgba[0]);
+			}
+
+			if(wearable || first)
+				continue;
+
+			first = true;
+			SetEntPropEnt(client, Prop_Send, "m_hActiveWeapon", index);
+		}
+	}
+	delete snap;
 }
 
 public void Bosses_Model(int userid)
@@ -943,10 +999,11 @@ public void Bosses_Model(int userid)
 	if(!client || !Boss[client].Active)
 		return;
 
-	Special[Boss[client].Special].Kv.Rewind();
 	static char buffer[PLATFORM_MAX_PATH];
-	Special[Boss[client].Special].Kv.GetString("model", buffer, sizeof(buffer));
-	SetVariantString(model);
+	if(!Special[Boss[client].Special].Cfg.Get("model", buffer, sizeof(buffer)))
+		return;
+
+	SetVariantString(buffer);
 	AcceptEntityInput(client, "SetCustomModel");
 	SetEntProp(client, Prop_Send, "m_bUseClassAnimations", 1);
 }
@@ -961,6 +1018,7 @@ public Action Bosses_Rage(int client, const char[] command, int args)
 	if(!StrEqual(arg, "0 0"))
 		return Plugin_Continue;
 
+	Bosses_AbilitySlot(client, 0);
 	if(Boss[client].RageMode == RageMode_Full)
 	{
 		Boss[client].Charge[0] = 0.0;
@@ -970,9 +1028,10 @@ public Action Bosses_Rage(int client, const char[] command, int args)
 		Boss[client].Charge[0] -= Boss[client].RageMin;
 	}
 
-	Bosses_AbilitySlot(client, 0);
 	if(!Bosses_PlaySound(client, "sound_ability_serverwide", 1, "0"))
 		Bosses_PlaySound(client, "sound_ability", 0, "0");
+
+	return Plugin_Handled;
 }
 
 public Action Bosses_KermitSewerSlide(int client, const char[] command, int args)
@@ -1013,44 +1072,71 @@ public Action Bosses_JoinClass(int client, const char[] command, int args)
 
 void Bosses_AbilitySlot(int client, int slot)
 {
-	Special[Boss[client].Special].Kv.Rewind();
-	Special[Boss[client].Special].Kv.GotoFirstSubKey();
-	do
+	StringMapSnapshot snap = Special[Boss[client].Special].Cfg.Snapshot();
+	if(!snap)
+		return;
+
+	int entries = snap.Length;
+	if(entries)
 	{
-		static char ability[64];
-		if(KvGetSectionType(Special[Boss[client].Special].Kv, ability, sizeof(ability) != Section_Ability))
-			continue;
-
-		if(Special[Boss[client].Special].Kv.GetNum("slot", -2)!=slot || Special[Boss[client].Special].Kv.GetNum("arg0", -2)!=slot)
-			continue;
-
-		static char plugin[64];
-		Special[Boss[client].Special].Kv.GetString("life", plugin, sizeof(plugin));
-		if(plugin[0])
+		for(int i; i<entries; i++)
 		{
-			bool found;
-			static char lives[8][4];
-			int count = ExplodeString(plugin, " ", lives, sizeof(lives), sizeof(lives[]));
-			for(int i; i<count; i++)
-			{
-				if(StringToInt(lives[i]) != Boss[client].Lives)
-					continue;
+			int length = snap.KeyBufferSize(i)+1;
+			char[] buffer = new char[length];
+			snap.GetKey(i, buffer, length);
+			PackVal val;
+			Special[Boss[client].Special].Cfg.GetArray(buffer, val, sizeof(val));
+			if(val.tag!=KeyValType_Section || SectionType(buffer)!=Section_Ability)
+				continue;
 
-				found = true;
-				break;
+			val.data.Reset();
+			ConfigMap cfg = val.data.ReadCell();
+			if(cfg == null)
+				continue;
+
+			int count;
+			if(!cfg.GetInt("slot", count))
+				cfg.GetInt("arg0", count);
+
+			if(count != slot)
+				continue;
+
+			static char ability[64];
+			if(StrContains(buffer, "ability"))
+			{
+				strcopy(ability, sizeof(ability), buffer);
+			}
+			else if(!cfg.Get("name", ability, sizeof(ability)))
+			{
+				continue;
 			}
 
-			if(!found)
-				continue;
+			static char plugin[64];
+			if(cfg.Get("life", plugin, sizeof(plugin)))
+			{
+				bool found;
+				static char lives[8][4];
+				count = ExplodeString(plugin, " ", lives, sizeof(lives), sizeof(lives[]));
+				for(length=0; length<count; length++)
+				{
+					if(StringToInt(lives[length]) != Boss[client].Lives)
+						continue;
+
+					found = true;
+					break;
+				}
+
+				if(!found)
+					continue;
+			}
+
+			if(!cfg.Get("plugin_name", plugin, sizeof(plugin)))
+				plugin[0] = 0;
+
+			Bosses_Ability(client, ability, plugin, slot, cfg.GetInt("buttonmode", count) ? count : 0);
 		}
-
-		Special[Boss[client].Special].Kv.GetString("plugin_name", plugin, sizeof(plugin));
-
-		if(!StrContains(ability, "ability"))
-			Special[Boss[client].Special].Kv.GetString("name", ability, sizeof(ability));
-
-		Bosses_Ability(client, ability, plugin, slot, Special[Boss[client].Special].Kv.GetNum("buttonmode"));
-	} while(Special[Boss[client].Special].Kv.GotoNextKey());
+	}
+	delete snap;
 }
 
 void Bosses_Ability(int client, const char[] ability, const char[] plugin, int slot, int buttonMode)
@@ -1223,7 +1309,7 @@ int Bosses_ArgI(int client, const char[] ability, const char[] plugin, const cha
 			continue;
 		}
 
-		if(plugin[0] && cfg.Get("plugin_name", buffer2, sizeof(buffer2)) && buffer2[0] && !StrEqual(plugin, buffer2, false))
+		if(plugin[0] && cfg.Get("plugin_name", buffer2, sizeof(buffer2)) && !StrEqual(plugin, buffer2, false))
 			continue;
 
 		delete snap;
@@ -1283,7 +1369,7 @@ float Bosses_ArgF(int client, const char[] ability, const char[] plugin, const c
 			continue;
 		}
 
-		if(plugin[0] && cfg.Get("plugin_name", buffer2, sizeof(buffer2)) && buffer2[0] && !StrEqual(plugin, buffer2, false))
+		if(plugin[0] && cfg.Get("plugin_name", buffer2, sizeof(buffer2)) && !StrEqual(plugin, buffer2, false))
 			continue;
 
 		delete snap;
@@ -1343,7 +1429,7 @@ bool Bosses_ArgS(int client, const char[] ability, const char[] plugin, const ch
 			continue;
 		}
 
-		if(plugin[0] && cfg.Get("plugin_name", buffer3, sizeof(buffer3)) && buffer3[0] && !StrEqual(plugin, buffer3, false))
+		if(plugin[0] && cfg.Get("plugin_name", buffer3, sizeof(buffer3)) && !StrEqual(plugin, buffer3, false))
 			continue;
 
 		delete snap;
@@ -1354,7 +1440,7 @@ bool Bosses_ArgS(int client, const char[] ability, const char[] plugin, const ch
 			return false;
 
 		FormatEx(buffer3, sizeof(buffer3), "arg%d", index);
-		return cfg.Get(buffer3, buffer, length);
+		return view_as<bool>(cfg.Get(buffer3, buffer, length));
 	}
 
 	delete snap;
@@ -1430,7 +1516,7 @@ ConfigMap Bosses_ArgC(int client, const char[] ability, const char[] plugin)
 			continue;
 		}
 
-		if(plugin[0] && cfg.Get("plugin_name", buffer2, sizeof(buffer2)) && buffer2[0] && !StrEqual(plugin, buffer2, false))
+		if(plugin[0] && cfg.Get("plugin_name", buffer2, sizeof(buffer2)) && !StrEqual(plugin, buffer2, false))
 			continue;
 
 		delete snap;
@@ -1498,6 +1584,33 @@ int Bosses_GetSpecial(int client, int selection, int type)
 	boss = list.Get(GetRandomInt(0, boss-1));
 	delete list;
 	return boss;
+}
+
+void Bosses_CheckCompanion(int boss, TFTeam team)
+{
+	static char buffer[64];
+	if(!Special[boss].Cfg.Get("companion", buffer, sizeof(buffer)))
+		return;
+
+	int companion = GetMatchingBoss(buffer);
+	if(companion == -1)
+	{
+		LogError2("[Boss] %s has unknown companion '%s'", Special[boss].File, buffer);
+		return;
+	}
+
+	int client = GetRandBossClient(companion);
+	if(!client)
+		return;
+
+	companion = Bosses_GetSpecial(client, companion, 1);
+	if(companion == -1)
+		return;
+
+	Boss[client].Special = companion;
+	Boss[client].Active = true;
+	Bosses_Create(client, team);
+	Bosses_CheckCompanion(companion);
 }
 
 static int GetRankingKills(int rank, int index, bool wearable)

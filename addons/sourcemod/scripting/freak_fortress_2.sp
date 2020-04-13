@@ -247,7 +247,7 @@ SpecialEnum Special[MAXSPECIALS];
 int Specials;
 
 bool LastMann;
-bool EndRound;
+int EndRound;
 int Enabled;
 int NextGamemode;
 int ArenaRoundsLeft;
@@ -260,6 +260,7 @@ int LastPlayable;
 float HealthBarFor;
 TFTeam BossTeam;
 ArrayList Charsets;
+int QueueList[MAXTF2PLAYERS];
 int Charset;
 
 WeaponEnum Weapon[MAXTF2PLAYERS][3];
@@ -382,6 +383,7 @@ public void OnPluginStart()
 	CreateConVar("ff2_base_jumper_stun", "0", "Backwards Compatibility ConVar", FCVAR_DONTRECORD, true, 0.0, true, 1.0);
 	CreateConVar("ff2_solo_shame", "0", "Backwards Compatibility ConVar", FCVAR_DONTRECORD, true, 0.0, true, 1.0);
 
+	EndRound = -1;
 	Override = -1;
 	ArenaRoundsLeft = -1;
 
@@ -659,10 +661,17 @@ public void OnRoundSetup(Event event, const char[] name, bool dontBroadcast)
 		}
 	}
 */
+	#if defined FF2_STATTRAK
+	StatTrak_Check();
+	#endif
+
 	if(Enabled != Game_Arena)
 		return;
 
-	int client = GetNextBossPlayer();
+	int[] queueList = new int[MaxClients];
+	SortQueuePoints(queueList, MaxClients);
+
+	int client = queueList[0] ? queueList[0] : GetNextBossPlayer();
 	if(!client)
 	{
 		Enabled = Game_Fun;
@@ -670,9 +679,18 @@ public void OnRoundSetup(Event event, const char[] name, bool dontBroadcast)
 		return;
 	}
 
+	Boss[client].Special = Bosses_GetSpecial(client, Client[client].Selection, 0);
+	if(Boss[client].Special == -1)
+	{
+		Boss[client].Special = 0;
+		Enabled = Game_Fun;
+		NextGamemode = Game_Arena;
+		return;
+	}
+
 	Boss[client].Active = true;
-	Boss[client].Special = Client[client].Selection;
-	Bosses_Create(client);
+	Bosses_Create(client, view_as<TFTeam>(CvarTeam.IntValue));
+	Bosses_CheckCompanion(Boss[client].Special, Client[client].Team);
 
 	for(int client=1; client<=MaxClients; client++)
 	{
@@ -681,10 +699,25 @@ public void OnRoundSetup(Event event, const char[] name, bool dontBroadcast)
 
 		if(Boss[client].Active)
 		{
-			AssignTeam(client, view_as<int>(Boss[client].Team));
-			continue;
+			AssignTeam(client, view_as<int>(TFTeam_Blue));
+		}
+		else
+		{
+			AssignTeam(client, view_as<int>(TFTeam_Red));
+			switch(BossTeam)
+			{
+				case TFTeam_Red:
+					Client[client].Team = TFTeam_Blue;
+
+				//case TFTeam_Blue:
+					//Client[client].Team = TFTeam_Red;
+
+				default:
+					Client[client].Team = TFTeam_Red; //GetRandomInt(2, 3);
+			}
 		}
 
+		ChangeClientTeamEx(client, Client[client].Team);
 		if(GetClientTeam(client) == BossTeam)
 			Client[client].RefreshAt = gameTime+0.1;
 	}
@@ -1086,7 +1119,7 @@ void RefreshClient(int client)
 			Boss_Info(client);
 
 		Boss[client].Leader = false;
-		Bosses_Create(client);
+		Bosses_Create(client, view_as<TFTeam>(CvarTeam.IntValue));
 	}
 
 	if(Client[client].Pref[Pref_Help]<Toggle_Off && !IsVoteInProgress())
@@ -1114,9 +1147,6 @@ void ResetClientVars(int client)
 void CheckAlivePlayers()
 {
 	Players = 0;
-	MercPlayers = 0;
-	BossPlayers = 0;
-	EndRound = false;
 	int players[view_as<int>(TFTeam)];
 	bool spec = CvarSpecTeam.BoolValue;
 	for(int client=1; client<=MaxClients; client++)
@@ -1132,14 +1162,40 @@ void CheckAlivePlayers()
 		players[team]++;
 	}
 
-	int found;
+	MercPlayers = 0;
+	BossPlayers = players[BossTeam];
+
+	int team, teams;
 	for(int i; i<view_as<int>(TFTeam); i++)
 	{
-		if(players[i])
-			found++;
+		if(!players[i])	
+			continue;
+
+		if(i != BossTeam)
+			MercPlayers += players[i];
+
+		found++;
+		team = i;
 	}
 
-	EndRound = found<2;
+	if(Enabled != Game_Arena)
+		return;
+
+	if(!found)
+	{
+		EndRound = 4;
+	}
+	else if(found == 1)
+	{
+		EndRound = team;
+	}
+	else
+	{
+		EndRound = -1;
+		if(!LastMann)
+		{
+		}
+	}
 }
 
 public Action MainMenuC(int client, int args)
