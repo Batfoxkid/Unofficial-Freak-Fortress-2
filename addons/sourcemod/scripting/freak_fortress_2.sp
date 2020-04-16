@@ -557,7 +557,7 @@ public void OnClientDisconnect(int client)
 
 public Action OnJoinTeam(int client, const char[] command, int args)
 {
-	if(!args)
+	if(!client || !args)
 		return Plugin_Continue;
 
 	if(Boss[client].Active)
@@ -591,7 +591,7 @@ public Action OnJoinTeam(int client, const char[] command, int args)
 
 public Action OnAutoTeam(int client, const char[] command, int args)
 {
-	if(Enabled!=Game_Arena || CheckRoundState()==-1)
+	if(!client || Enabled!=Game_Arena || CheckRoundState()==-1)
 		return Plugin_Continue;
 
 	if(GetClientTeam(client) > view_as<int>(TFTeam_Spectator))
@@ -695,7 +695,7 @@ public void OnRoundSetup(Event event, const char[] name, bool dontBroadcast)
 	SortQueuePoints(queueList, MaxClients);
 	for(i=1; i<=MaxClients; i++)
 	{
-		if(!IsValidClient(i))
+		if(!IsValidClient(i) || GetClientTeam(i)<=view_as<int>(TFTeam_Spectator))
 			continue;
 
 		if(Boss[i].Active)
@@ -838,6 +838,13 @@ public void OnPlayerRunCmdPost(int nullVar1, int nullVar2, int nullVar3, const f
 			continue;
 
 		clients[max++] = i;
+		if(Client[client].RefreshAt < gameTime)
+		{
+			Client[client].RefreshAt = FAR_FUTURE;
+			if(alive && !Client[client].Minion)
+				RefreshClient(client);
+		}
+
 		if(Boss[i].Active)
 		{
 			found = true;
@@ -989,13 +996,6 @@ public void OnPlayerRunCmdPost(int nullVar1, int nullVar2, int nullVar3, const f
 			Client[client].PopUpAt = FAR_FUTURE;
 			if(Client[client].Pref[Pref_Boss] == Pref_Undef)
 				Pref_QuickToggle(client, -2);
-		}
-
-		if(Client[client].RefreshAt < gameTime)
-		{
-			Client[client].RefreshAt = FAR_FUTURE;
-			if(alive && !Client[client].Minion)
-				RefreshClient(client);
 		}
 
 		if(!alive)
@@ -1153,21 +1153,25 @@ void GameOverScreen(TFTeam winner, float duration)
 
 void RefreshClient(int client)
 {
+	Client[client].GlowFor = 0.0;
+	SetEntProp(client, Prop_Send, "m_bGlowEnabled", 0);
+
 	if(Boss[client].Active)
 	{
 		if(!IsVoteInProgress())
-			Boss_Info(client);
+			Bosses_Info(client);
 
 		Boss[client].Leader = false;
 		Bosses_Create(client, view_as<TFTeam>(CvarTeam.IntValue));
+		return;
 	}
 
 	if(Client[client].Pref[Pref_Help]<Toggle_Off && !IsVoteInProgress())
 		Weapons_Info(client);
 
 	SetEntityHealth(client, GetEntProp(GetPlayerResourceEntity(), Prop_Send, "m_iMaxHealth", _, client));
-	Client[client].Team = BossTeam==TFTeam_Blue ? TFTeam_Red : TFTeam_Blue;
-	AssignTeam(client, view_as<int>(Client[client].Team));
+	//Client[client].Team = BossTeam==TFTeam_Blue ? TFTeam_Red : TFTeam_Blue;
+	//AssignTeam(client, view_as<int>(Client[client].Team));
 	RequestFrame(Weapons_Check, GetClientUserId(client));
 }
 
@@ -1234,6 +1238,43 @@ void CheckAlivePlayers()
 		EndRound = -1;
 		if(!LastMann)
 		{
+			int team = GetZeroBoss();
+			if(team==-1)
+			{
+				int[] clients = new int[MaxClients];
+				for(int i=1; i<=MaxClients; i++)
+				{
+					if(!Boss[i].Active)
+						continue;
+
+					clients[++team] = i;
+					if(IsPlayerAlive(i) && PlayBossSound(i, "sound_lastman", 1))
+						return;
+				}
+
+				if(team >= 0)
+					PlayBossSound(clients[GetRandomInt(0, team)], "sound_lastman", 1);
+
+				return;
+			}
+
+			if(!IsPlayerAlive(team) || !PlayBossSound(team, "sound_lastman", 1))
+			{
+				int count;
+				int[] clients = new int[MaxClients];
+				for(int i=1; i<=MaxClients; i++)
+				{
+					if(!Boss[i].Active)
+						continue;
+
+					clients[count++] = i;
+					if(team!=i && IsPlayerAlive(i) && PlayBossSound(i, "sound_lastman", 1))
+						return;
+				}
+
+				if(count)
+					PlayBossSound(clients[GetRandomInt(0, count-1)], "sound_lastman", 1);
+			}
 		}
 	}
 }
