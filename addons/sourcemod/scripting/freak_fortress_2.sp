@@ -671,61 +671,101 @@ public void OnRoundSetup(Event event, const char[] name, bool dontBroadcast)
 	int[] queueList = new int[MaxClients];
 	SortQueuePoints(queueList, MaxClients);
 
-	int client = queueList[0] ? queueList[0] : GetNextBossPlayer();
-	if(!client)
+	int i = queueList[0] ? queueList[0] : GetNextBossPlayer();
+	if(!i)
 	{
 		Enabled = Game_Fun;
 		NextGamemode = Game_Arena;
 		return;
 	}
 
-	Boss[client].Special = Bosses_GetSpecial(client, Client[client].Selection, 0);
-	if(Boss[client].Special == -1)
+	Boss[i].Special = Bosses_GetSpecial(i, Client[i].Selection, 0);
+	if(Boss[i].Special == -1)
 	{
-		Boss[client].Special = 0;
+		Boss[i].Special = 0;
 		Enabled = Game_Fun;
 		NextGamemode = Game_Arena;
 		return;
 	}
 
-	Boss[client].Active = true;
-	Bosses_Create(client, view_as<TFTeam>(CvarTeam.IntValue));
-	Bosses_CheckCompanion(Boss[client].Special, Client[client].Team);
+	Boss[i].Active = true;
+	Bosses_Create(i, view_as<TFTeam>(CvarTeam.IntValue));
+	Bosses_CheckCompanion(Boss[i].Special, Client[i].Team);
 
-	for(int client=1; client<=MaxClients; client++)
+	SortQueuePoints(queueList, MaxClients);
+	for(i=1; i<=MaxClients; i++)
 	{
-		if(!IsValidClient(client))
+		if(!IsValidClient(i))
 			continue;
 
-		if(Boss[client].Active)
+		if(Boss[i].Active)
 		{
-			AssignTeam(client, view_as<int>(TFTeam_Blue));
+			AssignTeam(i, view_as<int>(TFTeam_Blue));
+			Client[i].RefreshAt = gameTime+0.1;
 		}
 		else
 		{
-			AssignTeam(client, view_as<int>(TFTeam_Red));
+			AssignTeam(i, view_as<int>(TFTeam_Red));
 			switch(BossTeam)
 			{
 				case TFTeam_Red:
-					Client[client].Team = TFTeam_Blue;
+					Client[i].Team = TFTeam_Blue;
 
 				//case TFTeam_Blue:
-					//Client[client].Team = TFTeam_Red;
+					//Client[i].Team = TFTeam_Red;
 
 				default:
-					Client[client].Team = TFTeam_Red; //GetRandomInt(2, 3);
+					Client[i].Team = TFTeam_Red; //GetRandomInt(2, 3);
+			}
+
+			switch(Client[i].Pref[Pref_Boss])
+			{
+				case Pref_Off:
+				{
+					FPrintToChat(i, "%t", "Notification Disabled");
+				}
+				case Pref_Temp:
+				{
+					FPrintToChat(i, "%t", "Notification Temp");
+				}
+				case Pref_On:
+				{
+					if(Client[i].Queue >= 0)
+					{
+						for(int a; a<MaxClients; a++)
+						{
+							if(queueList[a] != client)
+								continue;
+
+							FPrintToChat(i, "%t", "Notification Queue", a+1);
+							break;
+						}
+					}
+				}
 			}
 		}
 
-		ChangeClientTeamEx(client, Client[client].Team);
-		if(GetClientTeam(client) == BossTeam)
-			Client[client].RefreshAt = gameTime+0.1;
+		ChangeClientTeamEx(i, Client[i].Team);
 	}
 
-	for(int client=1; client<=MaxClients; client++)
+	IntroMusicIn = gameTime+0.4;
+	IntroSoundIn = gameTime+((GetConVarFloat(FindConVar("tf_arena_preround_time"))*0.35);
+
+	for(i=MAXENTITIES-1; i>MaxClients; i--)
 	{
-		if(IsValidClient(client) && !IsBoss(client) && (GetClientTeam(client)!=OtherTeam && !Enabled3))
-			CreateTimer(0.1, Timer_MakeNotBoss, GetClientUserId(client), TIMER_FLAG_NO_MAPCHANGE);
+		if(!IsValidEntity(i))
+			continue;
+
+		static char classname[64];
+		GetEntityClassname(i, classname, sizeof(classname));
+		if(StrEqual(classname, "func_regenerate"))
+		{
+			AcceptEntityInput(i, "Kill");
+		}
+		else if(StrEqual(classname, "func_respawnroomvisualizer"))
+		{
+			AcceptEntityInput(i, "Disable");
+		}
 	}
 }
 
