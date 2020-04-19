@@ -639,7 +639,6 @@ public void OnRoundStart(Event event, const char[] name, bool dontBroadcast)
 	if(Enabled != Game_Arena)
 		return;
 
-	SDK_RoundStart();
 	CheckAlivePlayers(true);
 	LastMann = MercPlayers==1;
 	for(int client=1; client<=MaxClients; client++)
@@ -1170,6 +1169,11 @@ void OnRoundSetupPost()
 		else if(StrEqual(classname, "func_respawnroomvisualizer"))
 		{
 			AcceptEntityInput(i, "Disable");
+		}
+		else if(StrEqual(classname, "trigger_capture_area"))
+		{
+			SDKHook(i, SDKHook_StartTouch, SDK_CPTouch);
+			SDKHook(i, SDKHook_Touch, SDK_CPTouch);
 		}
 	}
 }
