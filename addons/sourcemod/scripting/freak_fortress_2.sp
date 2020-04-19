@@ -423,7 +423,13 @@ public void OnPluginStart()
 	TargetFilter_Setup();
 	#endif
 
+	#if defined FF2_DHOOKS
+	if(!StartHook)
+		HookEvent("teamplay_round_start", OnRoundSetup, EventHookMode_PostNoCopy);
+	#else
 	HookEvent("teamplay_round_start", OnRoundSetup, EventHookMode_PostNoCopy);
+	#endif
+
 	HookEvent("arena_round_start", OnRoundStart, EventHookMode_PostNoCopy);
 	HookEvent("teamplay_round_win", OnRoundEnd);
 
@@ -617,154 +623,50 @@ public void OnRoundSetup(Event event, const char[] name, bool dontBroadcast)
 		return;
 
 	time = gameTime+1.0;
-	for(int client; client<MAXTF2PLAYERS; client++)
-	{
-		Boss[client].Active = false;
-		Client[client].Minion = false;
-		Client[client].Voice[0] = 0;
-		Client[client].Damage = 0;
-		for(int i; i<MAXTF2PLAYERS; i++)
-		{
-			Client[client].Goombas[i] = 0;
-		}
-	}
-
-	if(NextGamemode != Game_Invalid)
-	{
-		Enabled = NextGamemode;
-		NextGamemode = Game_Invalid;
-		if(Enabled == Game_Disabled)
-			return;
-	}
-
-	#if defined FF2_TTS
-	TTS_Start();
-	#endif
-/*
-		if(IsValidClient(client) && GetClientTeam(client)>view_as<int>(TFTeam_Spectator))
-		{
-			Players++;
-			if(!IsFakeClient(client))
-				playing2++;
-
-			if(IsBoss(client))
-				bosses++;
-
-			if(GetClientTeam(client)==BossTeam)
-			{
-				playingboss++;
-			}
-			else
-			{
-				playingmerc++;
-			}
-		}
-	}
-*/
-	#if defined FF2_STATTRAK
-	StatTrak_Check();
+	#if defined FF2_DHOOKS
+	if(!StartHook)
+		OnRoundSetupPre(true);
+	#else
+	OnRoundSetupPre(true);
 	#endif
 
+	if(Enabled == Game_Arena)
+		RequestFrame(OnRoundSetupPost);
+}
+
+public void OnRoundStart(Event event, const char[] name, bool dontBroadcast)
+{
 	if(Enabled != Game_Arena)
 		return;
 
-	int[] queueList = new int[MaxClients];
-	SortQueuePoints(queueList, MaxClients);
-
-	int i = queueList[0] ? queueList[0] : GetNextBossPlayer();
-	if(!i)
+	SDK_RoundStart();
+	CheckAlivePlayers(true);
+	LastMann = MercPlayers==1;
+	for(int client=1; client<=MaxClients; client++)
 	{
-		Enabled = Game_Fun;
-		NextGamemode = Game_Arena;
-		return;
-	}
-
-	Boss[i].Special = Bosses_GetSpecial(i, Client[i].Selection, 0);
-	if(Boss[i].Special == -1)
-	{
-		Boss[i].Special = 0;
-		Enabled = Game_Fun;
-		NextGamemode = Game_Arena;
-		return;
-	}
-
-	Boss[i].Active = true;
-	Bosses_Create(i, view_as<TFTeam>(CvarTeam.IntValue));
-	Bosses_CheckCompanion(Boss[i].Special, Client[i].Team);
-
-	SortQueuePoints(queueList, MaxClients);
-	for(i=1; i<=MaxClients; i++)
-	{
-		if(!IsValidClient(i) || GetClientTeam(i)<=view_as<int>(TFTeam_Spectator))
+		if(!IsValidClient(client) || GetClientTeam(client)<=view_as<int>(TFTeam_Spectator))
 			continue;
 
-		if(Boss[i].Active)
+		if(Boss[client].Active)
 		{
-			AssignTeam(i, view_as<int>(TFTeam_Blue));
-			Client[i].RefreshAt = gameTime+0.1;
-		}
-		else
-		{
-			AssignTeam(i, view_as<int>(TFTeam_Red));
-			switch(BossTeam)
-			{
-				case TFTeam_Red:
-					Client[i].Team = TFTeam_Blue;
+			Bosses_SetHealth(client);
+			static char buffer[1024];
+			if(Special[Boss[client].Special].Cfg.Get("command", buffer, sizeof(buffer)))
+				ServerCommand(buffer);
 
-				//case TFTeam_Blue:
-					//Client[i].Team = TFTeam_Red;
+			#if defined FF2_CONVARS
+			if(Boss[client].Leader && CvarNameChange.IntValue==1)
+				Convars_NameSuffix(CfgGetLang(Special[Boss[client].Special].Cfg, "name", buffer, sizeof(buffer)) ? buffer : "");
+			#endif
 
-				default:
-					Client[i].Team = TFTeam_Red; //GetRandomInt(2, 3);
-			}
-
-			switch(Client[i].Pref[Pref_Boss])
-			{
-				case Pref_Off:
-				{
-					FPrintToChat(i, "%t", "Notification Disabled");
-				}
-				case Pref_Temp:
-				{
-					FPrintToChat(i, "%t", "Notification Temp");
-				}
-				case Pref_On:
-				{
-					if(Client[i].Queue >= 0)
-					{
-						for(int a; a<MaxClients; a++)
-						{
-							if(queueList[a] != client)
-								continue;
-
-							FPrintToChat(i, "%t", "Notification Queue", a+1);
-							break;
-						}
-					}
-				}
-			}
-		}
-
-		ChangeClientTeamEx(i, Client[i].Team);
-	}
-
-	IntroMusicIn = gameTime+0.4;
-	IntroSoundIn = gameTime+((GetConVarFloat(FindConVar("tf_arena_preround_time"))*0.35);
-
-	for(i=MAXENTITIES-1; i>MaxClients; i--)
-	{
-		if(!IsValidEntity(i))
 			continue;
-
-		static char classname[64];
-		GetEntityClassname(i, classname, sizeof(classname));
-		if(StrEqual(classname, "func_regenerate"))
-		{
-			AcceptEntityInput(i, "Kill");
 		}
-		else if(StrEqual(classname, "func_respawnroomvisualizer"))
+
+		if(TF2_GetPlayerClass(client) == TFClass_Medic)
 		{
-			AcceptEntityInput(i, "Disable");
+			int medigun = GetPlayerWeaponSlot(client, TFWeaponSlot_Secondary);
+			if(IsValidEntity(medigun))
+				SetEntPropFloat(medigun, Prop_Send, "m_flChargeLevel", 0.0);
 		}
 	}
 }
@@ -1114,7 +1016,170 @@ int CheckGamemode(const char[] map)
 	return result;
 }
 
-void GameOverScreen(TFTeam winner, float duration)
+void OnRoundSetupPre(bool respawn)
+{
+	for(int client; client<MAXTF2PLAYERS; client++)
+	{
+		ResetClientVars(client);
+	}
+
+	if(NextGamemode != Game_Invalid)
+	{
+		Enabled = NextGamemode;
+		NextGamemode = Game_Invalid;
+		if(Enabled == Game_Disabled)
+			return;
+	}
+
+	#if defined FF2_TTS
+	TTS_Start();
+	#endif
+
+	#if defined FF2_STATTRAK
+	StatTrak_Check();
+	#endif
+
+	if(Enabled != Game_Arena)
+		return;
+
+	int[] queueList = new int[MaxClients];
+	SortQueuePoints(queueList, MaxClients);
+
+	int i = queueList[0] ? queueList[0] : GetNextBossPlayer();
+	if(!i)
+	{
+		Enabled = Game_Fun;
+		NextGamemode = Game_Arena;
+		return;
+	}
+
+	Boss[i].Special = Bosses_GetSpecial(i, Client[i].Selection, 0);
+	if(Boss[i].Special == -1)
+	{
+		Boss[i].Special = 0;
+		Enabled = Game_Fun;
+		NextGamemode = Game_Arena;
+		return;
+	}
+
+	Boss[i].Active = true;
+	Bosses_Create(i, view_as<TFTeam>(CvarTeam.IntValue));
+	Bosses_CheckCompanion(Boss[i].Special, Client[i].Team);
+
+	Players = 0;
+	for(i=1; i<=MaxClients; i++)
+	{
+		if(!IsValidClient(i) || GetClientTeam(i)<=view_as<int>(TFTeam_Spectator))
+			continue;
+
+		Players++;
+		if(Boss[i].Active)
+		{
+			if(respawn)
+			{
+				AssignTeam(i, view_as<int>(TFTeam_Blue));
+			}
+			else
+			{
+				ChangeClientTeamEx(i, view_as<int>(TFTeam_Blue));
+			}
+		}
+		else
+		{
+			if(respawn)
+			{
+				AssignTeam(i, view_as<int>(TFTeam_Red));
+			}
+			else
+			{
+				ChangeClientTeamEx(i, view_as<int>(TFTeam_Red));
+			}
+
+			switch(BossTeam)
+			{
+				case TFTeam_Red:
+					Client[i].Team = TFTeam_Blue;
+
+				//case TFTeam_Blue:
+					//Client[i].Team = TFTeam_Red;
+
+				default:
+					Client[i].Team = TFTeam_Red; //GetRandomInt(2, 3);
+			}
+		}
+	}
+}
+
+void OnRoundSetupPost()
+{
+	int[] queueList = new int[MaxClients];
+	SortQueuePoints(queueList, MaxClients);
+	for(int client=1; client<=MaxClients; client++)
+	{
+		if(!IsValidClient(client) || GetClientTeam(client)<=view_as<int>(TFTeam_Spectator))
+			continue;
+
+		ChangeClientTeamEx(i, view_as<int>(Client[i].Team));
+		if(Boss[i].Active)
+		{
+			Client[i].RefreshAt = gameTime+0.1;
+			continue;
+		}
+
+		switch(Client[i].Pref[Pref_Boss])
+		{
+			case Pref_Off:
+			{
+				FPrintToChat(i, "%t", "Notification Disabled");
+			}
+			case Pref_Temp:
+			{
+				FPrintToChat(i, "%t", "Notification Temp");
+			}
+			case Pref_On:
+			{
+				if(Client[i].Queue >= 0)
+				{
+					for(int a; a<MaxClients; a++)
+					{
+						if(queueList[a] != client)
+							continue;
+
+						FPrintToChat(i, "%t", "Notification Queue", a+1);
+						break;
+					}
+				}
+			}
+		}
+	}
+
+	IntroMusicIn = gameTime+0.4;
+	IntroSoundIn = gameTime+((GetConVarFloat(FindConVar("tf_arena_preround_time"))*0.35);
+
+	for(i=MAXENTITIES-1; i>MaxClients; i--)
+	{
+		if(!IsValidEntity(i))
+			continue;
+
+		static char classname[64];
+		GetEntityClassname(i, classname, sizeof(classname));
+		if(StrEqual(classname, "func_regenerate"))
+		{
+			AcceptEntityInput(i, "Kill");
+		}
+		else if(StrEqual(classname, "func_respawnroomvisualizer"))
+		{
+			AcceptEntityInput(i, "Disable");
+		}
+	}
+}
+
+void BeginScreen()
+{
+	
+}
+
+void GameOverScreen(int winner, float duration)
 {
 	int leader = GetZeroBoss();
 	if(leader != -1)
@@ -1125,12 +1190,7 @@ void GameOverScreen(TFTeam winner, float duration)
 			if(!PlayBossSound(leader, "sound_outtromusic_win", 2))
 				PlayBossSound(leader, "sound_outtromusic", 2);
 		}
-		else if(team)
-		{
-			if(!PlayBossSound(leader, "sound_outtromusic_lose", 2))
-				PlayBossSound(leader, "sound_outtromusic", 2);
-		}
-		else
+		else if(team == 4)
 		{
 			if(IsPlayerAlive(leader))
 				PlayBossSound(leader, "sound_stalemate", 1, _, false);
@@ -1140,6 +1200,11 @@ void GameOverScreen(TFTeam winner, float duration)
 				if(!PlayBossSound(leader, "sound_outtromusic_lose", 2))
 					PlayBossSound(leader, "sound_outtromusic", 2);
 			}
+		}
+		else
+		{
+			if(!PlayBossSound(leader, "sound_outtromusic_lose", 2))
+				PlayBossSound(leader, "sound_outtromusic", 2);
 		}
 	}
 
@@ -1161,8 +1226,8 @@ void RefreshClient(int client)
 		if(!IsVoteInProgress())
 			Bosses_Info(client);
 
-		Boss[client].Leader = false;
-		Bosses_Create(client, view_as<TFTeam>(CvarTeam.IntValue));
+		Bosses_SetHealth(client);
+		Bosses_Equip(client);
 		return;
 	}
 
@@ -1181,14 +1246,17 @@ void ResetClientVars(int client)
 	Client[client].PopUpAt = FAR_FUTURE;
 	Client[client].GlowFor = 0.0;
 	Client[client].RefreshAt = FAR_FUTURE;
-	#if !defined FF2_STEAMWORKS
-	Client[client].Private = false;
-	#endif
-
+	Client[client].Minion = false;
+	Client[client].Voice[0] = 0;
+	Client[client].Damage = 0;
 	Boss[client].Active = false;
+	for(int i; i<MAXTF2PLAYERS; i++)
+	{
+		Client[client].Goombas[i] = 0;
+	}
 }
 
-void CheckAlivePlayers()
+void CheckAlivePlayers(bool noSound)
 {
 	Players = 0;
 	int players[view_as<int>(TFTeam)];
@@ -1228,54 +1296,55 @@ void CheckAlivePlayers()
 	if(!found)
 	{
 		EndRound = 4;
+		return;
 	}
-	else if(found == 1)
+
+	if(found == 1)
 	{
 		EndRound = team;
+		return;
 	}
-	else
+
+	EndRound = -1;
+	if(noSound)
+		return;
+
+	int team = GetZeroBoss();
+	if(team == -1)
 	{
-		EndRound = -1;
-		if(!LastMann)
+		int[] clients = new int[MaxClients];
+		for(int i=1; i<=MaxClients; i++)
 		{
-			int team = GetZeroBoss();
-			if(team==-1)
-			{
-				int[] clients = new int[MaxClients];
-				for(int i=1; i<=MaxClients; i++)
-				{
-					if(!Boss[i].Active)
-						continue;
+			if(!Boss[i].Active)
+				continue;
 
-					clients[++team] = i;
-					if(IsPlayerAlive(i) && PlayBossSound(i, "sound_lastman", 1))
-						return;
-				}
-
-				if(team >= 0)
-					PlayBossSound(clients[GetRandomInt(0, team)], "sound_lastman", 1);
-
+			clients[++team] = i;
+			if(IsPlayerAlive(i) && PlayBossSound(i, "sound_lastman", 1))
 				return;
-			}
-
-			if(!IsPlayerAlive(team) || !PlayBossSound(team, "sound_lastman", 1))
-			{
-				int count;
-				int[] clients = new int[MaxClients];
-				for(int i=1; i<=MaxClients; i++)
-				{
-					if(!Boss[i].Active)
-						continue;
-
-					clients[count++] = i;
-					if(team!=i && IsPlayerAlive(i) && PlayBossSound(i, "sound_lastman", 1))
-						return;
-				}
-
-				if(count)
-					PlayBossSound(clients[GetRandomInt(0, count-1)], "sound_lastman", 1);
-			}
 		}
+
+		if(team >= 0)
+			PlayBossSound(clients[GetRandomInt(0, team)], "sound_lastman", 1);
+
+		return;
+	}
+
+	if(IsPlayerAlive(team) && PlayBossSound(team, "sound_lastman", 1))
+		return;
+
+	int count;
+	int[] clients = new int[MaxClients];
+	for(int i=1; i<=MaxClients; i++)
+	{
+		if(!Boss[i].Active)
+			continue;
+
+		clients[count++] = i;
+		if(team!=i && IsPlayerAlive(i) && PlayBossSound(i, "sound_lastman", 1))
+			return;
+
+		if(count)
+			PlayBossSound(clients[GetRandomInt(0, count-1)], "sound_lastman", 1);
 	}
 }
 

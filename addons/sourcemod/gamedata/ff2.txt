@@ -60,6 +60,11 @@
 				"linux"		"136"
 				"windows"	"135"
 			}
+			"CTeamplayRoundBasedRules::RoundRespawn"
+			{
+				"linux"		"226"
+				"windows"	"224"
+			}
 		}
 	}
 }

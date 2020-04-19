@@ -533,66 +533,6 @@ static void DownloadSection(ConfigMap cfg, SectionType type, const char[] charac
 
 void Bosses_Create(int client, TFTeam team)
 {
-	Bosses_Prepare(Boss[client].Special);
-
-	static char buffer[1024];
-	if(Special[Boss[client].Special].Cfg.Get("ragedamage", buffer, sizeof(buffer)))
-	{
-		#if defined FF2_TIMESTEN
-		Boss[client].RageDamage = RoundFloat(ParseFormula(buffer, Players)*TimesTen_Value());
-		#else
-		Boss[client].RageDamage = RoundFloat(ParseFormula(buffer, Players));
-		#endif
-	}
-	else
-	{
-		Boss[client].RageDamage = RoundFloat(DEFAULT_RAGEDAMAGE);
-	}
-
-	int i;
-	if(Special[Boss[client].Special].Cfg.GetInt("lives", i))
-	{
-		if(i > 1)
-		{
-			Boss[client].Lives = i;
-		}
-		else
-		{
-			Boss[client].Lives = 1;
-		}
-	}
-	else
-	{
-		Boss[client].Lives = 1;
-	}
-
-	Boss[client].MaxLives = Boss[client].Lives;
-	if(Special[Boss[client].Special].Cfg.Get("health_formula", buffer, sizeof(buffer)))
-	{
-		#if defined FF2_TIMESTEN
-		Boss[client].MaxHealth = RoundFloat(ParseFormula(buffer, Players)*TimesTen_Value());
-		#else
-		Boss[client].MaxHealth = RoundFloat(ParseFormula(buffer, Players));
-		#endif
-
-		if(Boss[client].MaxHealth < 1)
-			#if defined FF2_TIMESTEN
-			Boss[client].MaxHealth = RoundFloat(DEFAULT_HEALTH*TimesTen_Value());
-			#else
-			Boss[client].MaxHealth = RoundFloat(DEFAULT_HEALTH);
-			#endif
-	}
-	else
-	{
-		#if defined FF2_TIMESTEN
-		Boss[client].MaxHealth = RoundFloat(DEFAULT_HEALTH*TimesTen_Value());
-		#else
-		Boss[client].MaxHealth = RoundFloat(DEFAULT_HEALTH);
-		#endif
-	}
-
-	Boss[client].Health = Boss[client].MaxHealth*Boss[client].Lives;
-
 	Boss[client].Triple = Special[Boss[client].Special].Cfg.GetInt("triple", i) ? view_as<bool>(i) : CvarTriple.BoolValue;
 	Boss[client].Crits = Special[Boss[client].Special].Cfg.GetInt("crits", i) ? view_as<bool>(i) : CvarCrits.BoolValue;
 	Boss[client].Healing = Special[Boss[client].Special].Cfg.GetInt("healing", i) ? view_as<bool>(i) : CvarHealing.BoolValue;
@@ -606,12 +546,6 @@ void Bosses_Create(int client, TFTeam team)
 	Boss[client].RageMax = Special[Boss[client].Special].Cfg.GetFloat("ragemax", f) ? f : 100.0;
 	Boss[client].RageMin = Special[Boss[client].Special].Cfg.GetFloat("ragemin", f) ? f : 100.0;
 	Boss[client].MaxSpeed = Special[Boss[client].Special].Cfg.GetFloat("maxspeed", f) ? f : 340.0;
-
-	Boss[client].Class = CfgGetClass(Special[Boss[client].Special].Cfg, "class");
-
-	SetEntProp(client, Prop_Send, "m_bGlowEnabled", 0);
-	TF2_RemovePlayerDisguise(client);
-	TF2_SetPlayerClass(client, Boss[client].Class, _, !GetEntProp(client, Prop_Send, "m_iDesiredPlayerClass") ? true : false);
 
 	if(!Special[Boss[client].Special].Cfg.GetInt("sapper", i))
 		i = CvarSapper.IntValue;
@@ -635,41 +569,7 @@ void Bosses_Create(int client, TFTeam team)
 	Boss[client].Charge[0] = 0.0;
 	Boss[client].Hazard = 0.0;
 
-	RequestFrame(Bosses_Model, GetClientUserId(client));
-
-	Boss[client].Cosmetics = (Special[Boss[client].Special].Cfg.GetInt("cosmetics", i) && i);
-	i = MaxClients+1;
-	while((i=FindEntityByClassname2(i, "tf_wear*")) != -1)
-	{
-		if(GetEntPropEnt(i, Prop_Send, "m_hOwnerEntity") != client)
-			continue;
-
-		switch(GetEntProp(i, Prop_Send, "m_iItemDefinitionIndex"))
-		{
-			case 493, 233, 234, 241, 280, 281, 282, 283, 284, 286, 288, 362, 364, 365, 536, 542, 577, 599, 673, 729, 791, 839, 5607:  //Action slot items
-			{
-				//NOOP
-			}
-			case 131, 133, 405, 406, 444, 608, 1099, 1144:	// Wearable weapons
-			{
-				TF2_RemoveWearable(client, i);
-			}
-			default:
-			{
-				if(!Boss[client].Cosmetics)
-					TF2_RemoveWearable(client, i);
-			}
-		}
-	}
-
-	i = MaxClients+1;
-	while((i=FindEntityByClassname2(i, "tf_powerup_bottle")) != -1)
-	{
-		if(GetEntPropEnt(i, Prop_Send, "m_hOwnerEntity") == client)
-			TF2_RemoveWearable(client, i);
-	}
-
-	Bosses_Equip(client);
+	Bosses_Prepare(Boss[client].Special);
 
 	bool nonLeader;
 	for(int target=1; target<=MaxClients; target++)
@@ -809,8 +709,109 @@ void Bosses_Prepare(int boss)
 	delete snap;
 }
 
+void Bosses_SetHealth(int client)
+{
+	static char buffer[1024];
+	if(Special[Boss[client].Special].Cfg.Get("ragedamage", buffer, sizeof(buffer)))
+	{
+		#if defined FF2_TIMESTEN
+		Boss[client].RageDamage = RoundFloat(ParseFormula(buffer, Players)*TimesTen_Value());
+		#else
+		Boss[client].RageDamage = RoundFloat(ParseFormula(buffer, Players));
+		#endif
+	}
+	else
+	{
+		Boss[client].RageDamage = RoundFloat(DEFAULT_RAGEDAMAGE);
+	}
+
+	int i;
+	if(Special[Boss[client].Special].Cfg.GetInt("lives", i))
+	{
+		if(i > 1)
+		{
+			Boss[client].Lives = i;
+		}
+		else
+		{
+			Boss[client].Lives = 1;
+		}
+	}
+	else
+	{
+		Boss[client].Lives = 1;
+	}
+
+	Boss[client].MaxLives = Boss[client].Lives;
+	if(Special[Boss[client].Special].Cfg.Get("health_formula", buffer, sizeof(buffer)))
+	{
+		#if defined FF2_TIMESTEN
+		Boss[client].MaxHealth = RoundFloat(ParseFormula(buffer, Players)*TimesTen_Value());
+		#else
+		Boss[client].MaxHealth = RoundFloat(ParseFormula(buffer, Players));
+		#endif
+
+		if(Boss[client].MaxHealth < 1)
+			#if defined FF2_TIMESTEN
+			Boss[client].MaxHealth = RoundFloat(DEFAULT_HEALTH*TimesTen_Value());
+			#else
+			Boss[client].MaxHealth = RoundFloat(DEFAULT_HEALTH);
+			#endif
+	}
+	else
+	{
+		#if defined FF2_TIMESTEN
+		Boss[client].MaxHealth = RoundFloat(DEFAULT_HEALTH*TimesTen_Value());
+		#else
+		Boss[client].MaxHealth = RoundFloat(DEFAULT_HEALTH);
+		#endif
+	}
+
+	Boss[client].Health = Boss[client].MaxHealth*Boss[client].Lives;
+}
+
 void Bosses_Equip(int client)
 {
+	Boss[client].Class = CfgGetClass(Special[Boss[client].Special].Cfg, "class");
+
+	SetEntProp(client, Prop_Send, "m_bGlowEnabled", 0);
+	TF2_RemovePlayerDisguise(client);
+	TF2_SetPlayerClass(client, Boss[client].Class, _, !GetEntProp(client, Prop_Send, "m_iDesiredPlayerClass") ? true : false);
+
+	RequestFrame(Bosses_Model, GetClientUserId(client));
+
+	Boss[client].Cosmetics = (Special[Boss[client].Special].Cfg.GetInt("cosmetics", i) && i);
+	i = MaxClients+1;
+	while((i=FindEntityByClassname2(i, "tf_wear*")) != -1)
+	{
+		if(GetEntPropEnt(i, Prop_Send, "m_hOwnerEntity") != client)
+			continue;
+
+		switch(GetEntProp(i, Prop_Send, "m_iItemDefinitionIndex"))
+		{
+			case 493, 233, 234, 241, 280, 281, 282, 283, 284, 286, 288, 362, 364, 365, 536, 542, 577, 599, 673, 729, 791, 839, 5607:  //Action slot items
+			{
+				//NOOP
+			}
+			case 131, 133, 405, 406, 444, 608, 1099, 1144:	// Wearable weapons
+			{
+				TF2_RemoveWearable(client, i);
+			}
+			default:
+			{
+				if(!Boss[client].Cosmetics)
+					TF2_RemoveWearable(client, i);
+			}
+		}
+	}
+
+	i = MaxClients+1;
+	while((i=FindEntityByClassname2(i, "tf_powerup_bottle")) != -1)
+	{
+		if(GetEntPropEnt(i, Prop_Send, "m_hOwnerEntity") == client)
+			TF2_RemoveWearable(client, i);
+	}
+
 	TF2_RemoveAllWeapons(client);
 	StringMapSnapshot snap = Special[Boss[client].Special].Cfg.Snapshot();
 	if(!snap)

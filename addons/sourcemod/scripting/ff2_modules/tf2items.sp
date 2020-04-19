@@ -39,6 +39,28 @@ void TF2Items_Setup()
 
 public Action TF2Items_OnGiveNamedItem(int client, char[] classname, int index, Handle &item)
 {
+	if(Boss[client].Active)
+	{
+		if(!StrEqual(classname, "tf_wearable", false))
+			return Plugin_Continue;
+
+		switch(index)
+		{
+			case 493, 233, 234, 241, 280, 281, 282, 283, 284, 286, 288, 362, 364, 365, 536, 542, 577, 599, 673, 729, 791, 839, 5607:  //Action slot items
+			{
+				return Plugin_Continue;
+			}
+			case 131, 133, 405, 406, 444, 608, 1099, 1144:	// Wearable weapons
+			{
+				return Plugin_Stop;
+			}
+			default:
+			{
+				return cosmetics ? Plugin_Continue : Plugin_Stop;
+			}
+		}
+	}
+
 	if(Enabled!=Game_Arena || WeaponKV==null)
 		return Plugin_Continue;
 

@@ -5,7 +5,7 @@
 
 	Credits:
 	Ragenewb - Healing/Regen
-	TF:GO - SetWinningTeam
+	FortyTwoFortyTwo - SetWinningTeam/RoundRespawn
 */
 
 #if !defined _dhooks_included
@@ -14,6 +14,7 @@
 
 #define FF2_DHOOKS
 
+Handle StartHook;
 static Handle TeamHook;
 
 void DHook_Setup(GameData gameData)
@@ -64,12 +65,20 @@ void DHook_Setup(GameData gameData)
 	{
 		LogError2("[Gamedata] Could not find CTFGameRules::SetWinningTeam");
 	}
+
+	offset = gameData.GetOffset("CTeamplayRoundBasedRules::RoundRespawn");
+	StartHook = DHookCreate(offset, HookType_GameRules, ReturnType_Void, ThisPointer_Ignore);
+	if(!StartHook)
+		LogError2("Failed to create hook: CTeamplayRoundBasedRules::RoundRespawn!");
 }
 
 void DHook_MapStart()
 {
 	if(TeamHook)
 		DHookGamerules(TeamHook, false, _, DHook_SetWinningTeam);
+
+	if(StartHook)
+		DHookGamerules(StartHook, false, _, DHook_OnRoundStart);
 }
 
 public MRESReturn DHook_Regen(int client)
@@ -99,12 +108,22 @@ public MRESReturn DHook_Healing(int client, Handle handle, Handle params)
 	return MRES_Supercede;
 }
 
-public MRESReturn Hook_SetWinningTeam(Handle params)
+public MRESReturn DHook_SetWinningTeam(Handle params)
 {
 	if(Enabled != Game_Arena)
 		return MRES_Ignored;
 
-	return EndRound ? MRES_Ignored : MRES_Supercede;
+	if(EndRound == -1)
+		return MRES_Supercede;
+
+	DHookSetParam(params, 4, false);
+	return MRES_ChangedOverride;
+}
+
+public MRESReturn DHook_RoundSetup(Handle params)
+{
+	OnRoundSetupPre(false);
+	return MRES_Ignored;
 }
 
 static Handle DHookCreateDetourEx(Handle gameData, const char[] name, CallingConvention call, ReturnType type, ThisPointerType pointer)
