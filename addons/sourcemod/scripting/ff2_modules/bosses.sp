@@ -262,30 +262,30 @@ static void LoadCharacter(const char[] character, int charset, const char[] map)
 {
 	char config[PLATFORM_MAX_PATH];
 	FormatEx(config, sizeof(config), "%s/%s.cfg", CONFIG_PATH, character);
-	Special[Specials].Full = new ConfigMap(config);
-	if(Special[Specials].Full == null)
+	Special[Specials].Cfg = new ConfigMap(config);
+	if(Special[Specials].Cfg == null)
 		return;
 
-	Special[Specials].Cfg = Special[Specials].Full.GetSection("character");
-	if(Special[Specials].Cfg == null)
+	ConfigMap cfg = Special[Specials].Cfg.GetSection("character");
+	if(cfg == null)
 	{
 		LogError2("[Boss] %s is not a boss character", character);
-		DeleteCfg(Special[Specials].Full);
+		DeleteCfg(Special[Specials].Cfg);
 		return;
 	}
 
 	int i;
-	if(Special[Specials].Cfg.GetInt("version", i) && i!=StringToInt(MAJOR_REVISION) && i!=99)	// 99 is Unofficial-only bosses
+	if(cfg.GetInt("version", i) && i!=StringToInt(MAJOR_REVISION) && i!=99)	// 99 is Unofficial-only bosses
 	{
 		LogError2("[Boss] %s is only compatible with FF2 v%i", character, i);
-		DeleteCfg(Special[Specials].Full);
+		DeleteCfg(Special[Specials].Cfg);
 		return;
 	}
 
-	if(Special[Specials].Cfg.GetInt("version_minor", i) && i>StringToInt(MINOR_REVISION))
+	if(cfg.GetInt("version_minor", i) && i>StringToInt(MINOR_REVISION))
 	{
 		int x;
-		if(Special[Specials].Cfg.GetInt("version_stable", x))
+		if(cfg.GetInt("version_stable", x))
 		{
 			LogError2("[Boss] %s requires newer version of FF2 (at least %s.%i.%i)", character, MAJOR_REVISION, i, x);
 		}
@@ -293,14 +293,14 @@ static void LoadCharacter(const char[] character, int charset, const char[] map)
 		{
 			LogError2("[Boss] %s requires newer version of FF2 (at least %s.%i)", character, MAJOR_REVISION, i);
 		}
-		DeleteCfg(Special[Specials].Full);
+		DeleteCfg(Special[Specials].Cfg);
 		return;
 	}
 
-	if(Special[Specials].Cfg.GetInt("version_stable", i) && i>StringToInt(STABLE_REVISION))
+	if(cfg.GetInt("version_stable", i) && i>StringToInt(STABLE_REVISION))
 	{
 		int x;
-		if(Special[Specials].Cfg.GetInt("version_minor", x))
+		if(cfg.GetInt("version_minor", x))
 		{
 			LogError2("[Boss] %s requires newer version of FF2 (at least %s.%i.%i)", character, MAJOR_REVISION, x, i);
 		}
@@ -308,21 +308,21 @@ static void LoadCharacter(const char[] character, int charset, const char[] map)
 		{
 			LogError2("[Boss] %s requires newer version of FF2 (at least %s.%s.%i)", character, MAJOR_REVISION, MINOR_REVISION, i);
 		}
-		DeleteCfg(Special[Specials].Full);
+		DeleteCfg(Special[Specials].Cfg);
 		return;
 	}
 
-	if(Special[Specials].Cfg.GetInt("fversion", i) && i!=StringToInt(MAJOR_REVISION))
+	if(cfg.GetInt("fversion", i) && i!=StringToInt(MAJOR_REVISION))
 	{
 		LogError2("[Boss] %s is only compatible with %s FF2 v%i", character, FORK_SUB_REVISION, i);
-		DeleteCfg(Special[Specials].Full);
+		DeleteCfg(Special[Specials].Cfg);
 		return;
 	}
 
-	if(Special[Specials].Cfg.GetInt("fversion_minor", i) && i>StringToInt(MINOR_REVISION))
+	if(cfg.GetInt("fversion_minor", i) && i>StringToInt(MINOR_REVISION))
 	{
 		int x;
-		if(Special[Specials].Cfg.GetInt("fversion_stable", x))
+		if(cfg.GetInt("fversion_stable", x))
 		{
 			LogError2("[Boss] %s requires newer version of %s FF2 (at least %s.%i.%i)", character, FORK_SUB_REVISION, FORK_MAJOR_REVISION, i, x);
 		}
@@ -330,14 +330,14 @@ static void LoadCharacter(const char[] character, int charset, const char[] map)
 		{
 			LogError2("[Boss] %s requires newer version of %s FF2 (at least %s.%i)", character, FORK_SUB_REVISION, FORK_MAJOR_REVISION, i);
 		}
-		DeleteCfg(Special[Specials].Full);
+		DeleteCfg(Special[Specials].Cfg);
 		return;
 	}
 
-	if(Special[Specials].Cfg.GetInt("fversion_stable", i) && i>StringToInt(FORK_STABLE_REVISION))
+	if(cfg.GetInt("fversion_stable", i) && i>StringToInt(FORK_STABLE_REVISION))
 	{
 		int x;
-		if(Special[Specials].Cfg.GetInt("fversion_minor", x))
+		if(cfg.GetInt("fversion_minor", x))
 		{
 			LogError2("[Boss] %s requires newer version of %s FF2 (at least %s.%i.%i)", character, FORK_SUB_REVISION, FORK_MAJOR_REVISION, x, i);
 		}
@@ -345,22 +345,22 @@ static void LoadCharacter(const char[] character, int charset, const char[] map)
 		{
 			LogError2("[Boss] %s requires newer version of %s FF2 (at least %s.%s.%i)", character, FORK_SUB_REVISION, FORK_MAJOR_REVISION, FORK_MINOR_REVISION, i);
 		}
-		DeleteCfg(Special[Specials].Full);
+		DeleteCfg(Special[Specials].Cfg);
 		return;
 	}
 
 	if(Charset==charset && Enabled>Game_Disabled)
 	{
-		ConfigMap cfg = Special[Specials].Cfg.GetSection("map_whitelist");
-		if(cfg == null)
+		ConfigMap cfg2 = cfg.GetSection("map_whitelist");
+		if(cfg2 == null)
 		{
-			cfg = Special[Specials].Cfg.GetSection("map_blacklist");
-			if(cfg == null)
-				cfg = Special[Specials].Cfg.GetSection("map_exclude");
+			cfg2 = cfg.GetSection("map_blacklist");
+			if(cfg2 == null)
+				cfg2 = cfg.GetSection("map_exclude");
 
-			if(cfg != null)
+			if(cfg2 != null)
 			{
-				StringMapSnapshot snap = cfg.Snapshot();
+				StringMapSnapshot snap = cfg2.Snapshot();
 				if(snap)
 				{
 					int entries = snap.Length;
@@ -372,7 +372,7 @@ static void LoadCharacter(const char[] character, int charset, const char[] map)
 							char[] buffer = new char[length];
 							snap.GetKey(i, buffer, length);
 							PackVal val;
-							cfg.GetArray(buffer, val, sizeof(val));
+							cfg2.GetArray(buffer, val, sizeof(val));
 							if(val.tag==KeyValType_Null || StrContains(map, buffer, false))
 								continue;
 
@@ -387,7 +387,7 @@ static void LoadCharacter(const char[] character, int charset, const char[] map)
 		}
 		else
 		{
-			StringMapSnapshot snap = cfg.Snapshot();
+			StringMapSnapshot snap = cfg2.Snapshot();
 			if(snap)
 			{
 				int entries = snap.Length;
@@ -400,7 +400,7 @@ static void LoadCharacter(const char[] character, int charset, const char[] map)
 						char[] buffer = new char[length];
 						snap.GetKey(i, buffer, length);
 						PackVal val;
-						cfg.GetArray(buffer, val, sizeof(val));
+						cfg2.GetArray(buffer, val, sizeof(val));
 						if(val.tag==KeyValType_Null || StrContains(map, buffer, false))
 							continue;
 
@@ -424,7 +424,7 @@ static void LoadCharacter(const char[] character, int charset, const char[] map)
 			FirstPlayable = Specials;
 
 		char key[PLATFORM_MAX_PATH];
-		StringMapSnapshot snap = Special[Specials].Cfg.Snapshot();
+		StringMapSnapshot snap = cfg.Snapshot();
 		if(snap)
 		{
 			int entries = snap.Length;
@@ -436,7 +436,7 @@ static void LoadCharacter(const char[] character, int charset, const char[] map)
 					char[] buffer = new char[length];
 					snap.GetKey(i, buffer, length);
 					PackVal val;
-					Special[Specials].Cfg.GetArray(buffer, val, sizeof(val));
+					cfg.GetArray(buffer, val, sizeof(val));
 					if(val.tag != KeyValType_Section)
 						continue;
 
@@ -533,26 +533,28 @@ static void DownloadSection(ConfigMap cfg, SectionType type, const char[] charac
 
 void Bosses_Create(int client, TFTeam team)
 {
-	Boss[client].Triple = Special[Boss[client].Special].Cfg.GetInt("triple", i) ? view_as<bool>(i) : CvarTriple.BoolValue;
-	Boss[client].Crits = Special[Boss[client].Special].Cfg.GetInt("crits", i) ? view_as<bool>(i) : CvarCrits.BoolValue;
-	Boss[client].Healing = Special[Boss[client].Special].Cfg.GetInt("healing", i) ? view_as<bool>(i) : CvarHealing.BoolValue;
-	Boss[client].Knockback = Special[Boss[client].Special].Cfg.GetInt("knockback", i) ? i : Special[Boss[client].Special].Cfg.GetInt("rocketjump", i) ? i : CvarKnockback.IntValue;
+	ConfigMap cfg = Special[boss].Cfg.GetSection("character");
 
-	Boss[client].Voice = Special[Boss[client].Special].Cfg.GetInt("sound_block_vo", i) ? !i : true;
-	Boss[client].RageMode = Special[Boss[client].Special].Cfg.GetInt("ragemode", i) ? view_as<bool>(i) : false;
+	Boss[client].Triple = cfg.GetInt("triple", i) ? view_as<bool>(i) : CvarTriple.BoolValue;
+	Boss[client].Crits = cfg.GetInt("crits", i) ? view_as<bool>(i) : CvarCrits.BoolValue;
+	Boss[client].Healing = cfg.GetInt("healing", i) ? view_as<bool>(i) : CvarHealing.BoolValue;
+	Boss[client].Knockback = cfg.GetInt("knockback", i) ? i : cfg.GetInt("rocketjump", i) ? i : CvarKnockback.IntValue;
+
+	Boss[client].Voice = cfg.GetInt("sound_block_vo", i) ? !i : true;
+	Boss[client].RageMode = cfg.GetInt("ragemode", i) ? view_as<bool>(i) : false;
 
 	float f;
-	Boss[client].RageMode = Special[Boss[client].Special].Cfg.GetFloat("ragemode", f) ? f : 100.0;
-	Boss[client].RageMax = Special[Boss[client].Special].Cfg.GetFloat("ragemax", f) ? f : 100.0;
-	Boss[client].RageMin = Special[Boss[client].Special].Cfg.GetFloat("ragemin", f) ? f : 100.0;
-	Boss[client].MaxSpeed = Special[Boss[client].Special].Cfg.GetFloat("maxspeed", f) ? f : 340.0;
+	Boss[client].RageMode = cfg.GetFloat("ragemode", f) ? f : 100.0;
+	Boss[client].RageMax = cfg.GetFloat("ragemax", f) ? f : 100.0;
+	Boss[client].RageMin = cfg.GetFloat("ragemin", f) ? f : 100.0;
+	Boss[client].MaxSpeed = cfg.GetFloat("maxspeed", f) ? f : 340.0;
 
-	if(!Special[Boss[client].Special].Cfg.GetInt("sapper", i))
+	if(!cfg.GetInt("sapper", i))
 		i = CvarSapper.IntValue;
 
 	Boss[client].Sapper = (i==1 || i>2);
 
-	if(Special[Boss[client].Special].Cfg.GetInt("pickups", i))
+	if(cfg.GetInt("pickups", i))
 	{
 		Boss[client].HealthKits = (i==1 || i>2);
 		Boss[client].AmmoKits = i>1;
@@ -581,10 +583,10 @@ void Bosses_Create(int client, TFTeam team)
 		break;
 	}
 
-	Client[client].Team = Special[Boss[client].Special].Cfg.GetInt("bossteam", i) ? view_as<TFTeam>(i) : TFTeam_Unassigned;
+	Client[client].Team = cfg.GetInt("bossteam", i) ? view_as<TFTeam>(i) : TFTeam_Unassigned;
 	if(Client[client].Team == TFTeam_Unassigned)
 	{
-		if(!Special[Boss[client].Special].Cfg.GetInt("team", i) || i<0)
+		if(!cfg.GetInt("team", i) || i<0)
 		{
 			if(team == 4)
 			{
@@ -625,8 +627,10 @@ void Bosses_Prepare(int boss)
 	if(Special[boss].Precached)
 		return;
 
+	ConfigMap cfg = Special[boss].Cfg.GetSection("character");
+
 	char file[PLATFORM_MAX_PATH];
-	if(Special[boss].Cfg.Get("model", file, sizeof(file)))
+	if(cfg.Get("model", file, sizeof(file)))
 	{
 		if(FileExists(file, true))
 		{
@@ -639,7 +643,7 @@ void Bosses_Prepare(int boss)
 	}
 
 	Special[boss].Precached = true;
-	StringMapSnapshot snap = Special[boss].Cfg.Snapshot();
+	StringMapSnapshot snap = cfg.Snapshot();
 	if(!snap)
 		return;
 
@@ -652,7 +656,7 @@ void Bosses_Prepare(int boss)
 			char[] buffer = new char[length];
 			snap.GetKey(i, buffer, length);
 			PackVal val;
-			Special[boss].Cfg.GetArray(buffer, val, sizeof(val));
+			cfg.GetArray(buffer, val, sizeof(val));
 			if(val.tag == KeyValType_Null)
 				continue;
 
@@ -661,11 +665,11 @@ void Bosses_Prepare(int boss)
 				continue;
 
 			val.data.Reset();
-			cfg = val.data.ReadCell();
-			if(cfg == null)
+			sec = val.data.ReadCell();
+			if(sec == null)
 				continue;
 
-			StringMapSnapshot snap2 = cfg.Snapshot();
+			StringMapSnapshot snap2 = sec.Snapshot();
 			if(!snap2)
 				continue;
 
@@ -678,11 +682,11 @@ void Bosses_Prepare(int boss)
 					char[] buffer2 = new char[length2];
 					snap2.GetKey(i2, buffer2, length2);
 					PackVal val2;
-					cfg.GetArray(buffer2, val2, sizeof(val2));
+					sec.GetArray(buffer2, val2, sizeof(val2));
 					if(val2.tag == KeyValType_Null)
 						continue;
 
-					if(type == Special[boss].Cfg)
+					if(type == Section_Sound)
 					{
 						FormatEx(file, sizeof(file), "sound/%s", buffer2);
 						if(FileExists(file, true))
@@ -711,8 +715,10 @@ void Bosses_Prepare(int boss)
 
 void Bosses_SetHealth(int client)
 {
+	ConfigMap cfg = Special[Boss[client].Special].Cfg.GetSection("character");
+
 	static char buffer[1024];
-	if(Special[Boss[client].Special].Cfg.Get("ragedamage", buffer, sizeof(buffer)))
+	if(cfg.Get("ragedamage", buffer, sizeof(buffer)))
 	{
 		#if defined FF2_TIMESTEN
 		Boss[client].RageDamage = RoundFloat(ParseFormula(buffer, Players)*TimesTen_Value());
@@ -726,7 +732,7 @@ void Bosses_SetHealth(int client)
 	}
 
 	int i;
-	if(Special[Boss[client].Special].Cfg.GetInt("lives", i))
+	if(cfg.GetInt("lives", i))
 	{
 		if(i > 1)
 		{
@@ -743,7 +749,7 @@ void Bosses_SetHealth(int client)
 	}
 
 	Boss[client].MaxLives = Boss[client].Lives;
-	if(Special[Boss[client].Special].Cfg.Get("health_formula", buffer, sizeof(buffer)))
+	if(cfg.Get("health_formula", buffer, sizeof(buffer)))
 	{
 		#if defined FF2_TIMESTEN
 		Boss[client].MaxHealth = RoundFloat(ParseFormula(buffer, Players)*TimesTen_Value());
@@ -772,7 +778,9 @@ void Bosses_SetHealth(int client)
 
 void Bosses_Equip(int client)
 {
-	Boss[client].Class = CfgGetClass(Special[Boss[client].Special].Cfg, "class");
+	ConfigMap cfg = Special[Boss[client].Special].Cfg.GetSection("character");
+
+	Boss[client].Class = CfgGetClass(cfg, "class");
 
 	SetEntProp(client, Prop_Send, "m_bGlowEnabled", 0);
 	TF2_RemovePlayerDisguise(client);
@@ -780,7 +788,7 @@ void Bosses_Equip(int client)
 
 	RequestFrame(Bosses_Model, GetClientUserId(client));
 
-	Boss[client].Cosmetics = (Special[Boss[client].Special].Cfg.GetInt("cosmetics", i) && i);
+	Boss[client].Cosmetics = (cfg.GetInt("cosmetics", i) && i);
 	i = MaxClients+1;
 	while((i=FindEntityByClassname2(i, "tf_wear*")) != -1)
 	{
@@ -813,7 +821,7 @@ void Bosses_Equip(int client)
 	}
 
 	TF2_RemoveAllWeapons(client);
-	StringMapSnapshot snap = Special[Boss[client].Special].Cfg.Snapshot();
+	StringMapSnapshot snap = cfg.Snapshot();
 	if(!snap)
 		return;
 
@@ -828,13 +836,13 @@ void Bosses_Equip(int client)
 			char[] buffer = new char[length];
 			snap.GetKey(i, buffer, length);
 			PackVal val;
-			Special[Boss[client].Special].Cfg.GetArray(buffer, val, sizeof(val));
+			cfg.GetArray(buffer, val, sizeof(val));
 			if(val.tag!=KeyValType_Section || SectionType(buffer)!=Section_Weapon)
 				continue;
 
 			val.data.Reset();
-			ConfigMap cfg = val.data.ReadCell();
-			if(cfg == null)
+			ConfigMap wep = val.data.ReadCell();
+			if(wep == null)
 				continue;
 
 			bool wearable;
@@ -849,7 +857,7 @@ void Bosses_Equip(int client)
 					wearable = true;
 				}
 
-				if(!cfg.Get("name", classname, sizeof(classname));
+				if(!wep.Get("name", classname, sizeof(classname));
 					strcopy(classname, sizeof(classname), wearable ? "tf_wearable" : "saxxy");
 			}
 			else
@@ -864,18 +872,18 @@ void Bosses_Equip(int client)
 				continue;
 
 			int index;
-			cfg.GetInt("index", index);
+			wep.GetInt("index", index);
 
 			int level = -1;
-			cfg.GetInt("level", level);
+			wep.GetInt("level", level);
 
 			int quality = 5;
-			cfg.GetInt("quality", quality);
+			wep.GetInt("quality", quality);
 
-			bool override = (cfg.GetInt("override", length) && length);
+			bool override = (wep.GetInt("override", length) && length);
 
 			int rank = (level==-1 || override) ? -1 : 21;
-			cfg.GetInt("rank", rank);
+			wep.GetInt("rank", rank);
 
 			int kills = rank>=0 ? GetRankingKills(rank, index, wearable) : -1;
 
@@ -884,7 +892,7 @@ void Bosses_Equip(int client)
 
 			if(kills >= 0)
 			{
-				if(cfg.Get("attributes", attributes, sizeof(attributes)))
+				if(wep.Get("attributes", attributes, sizeof(attributes)))
 				{
 					if(override)
 					{
@@ -909,7 +917,7 @@ void Bosses_Equip(int client)
 			}
 			else if(!override)
 			{
-				if(cfg.Get("attributes", attributes, sizeof(attributes)))
+				if(wep.Get("attributes", attributes, sizeof(attributes)))
 				{
 					Format(attributes, sizeof(attributes), "%s ; %s", DEFAULT_ATTRIBUTES, TF2_GetPlayerClass(client)==TFClass_Scout ? 1 : 2, attributes);
 				}
@@ -918,7 +926,7 @@ void Bosses_Equip(int client)
 					FormatEx(attributes, sizeof(attributes), DEFAULT_ATTRIBUTES, TF2_GetPlayerClass(client)==TFClass_Scout ? 1 : 2);
 				}
 			}
-			else if(!cfg.Get("attributes", attributes, sizeof(attributes)))
+			else if(!wep.Get("attributes", attributes, sizeof(attributes)))
 			{
 				attributes[0] = 0;
 			}
@@ -935,7 +943,7 @@ void Bosses_Equip(int client)
 			{
 				level = -1;
 				kills = -1;
-				if(cfg.GetInt("ammo", level) || cfg.GetInt("clip", kills))
+				if(wep.GetInt("ammo", level) || wep.GetInt("clip", kills))
 					FF2_SetAmmo(client, index, level, kills);
 	
 				if(index!=735 && StrEqual(classname, "tf_weapon_builder", false))
@@ -957,10 +965,10 @@ void Bosses_Equip(int client)
 			}
 
 			level = wearable ? 1 : 0;
-			Special[Boss[client].Special].Cfg.GetInt("show", level);
+			wep.GetInt("show", level);
 			if(level)
 			{
-				if(Special[Boss[client].Special].Cfg.Get("worldmodel", attributes, sizeof(attributes)))
+				if(wep.Get("worldmodel", attributes, sizeof(attributes)))
 					ConfigureWorldModelOverride(index, attributes, wearable);
 
 				SetEntProp(index, Prop_Send, "m_bValidatedAttachedEntity", 1);
@@ -974,10 +982,10 @@ void Bosses_Equip(int client)
 			}
 
 			int rgba[4] = {255, 255, 255, 255};
-			override = Special[Boss[client].Special].Cfg.GetInt("alpha", rgba[0]);
-			override = (Special[Boss[client].Special].Cfg.GetInt("red", rgba[1]) || override);
-			override = (Special[Boss[client].Special].Cfg.GetInt("green", rgba[2]) || override);
-			override = (Special[Boss[client].Special].Cfg.GetInt("blue", rgba[3]) || override);
+			override = wep.GetInt("alpha", rgba[0]);
+			override = (wep.GetInt("red", rgba[1]) || override);
+			override = (wep.GetInt("green", rgba[2]) || override);
+			override = (wep.GetInt("blue", rgba[3]) || override);
 			if(override)
 			{
 				SetEntityRenderMode(index, RENDER_TRANSCOLOR);
@@ -1001,7 +1009,7 @@ public void Bosses_Model(int userid)
 		return;
 
 	static char buffer[PLATFORM_MAX_PATH];
-	if(!Special[Boss[client].Special].Cfg.Get("model", buffer, sizeof(buffer)))
+	if(!Special[Boss[client].Special].Cfg.Get("character.model", buffer, sizeof(buffer)))
 		return;
 
 	SetVariantString(buffer);
@@ -1073,7 +1081,8 @@ public Action Bosses_JoinClass(int client, const char[] command, int args)
 
 void Bosses_AbilitySlot(int client, int slot)
 {
-	StringMapSnapshot snap = Special[Boss[client].Special].Cfg.Snapshot();
+	ConfigMap character = Special[boss].Cfg.GetSection("character");
+	StringMapSnapshot snap = character.Snapshot();
 	if(!snap)
 		return;
 
@@ -1086,7 +1095,7 @@ void Bosses_AbilitySlot(int client, int slot)
 			char[] buffer = new char[length];
 			snap.GetKey(i, buffer, length);
 			PackVal val;
-			Special[Boss[client].Special].Cfg.GetArray(buffer, val, sizeof(val));
+			character.GetArray(buffer, val, sizeof(val));
 			if(val.tag!=KeyValType_Section || SectionType(buffer)!=Section_Ability)
 				continue;
 
@@ -1590,7 +1599,7 @@ int Bosses_GetSpecial(int client, int selection, int type)
 void Bosses_CheckCompanion(int boss, TFTeam team)
 {
 	static char buffer[64];
-	if(!Special[boss].Cfg.Get("companion", buffer, sizeof(buffer)))
+	if(!Special[boss].Cfg.Get("character.companion", buffer, sizeof(buffer)))
 		return;
 
 	int companion = GetMatchingBoss(buffer);

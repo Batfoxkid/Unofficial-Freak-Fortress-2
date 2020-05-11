@@ -235,7 +235,6 @@ enum struct WeaponEnum
 
 enum struct SpecialEnum
 {
-	ConfigMap Full;
 	ConfigMap Cfg;
 	int Charset;
 	bool Blocked;
