@@ -167,7 +167,7 @@ public any Native_GetSpecial(Handle plugin, int numParams)
 		index = Boss[index].Special;
 	}
 
-	bool result = Special[index].Cfg.Get("name", buffer, length);
+	bool result = Special[index].Cfg.Get("character.name", buffer, length);
 	SetNativeString(2, buffer, length);
 	return result;
 }
@@ -205,7 +205,7 @@ public any Native_GetName(Handle plugin, int numParams)
 	if(!IsValidClient(client))
 		client = 0;
 
-	bool result = CfgGetLang(Special[index].Cfg, "name", buffer, length, client);
+	bool result = CfgGetLang(Special[index].Cfg, "character.name", buffer, length, client);
 	SetNativeString(2, buffer, length);
 	return result;
 }
@@ -355,11 +355,13 @@ public any Native_GetRageDist(Handle plugin, int numParams)
 	if(client == -1)
 		return 0.0;
 
+	ConfigMap character = Special[Boss[client].Special].Cfg.GetSection("character");
+
 	static char ability[64];
 	GetNativeString(3, ability, sizeof(ability));
 	if(ability[0])
 	{
-		StringMapSnapshot snap = Special[Boss[client].Special].Cfg.Snapshot();
+		StringMapSnapshot snap = character.Snapshot();
 		if(snap)
 		{
 			int entries = snap.Length;
@@ -371,7 +373,7 @@ public any Native_GetRageDist(Handle plugin, int numParams)
 					char[] buffer = new char[length];
 					snap.GetKey(i, buffer, length);
 					PackVal val;
-					Special[Boss[client].Special].Cfg.GetArray(buffer, val, sizeof(val));
+					character.GetArray(buffer, val, sizeof(val));
 					if(val.tag!=KeyValType_Section || SectionType(buffer)!=Section_Ability)
 						continue;
 
@@ -405,7 +407,7 @@ public any Native_GetRageDist(Handle plugin, int numParams)
 	}
 
 	float value = 400.0;
-	Special[Boss[client].Special].Cfg.GetFloat("ragedist", value);
+	character.GetFloat("ragedist", value);
 	return value;
 }
 
@@ -419,7 +421,8 @@ public any Native_HasAbility(Handle plugin, int numParams)
 	GetNativeString(2, plugin, sizeof(plugin));
 	GetNativeString(3, ability, sizeof(ability));
 
-	StringMapSnapshot snap = Special[Boss[client].Special].Cfg.Snapshot();
+	ConfigMap character = Special[Boss[client].Special].Cfg.GetSection("character");
+	StringMapSnapshot snap = character.Snapshot();
 	if(!snap)
 		return false;
 
@@ -432,7 +435,7 @@ public any Native_HasAbility(Handle plugin, int numParams)
 			char[] buffer = new char[length];
 			snap.GetKey(i, buffer, length);
 			PackVal val;
-			Special[Boss[client].Special].Cfg.GetArray(buffer, val, sizeof(val));
+			character.GetArray(buffer, val, sizeof(val));
 			if(val.tag!=KeyValType_Section || SectionType(buffer)!=Section_Ability)
 				continue;
 
@@ -714,6 +717,7 @@ public any Native_GetSpecialKV(Handle plugin, int numParams)
 
 public any Native_StartMusic(Handle plugin, int numParams)
 {
+	#if defined FF2_MUSIC
 	int client = GetNativeCell(1);
 	if(!client)
 	{
@@ -728,10 +732,12 @@ public any Native_StartMusic(Handle plugin, int numParams)
 
 	if(IsValidClient(client))
 		Music_Play(client, GetEngineTime(), -1);
+	#endif
 }
 
 public any Native_StopMusic(Handle plugin, int numParams)
 {
+	#if defined FF2_MUSIC
 	int client = GetNativeCell(1);
 	if(!client)
 	{
@@ -745,6 +751,7 @@ public any Native_StopMusic(Handle plugin, int numParams)
 
 	if(IsValidClient(client))
 		Music_Stop(client);
+	#endif
 }
 
 public any Native_RandomSound(Handle plugin, int numParams)
@@ -884,7 +891,7 @@ public any Native_LogError(Handle plugin, int numParams)
 	int error = FormatNativeString(0, 1, 2, sizeof(buffer), _, buffer);
 	if(error != SP_ERROR_NONE)
 	{
-		ThrowNativeError(error, "FormatNativeString Failed");
+		LogError2("FormatNativeString Failed");
 		return;
 	}
 	LogError2(buffer);

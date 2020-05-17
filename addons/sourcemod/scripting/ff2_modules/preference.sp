@@ -65,7 +65,7 @@ void Pref_SetupClient(int client, float engineTime)
 	Client[client].PopUpAt = Client[client].Pref[Pref_Boss]==Pref_Undef ? engineTime+30.0 : FAR_FUTURE;
 
 	BossCookie.Get(client, buffer, sizeof(buffer));
-	amount = ExplodeString(buffer, ";", buffers, sizeof(buffers), sizeof(buffers[]));
+	amount = ExplodeString(buffer, ";", buffers, length, size);
 	if(amount > Charset)
 	{
 		for(int i; i<Specials; i++)
@@ -73,8 +73,10 @@ void Pref_SetupClient(int client, float engineTime)
 			if(Special[i].Charset != Charset)
 				continue;
 
-			Special[i].Kv.GetString(buffer, sizeof(buffer));
-			if(StrContains(buffer, buffers))
+			if(!Special[i].Cfg.Get("character.name", buffer, sizeof(buffer)))
+				continue;
+
+			if(StrContains(buffer, buffers[Charset]))
 				continue;
 
 			Client[client].Selection = i;
@@ -316,32 +318,28 @@ void Pref_BossMenu(int client, int pack)
 			return;
 		}
 
+		bool access = CheckCommandAccess(client, "ff2_special", ADMFLAG_CHEATS);
 		for(int i; i<Specials; i++)
 		{
 			if(Special[i].Charset != pack)
 				continue;
 
-			Special[i].Kv.Rewind();
-			if(Special[i].Kv.GetNum("blocked"))
+			ConfigMap cfg = Special[i].Cfg.GetSection("character");
+
+			int var;
+			if(cfg.GetInt("blocked", var) && var)
 				continue;
 
-			KvGetLang(Special[i].Kv, "name", boss, sizeof(boss), client);
+			CfgGetLang(cfg, "name", boss, sizeof(boss), client);
 			if(StrContains(boss, buffer, false))
 			{
 				static char buffer2[64];
-				Special[i].Kv.GetString("name", buffer2, sizeof(buffer2));
-				if(StrContains(buffer2, buffer, false))
-				{
-					if(!CheckCommandAccess(client, "ff2_special", ADMFLAG_CHEATS))
-						continue;
-
-					Special[i].Kv.GetString("filename", buffer2, sizeof(buffer2));
-					if(StrContains(buffer2, buffer, false))
-						continue;
-				}
+				cfg.Get("name", buffer2, sizeof(buffer2));
+				if(StrContains(buffer2, buffer, false) && (!access || StrContains(Special[i].File, buffer, false)))
+					continue;
 			}
 
-			if(!KvGetBossAccess2(Special[i].Kv, client, buffer, sizeof(buffer)))
+			if(!CheckBossAccessMsg(client, i, buffer, sizeof(buffer)))
 			{
 				FReplyToCommand(client, buffer);
 				return;
@@ -375,8 +373,7 @@ void Pref_BossMenu(int client, int pack)
 		if(Special[i].Charset != pack)
 			continue;
 
-		Special[i].Kv.Rewind();
-		int access = KvGetBossAccess(Special[i].Kv, client);
+		int access = CheckBossAccess(client, boss);
 		if(access==-2 || !access)
 			continue;
 
@@ -457,16 +454,16 @@ static void ConfirmBoss(int client, int boss)
 	Menu menu = new Menu(ConfirmBossH, MenuAction_Select|MenuAction_End);
 	SetGlobalTransTarget(client);
 
-	Special[boss].Kv.Rewind();
-
-	char buffer2[64];
-	FormatEx(buffer2, sizeof(buffer2), "%t", "Pref No Desc");
+	ConfigMap cfg = Special[boss].Cfg.GetSection("character");
 
 	char buffer[256];
-	KvGetLang(Special[boss].Kv, "description", buffer, sizeof(buffer), client, buffer2);
+	if(!CfgGetLang(cfg, "description", buffer, sizeof(buffer), client))
+		FormatEx(buffer, sizeof(buffer), "%t", "Pref No Desc");
+
 	menu.SetTitle(buffer);
 
-	KvGetLang(Special[boss].Kv, "name", buffer2, sizeof(buffer2), client);
+	char buffer2[64];
+	CfgGetLang(cfg, "name", buffer2, sizeof(buffer2), client);
 	if(Special[boss].Charset == Charset)
 	{
 		FormatEx(buffer, sizeof(buffer), "%t", "Pref Confirm", buffer2); 
@@ -650,8 +647,7 @@ void Pref_SelectBoss(int client, int boss, bool blank=false)
 	}
 	else
 	{
-		Special[boss].Kv.Rewind();
-		Special[boss].Kv.GetString("name", buffers[pack], size);
+		Special[boss].Cfg.Get("character.name", buffer, sizeof(buffer));
 	}
 
 	strcopy(buffer, sizeof(buffer), buffers[0]);

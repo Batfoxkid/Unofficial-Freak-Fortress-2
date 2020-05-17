@@ -39,62 +39,92 @@ void Music_Start(float engineTime)
 
 static void AddMusicTracks(int boss, int lives)
 {
-	Special[boss].Kv.Rewind();
-	if(!Special[boss].Kv.JumpToKey("sound_bgm"))
+	ConfigMap cfg = Special[boss].Cfg.GetSection("character.sound_bgm");
+	if(cfg == null)
 		return;
 
-	char filepath[PLATFORM_MAX_PATH];
-	if(Special[boss].Kv.GoFirstSubKey())
+	StringMapSnapshot snap = cfg.Snapshot();
+	if(!snap)
+		return;
+
+	int entries = snap.Length;
+	if(entries)
 	{
-		do
+		char buffer2[PLATFORM_MAX_PATH];
+		for(int i; i<entries; i++)
 		{
-			if(!Special[boss].Kv.GetSectionName(BGM[BGMs].Path, MAX_PLATFORM_PATH))
-				continue;
-
-			int life = Special[boss].Kv.GetNum("life");
-			if(life > 0)
+			int length = snap.KeyBufferSize(i)+1;
+			char[] buffer = new char[length];
+			snap.GetKey(i, buffer, length);
+			PackVal val;
+			cfg.GetArray(buffer, val, sizeof(val));
+			switch(val.tag)
 			{
-				BGMLives = true;
-				if(life != lives)
-					continue;
+				case KeyValType_Value:
+				{
+					if(StrContains(buffer, "path"))
+						continue;
+
+					ReplaceString(buffer, length, "path", "");
+					int id = StringToInt(buffer);
+					if(id < 1)
+						continue;
+
+					FormatEx(buffer2, sizeof(buffer2), "life%d", id);
+					if(cfg.GetInt(buffer2, length))
+					{
+						if(length>0 && length!=lives)
+							continue;
+					}
+
+					FormatEx(buffer2, sizeof(buffer2), "path%d", id);
+					if(!cfg.Get(buffer2, BGM[id-1].Path, PLATFORM_MAX_PATH))
+						continue;
+
+					FormatEx(buffer2, sizeof(buffer2), "time%d", id);
+					if(!cfg.GetFloat(buffer2, BGM[id-1].Time))
+						BGM[id-1].Time = 0.0;
+
+					FormatEx(buffer2, sizeof(buffer2), "name%d", id);
+					if(!cfg.Get(buffer2, BGM[id-1].Name, 64))
+						BGM[id-1].Name[0] = 0;
+
+					FormatEx(buffer2, sizeof(buffer2), "artist%d", id);
+					if(!cfg.Get(buffer2, BGM[id-1].Artist, 64))
+						BGM[id-1].Artist[0] = 0;
+
+					BGMs++;
+				}
+				case KeyValType_Section:
+				{
+					val.data.Reset();
+					ConfigMap section = val.data.ReadCell();
+
+					if(section.GetInt("life", length))
+					{
+						if(length>0 && length!=lives)
+							continue;
+					}
+
+					if(!section.Get("path", BGM[BGMs].Path, PLATFORM_MAX_PATH))
+						continue;
+
+					if(!section.GetFloat("time", BGM[BGMs].Time))
+						BGM[BGMs].Time = 0.0;
+
+					if(!section.Get("name", BGM[BGMs].Name, 64))
+						BGM[BGMs].Name[0] = 0;
+
+					if(!section.Get("artist", BGM[BGMs].Artist, 64))
+						BGM[BGMs].Artist[0] = 0;
+
+					BGMs++;
+				}
 			}
-
-			BGM[BGMs].Time = Special[boss].Kv.GetFloat("time");
-			if(BGM[BGMs].Time < 1)
-				continue;
-
-			Special[boss].Kv.GetString("name", BGM[BGMs].Name);
-			Special[boss].Kv.GetString("artist", BGM[BGMs].Artist);
-			BGMs++;
-		} while(BGMs<MAXSONGS && Special[boss].Kv.GotoNextKey())
-		return;
+		}
 	}
 
-	char key[8];
-	for(int i=1; i<=MAXSONGS && BGMs<MAXSONGS; i++)
-	{
-		FormatEx(key, sizeof(key), "time%i", i);
-		BGM[BGMs].Time = Special[boss].Kv.GetFloat(key);
-		if(BGM[BGMs].Time < 1)
-			break;
-
-		FormatEx(key, sizeof(key), "path%i", i);
-		Special[boss].Kv.GetString(key, BGM[BGMs].Path);
-		if(!BGM[BGMs].Path[0])
-			break;
-
-		FormatEx(key, sizeof(key), "life%i", i);
-		int life = Special[boss].Kv.GetNum(key);
-		if(life>0 && life!=lives)
-			continue;
-
-		FormatEx(key, sizeof(key), "name%i", i);
-		Special[boss].Kv.GetString(key, BGM[BGMs].Name);
-
-		FormatEx(key, sizeof(key), "artist%i", i);
-		Special[boss].Kv.GetString(key, BGM[BGMs].Artist);
-		BGMs++;
-	}
+	delete snap;
 }
 
 void Music_Play(int client, float engineTime, int song)
@@ -183,6 +213,7 @@ void Music_Stop(int client)
 	if(!Client[client].BGM[0])
 		return;
 
+	StopSound(client, SNDCHAN_AUTO, Client[client].BGM);
 	StopSound(client, SNDCHAN_AUTO, Client[client].BGM);
 	Client[client].BGM[0] = 0;
 }
@@ -415,7 +446,7 @@ static void TimeToString(int time, char[] buffer, int length)
 	}
 	else
 	{
-		FormatEx(buffer, length, "0%i", time/60);
+		Format(buffer, length, "0%i", time/60);
 	}
 
 	if(time%60 > 9)

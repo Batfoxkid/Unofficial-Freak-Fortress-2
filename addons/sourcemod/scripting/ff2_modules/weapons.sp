@@ -10,7 +10,7 @@
 
 #define WEAPON_CONFIG		"data/freak_fortress_2/weapons.cfg"
 
-KeyValues WeaponKV;
+ConfigMap WeaponCfg;
 
 void Weapons_Setup()
 {
@@ -22,27 +22,32 @@ void Weapons_Setup()
 	if(!FileExists(config))
 	{
 		LogError2("[Weapons] Could not find '%s'!", WEAPON_CONFIG);
-		WeaponKV = null;
+		WeaponCfg = null;
 		return;
 	}
 
-	WeaponKV = CreateKeyValues("weapons");
-	if(WeaponKV.ImportFromFile(config))
-		return;
+	WeaponCfg = new ConfigMap(config);
+	if(WeaponCfg = null)
+		LogError2("[Weapons] '%s' failed to be converted to ConfigMap!", WEAPON_CONFIG);
 
-	LogError2("[Weapons] '%s' is improperly formatted!", WEAPON_CONFIG);
-	WeaponKV = null;
+	ConfigMap cfg = Special[Specials].Cfg.GetSection("Weapons");
+	if(cfg == null)
+	{
+		DeleteCfg(WeaponCfg);
+		LogError2("[Weapons] '%s' is improperly formatted!", WEAPON_CONFIG);
+	}
 }
 
 public void Weapons_Check(int userid)
 {
-	if(WeaponKV == null)
+	if(WeaponCfg == null)
 		return;
 
 	int client = GetClientOfUserId(userid);
 	if(!IsValidClient(client))
 		return;
 
+	ConfigMap cfg = Special[Specials].Cfg.GetSection("Weapons");
 	for(int slot; slot<4; slot++)
 	{
 		static char classname[MAX_CLASSNAME_LENGTH];
@@ -87,71 +92,82 @@ public void Weapons_Check(int userid)
 			GetEntityClassname(weapon, classname, sizeof(classname));
 
 			bool found;
-			WeaponKV.Rewind();
-			WeaponKv.GotoFirstSubKey();
-			do
+			StringMapSnapshot snap = cfg.Snapshot();
+			if(snap)
 			{
-				static char attrib[256];
-				if(!WeaponKv.GetSectionName(attrib, sizeof(attrib))
-					continue;
-
-				static char names[8][MAX_CLASSNAME_LENGTH];
-				int num = ExplodeString(attrib, " ; ", names, sizeof(names), sizeof(names[]));
-				for(int i; i<num; i++)
+				bool found;
+				int entries = snap.Length;
+				if(entries)
 				{
-					if(StrContains(names[i], "tf_") == -1)
+					for(i=0; i<entries; i++)
 					{
-						if(StringToInt(names[i]) != index)
+						int length = snap.KeyBufferSize(i)+1;
+						char[] buffer = new char[length];
+						snap.GetKey(i, buffer, length);
+						PackVal val;
+						cfg.GetArray(buffer, val, sizeof(val));
+						if(val.tag != KeyValType_Section)
 							continue;
-					}
-					else if(StrContains(names[i], "*") == -1)
-					{
-						if(!StrEqual(names[i], classname))
-							continue;
-					}
-					else if(ReplaceString(names[i], sizeof(names[]), "*", "") > 1)
-					{
-						if(StrContains(names[i], classname) == -1)
-							continue;
-					}
-					else if(!StrContains(names[i], classname))
-					{
-						continue;
-					}
 
-					found = true;
-					break;
+						static char names[8][MAX_CLASSNAME_LENGTH];
+						int num = ExplodeString(buffer, " ; ", names, sizeof(names), sizeof(names[]));
+						for(int i; i<num; i++)
+						{
+							if(StrContains(names[i], "tf_") == -1)
+							{
+								if(StringToInt(names[i]) != index)
+									continue;
+							}
+							else if(StrContains(names[i], "*") == -1)
+							{
+								if(!StrEqual(names[i], classname))
+									continue;
+							}
+							else if(ReplaceString(names[i], sizeof(names[]), "*", "") > 1)
+							{
+								if(StrContains(names[i], classname) == -1)
+									continue;
+							}
+							else if(!StrContains(names[i], classname))
+							{
+								continue;
+							}
+
+							found = true;
+							break;
+						}
+
+						if(!found)
+							continue;
+
+						int i = WeaponCfg.GetNum("slot", slot);
+						if(i<0 || i>2)
+						{
+							found = false;
+							break;
+						}
+
+						Weapon[client][i].Stale = WeaponCfg.GetNum("stale");
+						Weapon[client][i].Shield = view_as<bool>(WeaponCfg.GetNum("shield")) ? weapon : 0;
+						Weapon[client][i].Crit = WeaponCfg.GetNum("crits", -1);
+						Weapon[client][i].Special = WeaponCfg.GetFloat("special");
+						Weapon[client][i].Outline = WeaponCfg.GetFloat("outline");
+						Weapon[client][i].Stun = WeaponCfg.GetFloat("stun");
+						Weapon[client][i].Uber = WeaponCfg.GetFloat("uber");
+						Weapon[client][i].Stab = WeaponCfg.GetFloat("stab", 1.0);
+						Weapon[client][i].Fall = WeaponCfg.GetFloat("fall", 1.0);
+						Weapon[client][i].Damage[0] = WeaponCfg.GetFloat("damage", 1.0);
+						Weapon[client][i].Damage[1] = WeaponCfg.GetFloat("damage mini", 1.0);
+						Weapon[client][i].Damage[2] = WeaponCfg.GetFloat("damage crit", 1.0);
+						Weapon[client][i].HealthKit = view_as<bool>(WeaponCfg.GetNum("kit"));
+						Weapon[client][i].NoForce = !WeaponCfg.GetNum("knockback", 1);
+						break;
+					}
 				}
-
-				if(!found)
+				delete snap;
+				if(found)
 					continue;
-
-				int i = WeaponKv.GetNum("slot", slot);
-				if(i<0 || i>2)
-				{
-					found = false;
-					break;
-				}
-
-				Weapon[client][i].Stale = WeaponKv.GetNum("stale");
-				Weapon[client][i].Shield = view_as<bool>(WeaponKv.GetNum("shield")) ? weapon : 0;
-				Weapon[client][i].Crit = WeaponKv.GetNum("crits", -1);
-				Weapon[client][i].Special = WeaponKv.GetFloat("special");
-				Weapon[client][i].Outline = WeaponKv.GetFloat("outline");
-				Weapon[client][i].Stun = WeaponKv.GetFloat("stun");
-				Weapon[client][i].Uber = WeaponKv.GetFloat("uber");
-				Weapon[client][i].Stab = WeaponKv.GetFloat("stab", 1.0);
-				Weapon[client][i].Fall = WeaponKv.GetFloat("fall", 1.0);
-				Weapon[client][i].Damage[0] = WeaponKv.GetFloat("damage", 1.0);
-				Weapon[client][i].Damage[1] = WeaponKv.GetFloat("damage mini", 1.0);
-				Weapon[client][i].Damage[2] = WeaponKv.GetFloat("damage crit", 1.0);
-				Weapon[client][i].HealthKit = view_as<bool>(WeaponKv.GetNum("kit"));
-				Weapon[client][i].NoForce = !WeaponKv.GetNum("knockback", 1);
-				break;
 			}
-
-			if(found)
-				continue;
 		}
 
 		if(slot > 2)

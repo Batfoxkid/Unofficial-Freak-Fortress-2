@@ -195,18 +195,6 @@ public Action OnTakeDamage(int client, int &attacker, int &inflictor, float &dam
 		buffer[0] = 0;
 	}
 
-	if(damagecustom!=TF_CUSTOM_BACKSTAB && damagecustom!=TF_CUSTOM_TELEFRAG)
-	{
-		if(weapon!=4095 && !StrContains(buffer, "tf_weapon_knife", false) && damage>1000.0)
-		{
-			damagecustom = TF_CUSTOM_BACKSTAB;
-		}
-		else if(!buffer[0] && (damagetype & DMG_CRUSH) && damage==1000.0)
-		{
-			damagecustom = TF_CUSTOM_TELEFRAG;
-		}
-	}
-
 	static float position[3];
 	GetEntPropVector(attacker, Prop_Send, "m_vecOrigin", position);
 	if(damagecustom == TF_CUSTOM_BACKSTAB)
@@ -263,7 +251,7 @@ public Action OnTakeDamage(int client, int &attacker, int &inflictor, float &dam
 
 		if(!(Client[attacker].Pref[Pref_Hud] & HUD_MESSAGE))
 		{
-			KvGetLang(Special[Boss[client].Special].Kv, "name", buffer, sizeof(buffer));
+			CfgGetLang(Special[Boss[client].Special].Cfg, "character.name", buffer, sizeof(buffer), attacker);
 			CreateAttachedAnnotation(attacker, client, true, 3.0, "%t", "Player Backstab", buffer);
 		}
 
@@ -276,7 +264,7 @@ public Action OnTakeDamage(int client, int &attacker, int &inflictor, float &dam
 			{
 				if(Boss[attacker].Active)
 				{
-					KvGetLang(Special[Boss[attacker].Special].Kv, "name", buffer, sizeof(buffer));
+					CfgGetLang(Special[Boss[attacker].Special].Cfg, "character.name", buffer, sizeof(buffer), client);
 				}
 				else
 				{
@@ -369,7 +357,7 @@ public Action OnTakeDamage(int client, int &attacker, int &inflictor, float &dam
 
 		if(!(Client[attacker].Pref[Pref_Hud] & HUD_MESSAGE))
 		{
-			KvGetLang(Special[Boss[client].Special].Kv, "name", buffer, sizeof(buffer));
+			CfgGetLang(Special[Boss[client].Special].Cfg, "character.name", buffer, sizeof(buffer), attacker);
 			CreateAttachedAnnotation(attacker, client, true, 3.0, "%t", "Player Telefrag", buffer);
 		}
 
@@ -377,7 +365,7 @@ public Action OnTakeDamage(int client, int &attacker, int &inflictor, float &dam
 		{
 			if(Boss[attacker].Active)
 			{
-				KvGetLang(Special[Boss[attacker].Special].Kv, "name", buffer, sizeof(buffer));
+				CfgGetLang(Special[Boss[attacker].Special].Cfg, "character.name", buffer, sizeof(buffer), client);
 			}
 			else
 			{
@@ -536,7 +524,7 @@ public Action OnTakeDamage(int client, int &attacker, int &inflictor, float &dam
 
 				if(!(Client[attacker].Pref[Pref_Hud] & HUD_MESSAGE))
 				{
-					KvGetLang(Special[Boss[client].Special].Kv, "name", buffer, sizeof(buffer));
+					CfgGetLang(Special[Boss[client].Special].Cfg, "character.name", buffer, sizeof(buffer), attacker);
 					CreateAttachedAnnotation(attacker, client, true, 3.0, "%t", "Player Caber", buffer);
 				}
 
@@ -544,7 +532,7 @@ public Action OnTakeDamage(int client, int &attacker, int &inflictor, float &dam
 				{
 					if(Boss[attacker].Active)
 					{
-						KvGetLang(Special[Boss[attacker].Special].Kv, "name", buffer, sizeof(buffer));
+						CfgGetLang(Special[Boss[attacker].Special].Cfg, "character.name", buffer, sizeof(buffer), client);
 					}
 					else
 					{
@@ -626,7 +614,7 @@ public Action OnTakeDamage(int client, int &attacker, int &inflictor, float &dam
 
 				if(!(Client[attacker].Pref[Pref_Hud] & HUD_MESSAGE))
 				{
-					KvGetLang(Special[Boss[client].Special].Kv, "name", buffer, sizeof(buffer));
+					CfgGetLang(Special[Boss[client].Special].Cfg, "character.name", buffer, sizeof(buffer), attacker);
 					CreateAttachedAnnotation(attacker, client, true, 3.0, "%t", "Player Market", buffer);
 				}
 
@@ -634,7 +622,7 @@ public Action OnTakeDamage(int client, int &attacker, int &inflictor, float &dam
 				{
 					if(Boss[attacker].Active)
 					{
-						KvGetLang(Special[Boss[attacker].Special].Kv, "name", buffer, sizeof(buffer));
+						CfgGetLang(Special[Boss[attacker].Special].Cfg, "character.name", buffer, sizeof(buffer), client);
 					}
 					else
 					{

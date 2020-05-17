@@ -64,7 +64,7 @@ public void OnStompPost(int attacker, int victim, float multi, float damage, flo
 	static char buffer[64];
 	if(Boss[victim].Active)
 	{
-		KvGetLang(Special[Boss[victim].Special].Kv, "name", buffer, sizeof(buffer), attacker);
+		CfgGetLang(Special[Boss[victim].Special].Cfg, "character.name", buffer, sizeof(buffer), attacker);
 	}
 	else
 	{
@@ -73,12 +73,12 @@ public void OnStompPost(int attacker, int victim, float multi, float damage, flo
 
 	if(Boss[attacker].Active)
 	{
-		PrintHintText(attacker, "%t", "Goomba Stomps", buffer, Client[attacker].Goombas[victim]);
-		KvGetLang(Special[Boss[attacker].Special].Kv, "name", buffer, sizeof(buffer), victim);
+		PrintHintText(attacker, "%t", "Goomba Stomp", buffer);
+		CfgGetLang(Special[Boss[attacker].Special].Cfg, "character.name", buffer, sizeof(buffer), victim);
 	}
 	else
 	{
-		PrintHintText(attacker, "%t", "Goomba Stomp", buffer);
+		PrintHintText(attacker, "%t", "Goomba Stomps", buffer, Client[attacker].Goombas[victim]);
 		GetClientName(attacker, buffer, sizeof(buffer));
 	}
 	PrintHintText(victim, "%t", "Goomba Stomped", buffer);

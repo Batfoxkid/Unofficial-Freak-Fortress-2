@@ -1279,7 +1279,8 @@ public Action Bosses_UseBossCharge(Handle timer, DataPack data)
 
 int Bosses_ArgI(int client, const char[] ability, const char[] plugin, const char[] arg="", int index=-1, int defaul=0)
 {
-	StringMapSnapshot snap = Special[Boss[client].Special].Cfg.Snapshot();
+	ConfigMap character = Special[Boss[client].Special].Cfg.GetSection("character");
+	StringMapSnapshot snap = character.Snapshot();
 	if(!snap)
 		return defaul;
 
@@ -1297,7 +1298,7 @@ int Bosses_ArgI(int client, const char[] ability, const char[] plugin, const cha
 		char[] buffer = new char[length];
 		snap.GetKey(i, buffer, length);
 		PackVal val;
-		Special[Boss[client].Special].Cfg.GetArray(buffer, val, sizeof(val));
+		character.GetArray(buffer, val, sizeof(val));
 		if(val.tag != KeyValType_Section)
 			continue;
 
@@ -1305,7 +1306,7 @@ int Bosses_ArgI(int client, const char[] ability, const char[] plugin, const cha
 			continue;
 
 		val.data.Reset();
-		cfg = val.data.ReadCell();
+		ConfigMap cfg = val.data.ReadCell();
 		if(cfg == null)
 			continue;
 
@@ -1339,7 +1340,8 @@ int Bosses_ArgI(int client, const char[] ability, const char[] plugin, const cha
 
 float Bosses_ArgF(int client, const char[] ability, const char[] plugin, const char[] arg="", int index=-1, float defaul=0.0)
 {
-	StringMapSnapshot snap = Special[Boss[client].Special].Cfg.Snapshot();
+	ConfigMap character = Special[Boss[client].Special].Cfg.GetSection("character");
+	StringMapSnapshot snap = character.Snapshot();
 	if(!snap)
 		return defaul;
 
@@ -1357,7 +1359,7 @@ float Bosses_ArgF(int client, const char[] ability, const char[] plugin, const c
 		char[] buffer = new char[length];
 		snap.GetKey(i, buffer, length);
 		PackVal val;
-		Special[Boss[client].Special].Cfg.GetArray(buffer, val, sizeof(val));
+		character.GetArray(buffer, val, sizeof(val));
 		if(val.tag != KeyValType_Section)
 			continue;
 
@@ -1365,7 +1367,7 @@ float Bosses_ArgF(int client, const char[] ability, const char[] plugin, const c
 			continue;
 
 		val.data.Reset();
-		cfg = val.data.ReadCell();
+		ConfigMap cfg = val.data.ReadCell();
 		if(cfg == null)
 			continue;
 
@@ -1399,7 +1401,8 @@ float Bosses_ArgF(int client, const char[] ability, const char[] plugin, const c
 
 bool Bosses_ArgS(int client, const char[] ability, const char[] plugin, const char[] arg="", int index=-1, char[] buffer, int length)
 {
-	StringMapSnapshot snap = Special[Boss[client].Special].Cfg.Snapshot();
+	ConfigMap character = Special[Boss[client].Special].Cfg.GetSection("character");
+	StringMapSnapshot snap = character.Snapshot();
 	if(!snap)
 		return false;
 
@@ -1417,7 +1420,7 @@ bool Bosses_ArgS(int client, const char[] ability, const char[] plugin, const ch
 		char[] buffer2 = new char[length2];
 		snap.GetKey(i, buffer2, length2);
 		PackVal val;
-		Special[Boss[client].Special].Cfg.GetArray(buffer2, val, sizeof(val));
+		character.GetArray(buffer2, val, sizeof(val));
 		if(val.tag != KeyValType_Section)
 			continue;
 
@@ -1425,7 +1428,7 @@ bool Bosses_ArgS(int client, const char[] ability, const char[] plugin, const ch
 			continue;
 
 		val.data.Reset();
-		cfg = val.data.ReadCell();
+		ConfigMap cfg = val.data.ReadCell();
 		if(cfg == null)
 			continue;
 
@@ -1486,7 +1489,8 @@ bool Bosses_ArgS(int client, const char[] ability, const char[] plugin, const ch
 
 ConfigMap Bosses_ArgC(int client, const char[] ability, const char[] plugin)
 {
-	StringMapSnapshot snap = Special[Boss[client].Special].Cfg.Snapshot();
+	ConfigMap character = Special[Boss[client].Special].Cfg.GetSection("character");
+	StringMapSnapshot snap = character.Snapshot();
 	if(!snap)
 		return null;
 
@@ -1503,7 +1507,7 @@ ConfigMap Bosses_ArgC(int client, const char[] ability, const char[] plugin)
 		char[] buffer = new char[length];
 		snap.GetKey(i, buffer, length);
 		PackVal val;
-		Special[Boss[client].Special].Cfg.GetArray(buffer, val, sizeof(val));
+		character.GetArray(buffer, val, sizeof(val));
 		if(val.tag != KeyValType_Section)
 			continue;
 
@@ -1511,7 +1515,7 @@ ConfigMap Bosses_ArgC(int client, const char[] ability, const char[] plugin)
 			continue;
 
 		val.data.Reset();
-		cfg = val.data.ReadCell();
+		ConfigMap cfg = val.data.ReadCell();
 		if(cfg == null)
 			continue;
 
@@ -1545,8 +1549,8 @@ int Bosses_GetSpecial(int client, int selection, int type)
 	Call_PushCell(type ? client : 0);
 	int boss = selection;
 	Call_PushCellRef(boss);
-	static char buffer[64];
-	Special[selection].Cfg.Get("name", buffer, sizeof(buffer));
+	char buffer[64];
+	Special[selection].Cfg.Get("character.name", buffer, sizeof(buffer));
 	Call_PushStringEx(buffer, sizeof(buffer), SM_PARAM_STRING_UTF8|SM_PARAM_STRING_COPY, SM_PARAM_COPYBACK);
 	Call_PushCell(type!=1);
 	Call_Finish(action);

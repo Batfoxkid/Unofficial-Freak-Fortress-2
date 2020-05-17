@@ -109,8 +109,7 @@ static const TFCond InvulnConditions[] =
 	TFCond_UberchargedHidden,
 	TFCond_UberchargedCanteen,
 	TFCond_UberchargedOnTakeDamage,
-	TFCond_HalloweenGhostMode,
-	
+	TFCond_HalloweenGhostMode
 };
 
 enum SectionType
@@ -474,14 +473,16 @@ stock int CheckBossAccess(int client, int boss, bool force=false)
 	if(Special[boss].Blocked)
 		return -2;
 
+	ConfigMap cfg = Special[boss].Cfg.GetSection("character");
+
 	int i;
-	if(!force && Special[boss].Cfg.GetInt("blocked", i) && i)
+	if(!force && cfg.GetInt("blocked", i) && i)
 		return -2;
 
-	bool donator = view_as<bool>(Special[boss].Cfg.GetInt("donator", i) && i);
-	bool owner = view_as<bool>(Special[boss].Cfg.GetInt("donator", i) && i);
-	if(!(donator || (Special[boss].Cfg.GetInt("admin", i) && i) || owner))
-		return (Special[boss].Cfg.GetInt("hidden", i) && i) ? 0 : 1;
+	bool donator = view_as<bool>(cfg.GetInt("donator", i) && i);
+	bool owner = view_as<bool>(cfg.GetInt("donator", i) && i);
+	if(!(donator || (cfg.GetInt("admin", i) && i) || owner))
+		return (cfg.GetInt("hidden", i) && i) ? 0 : 1;
 
 	if(!((donator && !CheckCommandAccess(client, "ff2_donator_bosses", ADMFLAG_RESERVATION)) ||
 	     (owner && !CheckCommandAccess(client, "ff2_owner_bosses", ADMFLAG_ROOT)) ||
@@ -489,7 +490,7 @@ stock int CheckBossAccess(int client, int boss, bool force=false)
 		return 1;
 
 	i = owner ? 1 : 0;
-	Special[boss].Cfg.GetInt("hidden", i);
+	cfg.GetInt("hidden", i);
 	return i ? -2 : -1;
 }
 
@@ -501,18 +502,20 @@ stock bool CheckBossAccessMsg(int client, int boss, char[] buffer, int length)
 		return false;
 	}
 
+	ConfigMap cfg = Special[boss].Cfg.GetSection("character");
+
 	int i;
-	if(Special[boss].Cfg.GetInt("blocked", i) && i)
+	if(cfg.GetInt("blocked", i) && i)
 	{
 		FormatEx(buffer, length, "%T", "Deny Unknown", client);
 		return false;
 	}
 
-	bool donator = view_as<bool>(Special[boss].Cfg.GetInt("donator", i) && i);
-	bool owner = view_as<bool>(Special[boss].Cfg.GetInt("donator", i) && i);
-	if(!(donator || (Special[boss].Cfg.GetInt("admin", i) && i) || owner))
+	bool donator = view_as<bool>(cfg.GetInt("donator", i) && i);
+	bool owner = view_as<bool>(cfg.GetInt("donator", i) && i);
+	if(!(donator || (cfg.GetInt("admin", i) && i) || owner))
 	{
-		if(!Special[boss].Cfg.GetInt("hidden", i) || !i)
+		if(!cfg.GetInt("hidden", i) || !i)
 			return true;
 
 		FormatEx(buffer, length, "%T", "Deny Unknown", client);
@@ -525,7 +528,7 @@ stock bool CheckBossAccessMsg(int client, int boss, char[] buffer, int length)
 		return true;
 
 	i = owner ? 1 : 0;
-	Special[boss].Cfg.GetInt("hidden", i);
+	cfg.GetInt("hidden", i);
 	FormatEx(buffer, length, "%T", i ? "Deny Unknown" : "Deny Access", client);
 	return false;
 }
@@ -568,7 +571,7 @@ stock bool CfgGetLang(ConfigMap cfg, const char[] key, char[] buffer, int length
 			return true;
 	}
 
-	return cfg.Get(key, buffer, length);
+	return view_as<bool>(cfg.Get(key, buffer, length));
 }
 
 stock int CfgGetNum(ConfigMap cfg, const char[] key, int defaul=0)
@@ -971,12 +974,14 @@ stock bool GetBossSound(int client, const char[] key, int &type, char[] buffer, 
 					}
 				}
 
-				list.Push(val);
+				list.PushArray(val, sizeof(val));
 			}
 			case KeyValType_Section:
 			{
 				if(matching[0])
 				{
+					val.data.Reset();
+					ConfigMap section = val.data.ReadCell();
 					if(!section.Get(phrase ? "vo" : "slot", buffer, bufferL))
 						strcopy(buffer, bufferL, "0");
 
@@ -986,7 +991,7 @@ stock bool GetBossSound(int client, const char[] key, int &type, char[] buffer, 
 
 				val.data.Reset();
 				val.data.WriteString(buffer2);
-				list.Push(val);
+				list.PushArray(val, sizeof(val));
 			}
 		}
 	}
@@ -995,7 +1000,8 @@ stock bool GetBossSound(int client, const char[] key, int &type, char[] buffer, 
 	if(list.Length < 1)
 		return false;
 
-	val = list.Get(GetRandomInt(0, list.Length-1));
+	PackVal val;
+	list.GetArray(GetRandomInt(0, list.Length-1), val, sizeof(val));
 	if(val.tag == KeyValType_Value)
 	{
 		val.data.Reset();
@@ -1011,12 +1017,12 @@ stock bool GetBossSound(int client, const char[] key, int &type, char[] buffer, 
 		FormatEx(buffer2, sizeof(buffer2), "%s_overlay", buffer3);	// "1_overlay", "2_overlay"
 		if(cfg.Get(buffer2, buffer2, sizeof(buffer2)))
 		{
-			TFTeam team = TF2_GetClientTeam(client);
+			int team = GetClientTeam(client);
 			int flags = GetCommandFlags("r_screenoverlay");
 			SetCommandFlags("r_screenoverlay", flags & ~FCVAR_CHEAT);
 			for(int target=1; target<=MaxClients; target++)
 			{
-				if(IsValidClient(target) && TF2_GetClientTeam(target)!=team)
+				if(IsValidClient(target) && GetClientTeam(target)!=team)
 					ClientCommand(target, "r_screenoverlay \"%s\"", buffer2);
 			}
 			SetCommandFlags("r_screenoverlay", flags);
@@ -1027,17 +1033,17 @@ stock bool GetBossSound(int client, const char[] key, int &type, char[] buffer, 
 				CreateTimer(time, Timer_RemoveOverlay, _, TIMER_FLAG_NO_MAPCHANGE);
 		}
 
-		FormatEx(buffer2, sizeof(buffer2), "%dmusic", i);	// "1music", "2music"
+		FormatEx(buffer2, sizeof(buffer2), "%smusic", buffer3);	// "1music", "2music"
 		duration = CfgGetFloat(cfg, buffer2, -1.0);
 		if(duration >= 0)
 			type = 3;
 
 		if(type == 3)
 		{
-			FormatEx(buffer2, sizeof(buffer2), "%dname", i);
+			FormatEx(buffer2, sizeof(buffer2), "%sname", buffer3);
 			cfg.Get(buffer2, name, nameL);
 
-			FormatEx(buffer2, sizeof(buffer2), "%dartist", i);
+			FormatEx(buffer2, sizeof(buffer2), "%sartist", buffer3);
 			cfg.Get(buffer2, artist, artistL);
 		}
 		return true;
@@ -1053,12 +1059,12 @@ stock bool GetBossSound(int client, const char[] key, int &type, char[] buffer, 
 	FormatEx(buffer2, sizeof(buffer2), "%s.overlay", buffer);
 	if(cfg.Get(buffer2, buffer2, sizeof(buffer2)))
 	{
-		TFTeam team = TF2_GetClientTeam(client);
+		int team = GetClientTeam(client);
 		int flags = GetCommandFlags("r_screenoverlay");
 		SetCommandFlags("r_screenoverlay", flags & ~FCVAR_CHEAT);
 		for(int target=1; target<=MaxClients; target++)
 		{
-			if(IsValidClient(target) && TF2_GetClientTeam(target)!=team)
+			if(IsValidClient(target) && GetClientTeam(target)!=team)
 				ClientCommand(target, "r_screenoverlay \"%s\"", buffer2);
 		}
 		SetCommandFlags("r_screenoverlay", flags);
@@ -1070,10 +1076,10 @@ stock bool GetBossSound(int client, const char[] key, int &type, char[] buffer, 
 	}
 
 	FormatEx(buffer2, sizeof(buffer2), "%s.type", buffer);
-	type = CfgGetNum(buffer2, type);
+	cfg.GetInt(buffer2, type);
 
 	FormatEx(buffer2, sizeof(buffer2), "%s.time", buffer);
-	duration = CfgGetNum(buffer2, 0.0);
+	cfg.GetFloat(buffer2, duration);
 	if(type == 3)
 	{
 		FormatEx(buffer2, sizeof(buffer2), "%s.name", buffer);

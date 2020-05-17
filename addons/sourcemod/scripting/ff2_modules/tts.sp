@@ -110,7 +110,7 @@ void TTS_Start()
 
 void TTS_Add(int client, float damage)
 {
-	if(!TTSEnabled || CheckRoundState()!=1)
+	if(TTSEnabled<=0 || CheckRoundState()!=1)
 	{
 		Boss[client].Hazard = 0.0;
 		return;

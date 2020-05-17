@@ -187,14 +187,14 @@ enum struct BossEnum
 
 	float Speed(int client)
 	{
-		return this.MaxSpeed+(0.7*(100.0-this.Health(client)*100.0/this.MaxLives/this.MaxHealth));
+		return this.MaxSpeed+(0.7*(100.0-float(this.Health(client))*100.0/float(this.MaxLives)/float(this.MaxHealth)));
 	}
 }
 
 enum struct ClientEnum
 {
 	bool Minion;
-	TFTeam Team;
+	int Team;
 
 	char BGM[PLATFORM_MAX_PATH];
 	char Voice[PLATFORM_MAX_PATH];
@@ -257,7 +257,7 @@ int Override;
 int FirstPlayable;
 int LastPlayable;
 float HealthBarFor;
-TFTeam BossTeam;
+int BossTeam;
 ArrayList Charsets;
 int QueueList[MAXTF2PLAYERS];
 int Charset;
@@ -340,17 +340,17 @@ public APLRes AskPluginLoad2(Handle myself, bool late, char[] error, int err_max
 
 	Native_Setup();
 
-	PreAbility = GlobalForward("FF2_PreAbility", ET_Hook, Param_Cell, Param_String, Param_String, Param_Cell, Param_CellByRef);  //Boss, plugin name, ability name, slot, enabled
-	OnAbility = GlobalForward("FF2_OnAbility", ET_Hook, Param_Cell, Param_String, Param_String, Param_Cell);  //Boss, plugin name, ability name, status
-	OnMusic = GlobalForward("FF2_OnMusic", ET_Hook, Param_String, Param_FloatByRef);
-	OnMusic2 = GlobalForward("FF2_OnMusic2", ET_Hook, Param_String, Param_FloatByRef, Param_String, Param_String);
-	OnTriggerHurt = GlobalForward("FF2_OnTriggerHurt", ET_Hook, Param_Cell, Param_Cell, Param_FloatByRef);
-	OnSpecialSelected = GlobalForward("FF2_OnSpecialSelected", ET_Hook, Param_Cell, Param_CellByRef, Param_String, Param_Cell);  //Boss, character index, character name, preset
-	OnAddQueuePoints = GlobalForward("FF2_OnAddQueuePoints", ET_Hook, Param_Array);
-	OnLoadCharacterSet = GlobalForward("FF2_OnLoadCharacterSet", ET_Hook, Param_CellByRef, Param_String);
-	OnLoseLife = GlobalForward("FF2_OnLoseLife", ET_Hook, Param_Cell, Param_CellByRef, Param_Cell);  //Boss, lives left, max lives
-	OnAlivePlayersChanged = GlobalForward("FF2_OnAlivePlayersChanged", ET_Hook, Param_Cell, Param_Cell);  //Players, bosses
-	OnBackstabbed = GlobalForward("FF2_OnBackStabbed", ET_Hook, Param_Cell, Param_Cell, Param_Cell);  //Boss, client, attacker
+	PreAbility = new GlobalForward("FF2_PreAbility", ET_Hook, Param_Cell, Param_String, Param_String, Param_Cell, Param_CellByRef);  //Boss, plugin name, ability name, slot, enabled
+	OnAbility = new GlobalForward("FF2_OnAbility", ET_Hook, Param_Cell, Param_String, Param_String, Param_Cell);  //Boss, plugin name, ability name, status
+	OnMusic = new GlobalForward("FF2_OnMusic", ET_Hook, Param_String, Param_FloatByRef);
+	OnMusic2 = new GlobalForward("FF2_OnMusic2", ET_Hook, Param_String, Param_FloatByRef, Param_String, Param_String);
+	OnTriggerHurt = new GlobalForward("FF2_OnTriggerHurt", ET_Hook, Param_Cell, Param_Cell, Param_FloatByRef);
+	OnSpecialSelected = new GlobalForward("FF2_OnSpecialSelected", ET_Hook, Param_Cell, Param_CellByRef, Param_String, Param_Cell);  //Boss, character index, character name, preset
+	OnAddQueuePoints = new GlobalForward("FF2_OnAddQueuePoints", ET_Hook, Param_Array);
+	OnLoadCharacterSet = new GlobalForward("FF2_OnLoadCharacterSet", ET_Hook, Param_CellByRef, Param_String);
+	OnLoseLife = new GlobalForward("FF2_OnLoseLife", ET_Hook, Param_Cell, Param_CellByRef, Param_Cell);  //Boss, lives left, max lives
+	OnAlivePlayersChanged = new GlobalForward("FF2_OnAlivePlayersChanged", ET_Hook, Param_Cell, Param_Cell);  //Players, bosses
+	OnBackstabbed = new GlobalForward("FF2_OnBackStabbed", ET_Hook, Param_Cell, Param_Cell, Param_Cell);  //Boss, client, attacker
 
 	RegPluginLibrary("freak_fortress_2");
 
@@ -589,7 +589,7 @@ public Action OnJoinTeam(int client, const char[] command, int args)
 	
 	ChangeClientTeam(client, Client[client].Team);
 	if(state != 1)
-		ShowVGUIPanel(client, Client[client].Team==TFTeam_Red ? "class_red" : "class_blue");
+		ShowVGUIPanel(client, Client[client].Team==view_as<int>(TFTeam_Red) ? "class_red" : "class_blue");
 
 	return Plugin_Handled;
 }
@@ -603,7 +603,7 @@ public Action OnAutoTeam(int client, const char[] command, int args)
 		return Plugin_Handled;
 
 	ChangeClientTeam(client, Client[client].Team);
-	ShowVGUIPanel(client, Client[client].Team==TFTeam_Red ? "class_red" : "class_blue");
+	ShowVGUIPanel(client, Client[client].Team==view_as<int>(TFTeam_Red) ? "class_red" : "class_blue");
 	return Plugin_Handled;
 }
 
@@ -649,12 +649,13 @@ public void OnRoundStart(Event event, const char[] name, bool dontBroadcast)
 		{
 			Bosses_SetHealth(client);
 			static char buffer[1024];
-			if(Special[Boss[client].Special].Cfg.Get("command", buffer, sizeof(buffer)))
+			ConfigMap cfg = Special[Specials].Cfg.GetSection("character");
+			if(cfg.Get("command", buffer, sizeof(buffer)))
 				ServerCommand(buffer);
 
 			#if defined FF2_CONVARS
 			if(Boss[client].Leader && CvarNameChange.IntValue==1)
-				Convars_NameSuffix(CfgGetLang(Special[Boss[client].Special].Cfg, "name", buffer, sizeof(buffer)) ? buffer : "");
+				Convars_NameSuffix(CfgGetLang(cfg, "character.name", buffer, sizeof(buffer)) ? buffer : "");
 			#endif
 
 			continue;
@@ -901,17 +902,17 @@ public void OnPlayerRunCmdPost(int nullVar1, int nullVar2, int nullVar3, const f
 		if(!alive)
 			continue;
 
-		if(!Client[client].GlowFor)
+		if(Client[client].GlowFor)
 		{
-		}
-		else if(Client[client].GlowFor < gameTime)
-		{
-			Client[client].GlowFor = 0.0;
-			SetEntProp(client, Prop_Send, "m_bGlowEnabled", 0);
-		}
-		else
-		{
-			SetEntProp(client, Prop_Send, "m_bGlowEnabled", 1);
+			if(Client[client].GlowFor < gameTime)
+			{
+				Client[client].GlowFor = 0.0;
+				SetEntProp(client, Prop_Send, "m_bGlowEnabled", 0);
+			}
+			else
+			{
+				SetEntProp(client, Prop_Send, "m_bGlowEnabled", 1);
+			}
 		}
 	}
 }
@@ -934,84 +935,134 @@ int CheckGamemode(const char[] map)
 		}
 	}
 
-	int result = Game_Invalid;
-	KeyValues kv = new KeyValues("maps");
-	if(kv.ImportFromFile(config))
+	ConfigMap full = new ConfigMap(config);
+	if(full != null)
 	{
-		do
+		ConfigMap cfg = Special[Specials].Cfg.GetSection("maps");
+		if(cfg != null)
 		{
-			kv.GetSectionName(buffer, sizeof(buffer));
-			int amount = ReplaceString(buffer, sizeof(buffer), "*", "");
-			switch(amount)
+			StringMapSnapshot snap = cfg.Snapshot();
+			if(snap)
 			{
-				case 0:
+				int entries = snap.Length;
+				if(entries)
 				{
-					if(!StrEqual(map, buffer, false))
-						continue;
+					for(int i; i<entries; i++)
+					{
+						int length = snap.KeyBufferSize(i)+1;
+						char[] buffer = new char[length];
+						snap.GetKey(i, buffer, length);
+						PackVal val;
+						cfg.GetArray(buffer, val, sizeof(val));
+						if(val.tag != KeyValType_Section)
+							continue;
+
+						int amount = ReplaceString(buffer, length, "*", "");
+						switch(amount)
+						{
+							case 0:
+							{
+								if(!StrEqual(map, buffer, false))
+									continue;
+							}
+							case 1:
+							{
+								if(StrContains(map, buffer, false))
+									continue;
+							}
+							default:
+							{
+								if(StrContains(map, buffer, false) == -1)
+									continue;
+							}
+						}
+
+						int result;
+						#if defined FF2_DOORS
+						if(cfg.GetInt("doors", result))
+						{
+							DoorEnabled = view_as<bool>(result);
+						}
+						else
+						{
+							DoorEnabled = Doors_Check(map);
+						}
+						#endif
+
+						#if defined FF2_TTS
+						float tts;
+						if(cfg.GetFloat("hazard", tts))
+						{
+							TTSEnabled = tss;
+						}
+						else
+						{
+							TTSEnabled = TTS_Check(map);
+						}
+						#endif
+
+						if(cfg.GetInt("mode", result))
+						{
+							result += 2;
+						}
+						else
+						{
+							result = Game_Fun;
+						}
+
+						if(result<Game_Invalid || result>=Game_MAX)
+							result = Game_Invalid;
+
+						delete snap;
+						DeleteCfg(full);
+						return result;
+					}
 				}
-				case 1:
-				{
-					if(StrContains(map, buffer, false))
-						continue;
-				}
-				default:
-				{
-					if(StrContains(map, buffer, false) == -1)
-						continue;
-				}
+				delete snap;
 			}
+			DeleteCfg(full);
+			return Game_Invalid;
+		}
+		DeleteCfg(full);
+	}
 
-			#if defined FF2_DOORS
-			result = kv.GetNum("doors", -1);
-			DoorEnabled = result ? result<0 ? Doors_Check(map) : true : false;
-			#endif
+	#if defined FF2_DOORS
+	DoorEnabled = Doors_Check(map);
+	#endif
 
-			#if defined FF2_TTS
-			float tts = kv.GetFloat("hazard", -1.0);
-			TTSEnabled = tts<0 ? TTS_Check(map) : tts;
-			#endif
+	#if defined FF2_TTS
+	TTSEnabled = TTS_Check(map);
+	#endif
 
-			result = kv.GetNum("mode", 0)+2;
-			if(result<=Game_Invalid || result>=Game_MAX)
-				result = Game_Invalid;
+	File file = OpenFile(config, "r");
+	if(file == null)
+	{
+		LogToFile(eLog, "[Maps] Error reading from '%s'", MAP_FILE);
+		return Game_Invalid;
+	}
 
+	int tries;
+	while(file.ReadLine(config, sizeof(config)))
+	{
+		tries++;
+		if(tries > 99)
+		{
+			LogToFile(eLog, "[Maps] An infinite loop occurred while trying to check the map");
 			break;
-		} while(kv.GotoNextKey());
-	}
-	else
-	{
-		File file = OpenFile(config, "r");
-		if(file == INVALID_HANDLE)
-		{
-			LogToFile(eLog, "[Maps] Error reading from '%s'", MAP_FILE);
 		}
-		else
+
+		strcopy(config, strlen(config)-1, config);
+		if(!strncmp(config, "//", 2, false))
+			continue;
+
+		if(!StrContains(map, config, false) || !StrContains(config, "all", false))
 		{
-			int tries;
-			while(file.ReadLine(config, sizeof(config)))
-			{
-				tries++;
-				if(tries >= 100)
-				{
-					LogToFile(eLog, "[Maps] An infinite loop occurred while trying to check the map");
-					break;
-				}
-
-				strcopy(config, strlen(config)-1, config);
-				if(!strncmp(config, "//", 2, false))
-					continue;
-
-				if(!StrContains(map, config, false) || !StrContains(config, "all", false))
-				{
-					result = Game_Arena;
-					break;
-				}
-			}
 			delete file;
+			return Game_Arena;
 		}
 	}
-	delete kv;
-	return result;
+	delete file;
+	return Game_Disabled;
 }
 
 void OnRoundSetupPre(bool respawn)
@@ -1061,7 +1112,7 @@ void OnRoundSetupPre(bool respawn)
 	}
 
 	Boss[i].Active = true;
-	Bosses_Create(i, view_as<TFTeam>(CvarTeam.IntValue));
+	Bosses_Create(i, CvarTeam.IntValue);
 	Bosses_CheckCompanion(Boss[i].Special, Client[i].Team);
 
 	Players = 0;
@@ -1093,10 +1144,10 @@ void OnRoundSetupPre(bool respawn)
 				ChangeClientTeamEx(i, view_as<int>(TFTeam_Red));
 			}
 
-			switch(BossTeam)
+			switch(view_as<TFTeam>(BossTeam))
 			{
 				case TFTeam_Red:
-					Client[i].Team = TFTeam_Blue;
+					Client[i].Team = view_as<int>(TFTeam_Blue);
 
 				//case TFTeam_Blue:
 					//Client[i].Team = TFTeam_Red;
@@ -1117,7 +1168,7 @@ void OnRoundSetupPost()
 		if(!IsValidClient(client) || GetClientTeam(client)<=view_as<int>(TFTeam_Spectator))
 			continue;
 
-		ChangeClientTeamEx(i, view_as<int>(Client[i].Team));
+		ChangeClientTeamEx(i, Client[i].Team);
 		if(Boss[i].Active)
 		{
 			Client[i].RefreshAt = gameTime+0.1;
@@ -1177,7 +1228,7 @@ void OnRoundSetupPost()
 	}
 }
 
-void BeginScreen()
+/*void BeginScreen()
 {
 	
 }
@@ -1217,7 +1268,7 @@ void GameOverScreen(int winner, float duration)
 		{
 		}
 	}
-}
+}*/
 
 void RefreshClient(int client)
 {
@@ -1238,8 +1289,8 @@ void RefreshClient(int client)
 		Weapons_Info(client);
 
 	SetEntityHealth(client, GetEntProp(GetPlayerResourceEntity(), Prop_Send, "m_iMaxHealth", _, client));
-	//Client[client].Team = BossTeam==TFTeam_Blue ? TFTeam_Red : TFTeam_Blue;
-	//AssignTeam(client, view_as<int>(Client[client].Team));
+	//Client[client].Team = BossTeam==view_as<int>(TFTeam_Blue) ? view_as<int>(TFTeam_Red) : view_as<int>(TFTeam_Blue);
+	//AssignTeam(client, Client[client].Team);
 	RequestFrame(Weapons_Check, GetClientUserId(client));
 }
 
@@ -1403,7 +1454,7 @@ public Action MainMenuC(int client, int args)
 	PrintToServer("Date: %s", FORK_DATE_REVISION);
 	#else
 	PrintToServer("Date: %s", DATE_REVISION);
-	#ebduf
+	#endif
 	PrintToServer("Status: %s", Enabled>Game_Disabled ? "Enabled" : "Disabled");
 
 	PrintToServer("");
