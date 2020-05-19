@@ -32,9 +32,10 @@ public Action OnStomp(int attacker, int victim, float &multi, float &damage, flo
 
 		multi = 0.0;
 		#if defined FF2_TIMESTEN
-		damage = Pow(health, 0.65-(Client[attacker].Goombas[victim]++*0.005))*(1.0+(0.5*(TimesTen_Value()-1.0)));
+		damage = Pow(float(health), 0.65-(Client[attacker].Goombas[victim]++*0.005))*(1.0+(0.5*(TimesTen_Value()-1.0)));
 		#else
-		damage = Pow(health, 0.65-(Client[attacker].Goombas[victim]++*0.005));
+		damage = Pow(float(health), 0.65-(Client[attacker].Goombas[victim]++*0.005));
+		#endif
 		power = Cvar.FloatValue;
 	}
 	else if(Boss[attacker].Active)
@@ -47,16 +48,13 @@ public Action OnStomp(int attacker, int victim, float &multi, float &damage, flo
 	}
 
 	int flags;
-	if(OnTakeDamage(victim, attacker, attacker, damage, flags, attacker, NULL_VECTOR, NULL_VECTOR, TF_CUSTOM_BOOTS_STOMP) > Plugin_Changed)
-		return Plugin_Handled;
-
 	if(OnTakeDamageAlive(victim, attacker, attacker, damage, flags, attacker, NULL_VECTOR, NULL_VECTOR, TF_CUSTOM_BOOTS_STOMP) > Plugin_Changed)
 		return Plugin_Handled;
 
 	return Plugin_Changed;
 }
 
-public void OnStompPost(int attacker, int victim, float multi, float damage, float power)
+public int OnStompPost(int attacker, int victim, float multi, float damage, float power)
 {
 	if(Enabled <= Game_Disabled)
 		return;
@@ -82,5 +80,4 @@ public void OnStompPost(int attacker, int victim, float multi, float damage, flo
 		GetClientName(attacker, buffer, sizeof(buffer));
 	}
 	PrintHintText(victim, "%t", "Goomba Stomped", buffer);
-
 }

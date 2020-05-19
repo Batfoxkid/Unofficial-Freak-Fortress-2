@@ -25,8 +25,8 @@
 #define CONFIG_PATH		"config/freak_fortress_2"
 #define CHARSET_FILE		"data/freak_fortress_2/characters.cfg"
 #define DEFAULT_ATTRIBUTES	"2 ; 3.1 ; 68 ; %d ; 275 ; 1"
-#define DEFAULT_RAGEDAMAGE	"1900.0"
-#define DEFAULT_HEALTH		"(Pow((760.8+float(Players))*(Players-1.0), 1.0341)+2046.0)"
+#define DEFAULT_RAGEDAMAGE	1900.0
+#define DEFAULT_HEALTH		(Pow((760.8+float(Players))*(Players-1.0), 1.0341)+2046.0)
 #define MAX_CHARSET_LENGTH	42
 
 ConVar CvarCharset;
@@ -34,6 +34,7 @@ static ConVar CvarTriple;
 static ConVar CvarKnockback;
 static ConVar CvarCrits;
 static ConVar CvarHealing;
+static ConVar CvarSapper;
 static ConVar CvarSewerSlide;
 static ConVar CvarTeam;
 
@@ -45,6 +46,7 @@ void Bosses_Setup()
 	CvarKnockback = CreateConVar("ff2_boss_knockback", "0", "If bosses can knockback themselves, 2 to also allow self-damaging", _, true, 0.0, true, 2.0);
 	CvarCrits = CreateConVar("ff2_boss_crits", "0", "If bosses can perform random crits", _, true, 0.0, true, 1.0);
 	CvarHealing = CreateConVar("ff2_boss_healing", "0", "If bosses can be healed by Medics, packs, etc. (Requires DHooks to disable)", _, true, 0.0, true, 1.0);
+	CvarSapper = CreateConVar("ff2_boss_sapper", "0", "Add 1 if the boss can be sapped, add 2 if minions can be sapped", _, true, 0.0, true, 3.0);
 	CvarSewerSlide = CreateConVar("ff2_boss_suicide", "0", "If bosses can suicide during the round", _, true, 0.0, true, 1.0);
 	CvarTeam = CreateConVar("ff2_boss_team", "3", "Default boss team, 4 for random team", _, true, 0.0, true, 4.0);
 
@@ -523,7 +525,7 @@ static void DownloadSection(ConfigMap cfg, SectionType type, const char[] charac
 	delete snap;
 }
 
-void Bosses_Create(int client, TFTeam team)
+void Bosses_Create(int client, int team)
 {
 	ConfigMap cfg = Special[Boss[client].Special].Cfg.GetSection("character");
 
@@ -576,7 +578,7 @@ void Bosses_Create(int client, TFTeam team)
 	}
 
 	Client[client].Team = cfg.GetInt("bossteam", i) ? i : view_as<int>(TFTeam_Unassigned);
-	if(Client[client].Team == view_as<int>(TFTeam_Unassigned))
+	if(Client[client].Team<view_as<int>(TFTeam_Spectator) || Client[client].Team>view_as<int>(TFTeam_Blue))
 	{
 		if(!cfg.GetInt("team", i) || i<0)
 		{
@@ -657,7 +659,7 @@ void Bosses_Prepare(int boss)
 				continue;
 
 			val.data.Reset();
-			sec = val.data.ReadCell();
+			ConfigMap sec = val.data.ReadCell();
 			if(sec == null)
 				continue;
 
@@ -780,6 +782,7 @@ void Bosses_Equip(int client)
 
 	RequestFrame(Bosses_Model, GetClientUserId(client));
 
+	int i;
 	Boss[client].Cosmetics = (cfg.GetInt("cosmetics", i) && i);
 	i = MaxClients+1;
 	while((i=FindEntityByClassname2(i, "tf_wear*")) != -1)
@@ -822,14 +825,14 @@ void Bosses_Equip(int client)
 	{
 		bool first;
 		char attributes[PLATFORM_MAX_PATH];
-		for(int i; i<entries; i++)
+		for(i=0; i<entries; i++)
 		{
 			int length = snap.KeyBufferSize(i)+1;
 			char[] buffer = new char[length];
 			snap.GetKey(i, buffer, length);
 			PackVal val;
 			cfg.GetArray(buffer, val, sizeof(val));
-			if(val.tag!=KeyValType_Section || SectionType(buffer)!=Section_Weapon)
+			if(val.tag!=KeyValType_Section || GetSectionType(buffer)!=Section_Weapon)
 				continue;
 
 			val.data.Reset();
@@ -849,7 +852,7 @@ void Bosses_Equip(int client)
 					wearable = true;
 				}
 
-				if(!wep.Get("name", classname, sizeof(classname));
+				if(!wep.Get("name", classname, sizeof(classname)))
 					strcopy(classname, sizeof(classname), wearable ? "tf_wearable" : "saxxy");
 			}
 			else
@@ -974,7 +977,7 @@ void Bosses_Equip(int client)
 			}
 
 			int rgba[4] = {255, 255, 255, 255};
-			override = wep.GetInt("alpha", rgba[0]);
+			override = view_as<bool>(wep.GetInt("alpha", rgba[0]));
 			override = (wep.GetInt("red", rgba[1]) || override);
 			override = (wep.GetInt("green", rgba[2]) || override);
 			override = (wep.GetInt("blue", rgba[3]) || override);
@@ -1029,8 +1032,8 @@ public Action Bosses_Rage(int client, const char[] command, int args)
 		Boss[client].Charge[0] -= Boss[client].RageMin;
 	}
 
-	if(!Bosses_PlaySound(client, "sound_ability_serverwide", 1, "0"))
-		Bosses_PlaySound(client, "sound_ability", 0, "0");
+	if(!PlayBossSound(client, "sound_ability_serverwide", 1, "0"))
+		PlayBossSound(client, "sound_ability", 0, "0");
 
 	return Plugin_Handled;
 }
@@ -1073,7 +1076,7 @@ public Action Bosses_JoinClass(int client, const char[] command, int args)
 
 void Bosses_AbilitySlot(int client, int slot)
 {
-	ConfigMap character = Special[boss].Cfg.GetSection("character");
+	ConfigMap character = Special[Boss[client].Special].Cfg.GetSection("character");
 	StringMapSnapshot snap = character.Snapshot();
 	if(!snap)
 		return;
@@ -1088,7 +1091,7 @@ void Bosses_AbilitySlot(int client, int slot)
 			snap.GetKey(i, buffer, length);
 			PackVal val;
 			character.GetArray(buffer, val, sizeof(val));
-			if(val.tag!=KeyValType_Section || SectionType(buffer)!=Section_Ability)
+			if(val.tag!=KeyValType_Section || GetSectionType(buffer)!=Section_Ability)
 				continue;
 
 			val.data.Reset();
@@ -1222,7 +1225,7 @@ void Bosses_Ability(int client, const char[] ability, const char[] plugin, int s
 	if(Boss[client].Charge[slot] > 0.3)
 	{
 		float angles[3];
-		GetClientEyeAngles(Boss[boss], angles);
+		GetClientEyeAngles(client, angles);
 		if(angles[0] < -30.0)
 		{
 			Call_PushCell(3);
@@ -1294,7 +1297,7 @@ int Bosses_ArgI(int client, const char[] ability, const char[] plugin, const cha
 		if(val.tag != KeyValType_Section)
 			continue;
 
-		if(GetSectionType(buffer, length) != Section_Ability)
+		if(GetSectionType(buffer) != Section_Ability)
 			continue;
 
 		val.data.Reset();
@@ -1355,7 +1358,7 @@ float Bosses_ArgF(int client, const char[] ability, const char[] plugin, const c
 		if(val.tag != KeyValType_Section)
 			continue;
 
-		if(GetSectionType(buffer, length) != Section_Ability)
+		if(GetSectionType(buffer) != Section_Ability)
 			continue;
 
 		val.data.Reset();
@@ -1416,7 +1419,7 @@ bool Bosses_ArgS(int client, const char[] ability, const char[] plugin, const ch
 		if(val.tag != KeyValType_Section)
 			continue;
 
-		if(GetSectionType(buffer2, length) != Section_Ability)
+		if(GetSectionType(buffer2) != Section_Ability)
 			continue;
 
 		val.data.Reset();
@@ -1592,7 +1595,7 @@ int Bosses_GetSpecial(int client, int selection, int type)
 	return boss;
 }
 
-void Bosses_CheckCompanion(int boss, TFTeam team)
+void Bosses_CheckCompanion(int boss, int team)
 {
 	static char buffer[64];
 	if(!Special[boss].Cfg.Get("character.companion", buffer, sizeof(buffer)))
@@ -1616,308 +1619,311 @@ void Bosses_CheckCompanion(int boss, TFTeam team)
 	Boss[client].Special = companion;
 	Boss[client].Active = true;
 	Bosses_Create(client, team);
-	Bosses_CheckCompanion(companion);
+	Bosses_CheckCompanion(companion, team);
 }
 
 static int GetRankingKills(int rank, int index, bool wearable)
 {
-	case 0:
+	switch(rank)
 	{
-		if(index==133 || index==444 || index==655)	// Gunboats, Mantreads, or Spirit of Giving
-			return 0;
-
-		return wearable ? GetRandomInt(0, 14) : GetRandomInt(0, 9);
-	}
-	case 1:
-	{
-		if(index==133 || index==444 || index==655)
-			return GetRandomInt(1, 2);
-
-		return wearable ? GetRandomInt(15, 29) : GetRandomInt(10, 24);
-	}
-	case 2:
-	{
-		switch(index)
+		case 0:
 		{
-			case 133, 444:
-				return GetRandomInt(3, 4);
+			if(index==133 || index==444 || index==655)	// Gunboats, Mantreads, or Spirit of Giving
+				return 0;
 
-			case 655:
-				return GetRandomInt(3, 6);
-
-			default:
-				return wearable ? GetRandomInt(30, 49) : GetRandomInt(25, 44);
+			return wearable ? GetRandomInt(0, 14) : GetRandomInt(0, 9);
 		}
-	}
-	case 3:
-	{
-		switch(index)
+		case 1:
 		{
-			case 133, 444:
-				return GetRandomInt(5, 6);
+			if(index==133 || index==444 || index==655)
+				return GetRandomInt(1, 2);
 
-			case 655:
-				return GetRandomInt(7, 11);
-
-			default:
-				return wearable ? GetRandomInt(50, 74) : GetRandomInt(45, 69);
+			return wearable ? GetRandomInt(15, 29) : GetRandomInt(10, 24);
 		}
-	}
-	case 4:
-	{
-		switch(index)
+		case 2:
 		{
-			case 133, 444:
-				return GetRandomInt(7, 9);
+			switch(index)
+			{
+				case 133, 444:
+					return GetRandomInt(3, 4);
 
-			case 655:
-				return GetRandomInt(12, 19);
+				case 655:
+					return GetRandomInt(3, 6);
 
-			default:
-				return wearable ? GetRandomInt(75, 99) : GetRandomInt(70, 99);
+				default:
+					return wearable ? GetRandomInt(30, 49) : GetRandomInt(25, 44);
+			}
 		}
-	}
-	case 5:
-	{
-		switch(index)
+		case 3:
 		{
-			case 133, 444:
-				return GetRandomInt(10, 13);
+			switch(index)
+			{
+				case 133, 444:
+					return GetRandomInt(5, 6);
 
-			case 655:
-				return GetRandomInt(20, 27);
+				case 655:
+					return GetRandomInt(7, 11);
 
-			default:
-				return GetRandomInt(100, 134);
+				default:
+					return wearable ? GetRandomInt(50, 74) : GetRandomInt(45, 69);
+			}
 		}
-	}
-	case 6:
-	{
-		switch(index)
+		case 4:
 		{
-			case 133, 444:
-				return GetRandomInt(14, 17);
+			switch(index)
+			{
+				case 133, 444:
+					return GetRandomInt(7, 9);
 
-			case 655:
-				return GetRandomInt(28, 36);
+				case 655:
+					return GetRandomInt(12, 19);
 
-			default:
-				return GetRandomInt(135, 174);
+				default:
+					return wearable ? GetRandomInt(75, 99) : GetRandomInt(70, 99);
+			}
 		}
-	}
-	case 7:
-	{
-		switch(index)
+		case 5:
 		{
-			case 133, 444:
-				return GetRandomInt(18, 22);
+			switch(index)
+			{
+				case 133, 444:
+					return GetRandomInt(10, 13);
 
-			case 655:
-				return GetRandomInt(37, 46);
+				case 655:
+					return GetRandomInt(20, 27);
 
-			default:
-				return wearable ? GetRandomInt(175, 249) : GetRandomInt(175, 224);
+				default:
+					return GetRandomInt(100, 134);
+			}
 		}
-	}
-	case 8:
-	{
-		switch(index)
+		case 6:
 		{
-			case 133, 444:
-				return GetRandomInt(23, 27);
+			switch(index)
+			{
+				case 133, 444:
+					return GetRandomInt(14, 17);
 
-			case 655:
-				return GetRandomInt(47, 56);
+				case 655:
+					return GetRandomInt(28, 36);
 
-			default:
-				return wearable ? GetRandomInt(250, 374) : GetRandomInt(225, 274);
+				default:
+					return GetRandomInt(135, 174);
+			}
 		}
-	}
-	case 9:
-	{
-		switch(index)
+		case 7:
 		{
-			case 133, 444:
-				return GetRandomInt(28, 34);
+			switch(index)
+			{
+				case 133, 444:
+					return GetRandomInt(18, 22);
 
-			case 655:
-				return GetRandomInt(57, 67);
+				case 655:
+					return GetRandomInt(37, 46);
 
-			default:
-				return wearable ? GetRandomInt(375, 499) : GetRandomInt(275, 349);
+				default:
+					return wearable ? GetRandomInt(175, 249) : GetRandomInt(175, 224);
+			}
 		}
-	}
-	case 10:
-	{
-		switch(index)
+		case 8:
 		{
-			case 133, 444:
-				return GetRandomInt(35, 49);
+			switch(index)
+			{
+				case 133, 444:
+					return GetRandomInt(23, 27);
 
-			case 655:
-				return GetRandomInt(68, 78);
+				case 655:
+					return GetRandomInt(47, 56);
 
-			default:
-				return wearable ? GetRandomInt(500, 724) : GetRandomInt(350, 499);
+				default:
+					return wearable ? GetRandomInt(250, 374) : GetRandomInt(225, 274);
+			}
 		}
-	}
-	case 11:
-	{
-		switch(index)
+		case 9:
 		{
-			case 133, 444:
-				return GetRandomInt(50, 74);
+			switch(index)
+			{
+				case 133, 444:
+					return GetRandomInt(28, 34);
 
-			case 655:
-				return GetRandomInt(79, 90);
+				case 655:
+					return GetRandomInt(57, 67);
 
-			case 656:
-				return GetRandomInt(500, 748);
-
-			default:
-				return wearable ? GetRandomInt(725, 999) : GetRandomInt(500, 749);
+				default:
+					return wearable ? GetRandomInt(375, 499) : GetRandomInt(275, 349);
+			}
 		}
-	}
-	case 12:
-	{
-		switch(index)
+		case 10:
 		{
-			case 133, 444:
-				return GetRandomInt(75, 98);
+			switch(index)
+			{
+				case 133, 444:
+					return GetRandomInt(35, 49);
 
-			case 655:
-				return GetRandomInt(91, 103);
+				case 655:
+					return GetRandomInt(68, 78);
 
-			case 656:
-				return 749;
-
-			default:
-				return wearable ? GetRandomInt(1000, 1499) : GetRandomInt(750, 998);
+				default:
+					return wearable ? GetRandomInt(500, 724) : GetRandomInt(350, 499);
+			}
 		}
-	}
-	case 13:
-	{
-		switch(index)
+		case 11:
 		{
-			case 133, 444:
-				return 99;
+			switch(index)
+			{
+				case 133, 444:
+					return GetRandomInt(50, 74);
 
-			case 655:
-				return GetRandomInt(104, 119);
+				case 655:
+					return GetRandomInt(79, 90);
 
-			case 656:
-				return GetRandomInt(750, 999);
+				case 656:
+					return GetRandomInt(500, 748);
 
-			default:
-				return wearable ? GetRandomInt(1500, 1999) : 999;
+				default:
+					return wearable ? GetRandomInt(725, 999) : GetRandomInt(500, 749);
+			}
 		}
-	}
-	case 14:
-	{
-		switch(index)
+		case 12:
 		{
-			case 133, 444:
-				return GetRandomInt(100, 149);
+			switch(index)
+			{
+				case 133, 444:
+					return GetRandomInt(75, 98);
 
-			case 655:
-				return GetRandomInt(120, 137);
+				case 655:
+					return GetRandomInt(91, 103);
 
-			default:
-				return wearable ? GetRandomInt(2000, 2749) : GetRandomInt(1000, 1499);
+				case 656:
+					return 749;
+
+				default:
+					return wearable ? GetRandomInt(1000, 1499) : GetRandomInt(750, 998);
+			}
 		}
-	}
-	case 15:
-	{
-		switch(index)
+		case 13:
 		{
-			case 133, 444:
-				return GetRandomInt(150, 249);
+			switch(index)
+			{
+				case 133, 444:
+					return 99;
 
-			case 655:
-				return GetRandomInt(138, 157);
+				case 655:
+					return GetRandomInt(104, 119);
 
-			default:
-				return wearable ? GetRandomInt(2750, 3999) : GetRandomInt(1500, 2499);
+				case 656:
+					return GetRandomInt(750, 999);
+
+				default:
+					return wearable ? GetRandomInt(1500, 1999) : 999;
+			}
 		}
-	}
-	case 16:
-	{
-		switch(index)
+		case 14:
 		{
-			case 133, 444:
-				return GetRandomInt(250, 499);
+			switch(index)
+			{
+				case 133, 444:
+					return GetRandomInt(100, 149);
 
-			case 655:
-				return GetRandomInt(158, 178);
+				case 655:
+					return GetRandomInt(120, 137);
 
-			default:
-				return wearable ? GetRandomInt(4000, 5499) : GetRandomInt(2500, 4999);
+				default:
+					return wearable ? GetRandomInt(2000, 2749) : GetRandomInt(1000, 1499);
+			}
 		}
-	}
-	case 17:
-	{
-		switch(index)
+		case 15:
 		{
-			case 133, 444:
-				return GetRandomInt(500, 749);
+			switch(index)
+			{
+				case 133, 444:
+					return GetRandomInt(150, 249);
 
-			case 655:
-				return GetRandomInt(179, 209);
+				case 655:
+					return GetRandomInt(138, 157);
 
-			default:
-				return wearable ? GetRandomInt(5500, 7499) : GetRandomInt(5000, 7499);
+				default:
+					return wearable ? GetRandomInt(2750, 3999) : GetRandomInt(1500, 2499);
+			}
 		}
-	}
-	case 18:
-	{
-		switch(index)
+		case 16:
 		{
-			case 133, 444:
-				return GetRandomInt(750, 783);
+			switch(index)
+			{
+				case 133, 444:
+					return GetRandomInt(250, 499);
 
-			case 655:
-				return GetRandomInt(210, 249);
+				case 655:
+					return GetRandomInt(158, 178);
 
-			case 656:
-				return GetRandomInt(7500, 7922);
-
-			default:
-				return wearable ? GetRandomInt(7500, 9999) : GetRandomInt(7500, 7615);
+				default:
+					return wearable ? GetRandomInt(4000, 5499) : GetRandomInt(2500, 4999);
+			}
 		}
-	}
-	case 19:
-	{
-		switch(index)
+		case 17:
 		{
-			case 133, 444:
-				return GetRandomInt(784, 849);
+			switch(index)
+			{
+				case 133, 444:
+					return GetRandomInt(500, 749);
 
-			case 655:
-				return GetRandomInt(250, 299);
+				case 655:
+					return GetRandomInt(179, 209);
 
-			case 656:
-				return GetRandomInt(7923, 8499);
-
-			default:
-				return wearable ? GetRandomInt(10000, 14999) : GetRandomInt(7616, 8499);
+				default:
+					return wearable ? GetRandomInt(5500, 7499) : GetRandomInt(5000, 7499);
+			}
 		}
-	}
-	case 20:
-	{
-		switch(index)
+		case 18:
 		{
-			case 133, 444:
-				return GetRandomInt(850, 999);
+			switch(index)
+			{
+				case 133, 444:
+					return GetRandomInt(750, 783);
 
-			case 655:
-				return GetRandomInt(300, 399);
+				case 655:
+					return GetRandomInt(210, 249);
 
-			default:
-				return wearable ? GetRandomInt(15000, 19999) : GetRandomInt(8500, 9999);
+				case 656:
+					return GetRandomInt(7500, 7922);
+
+				default:
+					return wearable ? GetRandomInt(7500, 9999) : GetRandomInt(7500, 7615);
+			}
 		}
-	}
-	default:
-	{
-		return GetRankingKills(GetRandomInt(0, 20), index, wearable);
+		case 19:
+		{
+			switch(index)
+			{
+				case 133, 444:
+					return GetRandomInt(784, 849);
+
+				case 655:
+					return GetRandomInt(250, 299);
+
+				case 656:
+					return GetRandomInt(7923, 8499);
+
+				default:
+					return wearable ? GetRandomInt(10000, 14999) : GetRandomInt(7616, 8499);
+			}
+		}
+		case 20:
+		{
+			switch(index)
+			{
+				case 133, 444:
+					return GetRandomInt(850, 999);
+
+				case 655:
+					return GetRandomInt(300, 399);
+
+				default:
+					return wearable ? GetRandomInt(15000, 19999) : GetRandomInt(8500, 9999);
+			}
+		}
+		default:
+		{
+			return GetRankingKills(GetRandomInt(0, 20), index, wearable);
+		}
 	}
 }

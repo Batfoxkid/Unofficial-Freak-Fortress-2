@@ -201,6 +201,7 @@ enum struct ClientEnum
 	float BGMAt;
 	float GlowFor;
 	float PopUpAt;
+	float RefreshAt;
 	int Damage;
 	int Queue;
 	int Selection;
@@ -249,7 +250,7 @@ bool LastMann;
 int EndRound;
 int Enabled;
 int NextGamemode;
-int ArenaRoundsLeft;
+int ArenaRounds;
 int Players;
 int BossPlayers;
 int MercPlayers;
@@ -270,6 +271,7 @@ ConVar CvarVersion;
 ConVar CvarEnabled;
 ConVar CvarDebug;
 ConVar CvarSpecTeam;
+ConVar CvarArenaRounds;
 
 GlobalForward PreAbility;
 GlobalForward OnAbility;
@@ -306,7 +308,7 @@ void MainMenu(int client) { MainMenuC(client, 0); }
 #include "ff2_modules/bosses.sp"	// convars, sdkhooks, tf2items
 #tryinclude "ff2_modules/stomp.sp"	// sdkhooks
 
-#include "ff2_modules/natives.sp"
+//#include "ff2_modules/natives.sp"
 
 // Require either one due to needing weapon attributes for bosses
 #if !defined FF2_TF2ATTRIBUTES
@@ -377,6 +379,7 @@ public void OnPluginStart()
 	CvarDebug = CreateConVar("ff2_debug", "1", "If to display debug outputs", FCVAR_NOTIFY, true, 0.0, true, 1.0);
 
 	CvarSpecTeam = CreateConVar("ff2_game_spec", "1", "If to handle spectator teams as real fighting teams", _, true, 0.0, true, 1.0);
+	CvarArenaRounds = CreateConVar("ff2_game_prerounds", "1", "How many non-FF2 rounds until to enable", _, true, 0.0);
 
 	CreateConVar("ff2_oldjump", "1", "Backwards Compatibility ConVar", FCVAR_DONTRECORD, true, 0.0, true, 1.0);
 	CreateConVar("ff2_base_jumper_stun", "0", "Backwards Compatibility ConVar", FCVAR_DONTRECORD, true, 0.0, true, 1.0);
@@ -384,7 +387,7 @@ public void OnPluginStart()
 
 	EndRound = -1;
 	Override = -1;
-	ArenaRoundsLeft = -1;
+	ArenaRounds = -1;
 
 	#if defined FF2_TF2ATTRIBUTES
 	TF2Attributes_Setup();
@@ -519,12 +522,16 @@ public void OnConfigsExecuted()
 		Enabled = Game_Disabled;
 	}
 
-	RoundCount = GetTeamScore(view_as<int>(TFTeam_Red))+GetTeamScore(view_as<int>(TFTeam_Blue));
-
-	#if defined FF2_STEAMWORKS
 	if(Enabled == Game_Arena)
+	{
+		ArenaRounds = CvarArenaRounds.IntValue-(GetTeamScore(view_as<int>(TFTeam_Red))+GetTeamScore(view_as<int>(TFTeam_Blue)));
+		if(ArenaRounds > 0)
+			Enabled = Game_Fun;
+
+		#if defined FF2_STEAMWORKS
 		SteamWorks_Toggle(true);
-	#endif
+		#endif
+	}
 
 	#if defined FF2_WEAPONS
 	Weapons_Setup();
@@ -577,7 +584,7 @@ public Action OnJoinTeam(int client, const char[] command, int args)
 
 	if(GetClientTeam(client) > view_as<int>(TFTeam_Spectator))
 	{
-		if(GetConVarBool(FindConVar("mp_allowspectators"))
+		if(GetConVarBool(FindConVar("mp_allowspectators")))
 		{
 			static char buffer[10];
 			GetCmdArg(1, buffer, sizeof(buffer));
@@ -668,6 +675,18 @@ public void OnRoundStart(Event event, const char[] name, bool dontBroadcast)
 				SetEntPropFloat(medigun, Prop_Send, "m_flChargeLevel", 0.0);
 		}
 	}
+
+	RequestFrame(BeginScreen);
+}
+
+public void OnRoundEnd(Event event, const char[] name, bool dontBroadcast)
+{
+	if(Enabled != Game_Arena)
+		return;
+
+	int team = event.GetInt("team");
+	float duration = GetConVarFloat(FindConVar("mp_bonusroundtime"))-0.5;
+	GameOverScreen(team, duration);
 }
 
 public Action OnPlayerHurt(Event event, const char[] name, bool dontBroadcast)
@@ -684,9 +703,6 @@ public Action OnPlayerHurt(Event event, const char[] name, bool dontBroadcast)
 	int custom = event.GetInt("custom");
 	if(!(custom & TF_CUSTOM_BACKSTAB) && !(custom & TF_CUSTOM_COMBO_PUNCH) && !(custom & TF_CUSTOM_TELEFRAG) && event.GetBool("minicrit") && event.GetBool("allseecrit"))
 		event.SetBool("allseecrit", false);
-
-	if(custom == TF_CUSTOM_BOOTS_STOMP)
-		event.SetInt("damageamount", damage*5);
 }
 
 #if SETTING_TICKMODE>0
@@ -917,6 +933,32 @@ public void OnPlayerRunCmdPost(int nullVar1, int nullVar2, int nullVar3, const f
 	}
 }
 
+public void OnEntityCreated(int entity, const char[] classname)
+{
+	if(StrEqual(classname, HEALTHBAR_CLASS))
+		HealthBar = entity;
+
+	if(!IsValidEntity(Monoculus) && StrEqual(classname, MONOCULUS))
+		Monoculus = entity;
+
+	if(StrContains(classname, "item_healthkit")!=-1 || StrContains(classname, "item_ammopack")!=-1 || StrEqual(classname, "tf_ammo_pack"))
+		SDKHook(entity, SDKHook_Spawn, OnItemSpawned);
+}
+
+public void OnEntityDestroyed(int entity)
+{
+	if(Monoculus != entity)
+		return;
+
+	Monoculus = FindEntityByClassname2(-1, MONOCULUS);
+	if(Monoculus != entity)
+		return;
+
+	Monoculus = FindEntityByClassname2(entity, MONOCULUS);
+	if(!IsValidEntity(Monoculus) || Monoculus==-1)
+		FindHealthBar();
+}
+
 /*
 	Functions
 */
@@ -1080,6 +1122,13 @@ void OnRoundSetupPre(bool respawn)
 			return;
 	}
 
+	if(Enabled==Game_Fun && ArenaRounds>=0)
+	{
+		ArenaRounds--;
+		if(ArenaRounds < 0)
+			Enabled = Game_Arena;
+	}
+
 	#if defined FF2_TTS
 	TTS_Start();
 	#endif
@@ -1094,66 +1143,66 @@ void OnRoundSetupPre(bool respawn)
 	int[] queueList = new int[MaxClients];
 	SortQueuePoints(queueList, MaxClients);
 
-	int i = queueList[0] ? queueList[0] : GetNextBossPlayer();
-	if(!i)
+	int client = queueList[0] ? queueList[0] : GetNextBossPlayer();
+	if(!client)
 	{
 		Enabled = Game_Fun;
 		NextGamemode = Game_Arena;
 		return;
 	}
 
-	Boss[i].Special = Bosses_GetSpecial(i, Client[i].Selection, 0);
-	if(Boss[i].Special == -1)
+	Boss[client].Special = Bosses_GetSpecial(client, Client[client].Selection, 0);
+	if(Boss[client].Special == -1)
 	{
-		Boss[i].Special = 0;
+		Boss[client].Special = 0;
 		Enabled = Game_Fun;
 		NextGamemode = Game_Arena;
 		return;
 	}
 
-	Boss[i].Active = true;
-	Bosses_Create(i, CvarTeam.IntValue);
-	Bosses_CheckCompanion(Boss[i].Special, Client[i].Team);
+	Boss[client].Active = true;
+	Bosses_Create(client, CvarTeam.IntValue);
+	Bosses_CheckCompanion(Boss[client].Special, Client[client].Team);
 
 	Players = 0;
-	for(i=1; i<=MaxClients; i++)
+	for(client=1; client<=MaxClients; client++)
 	{
-		if(!IsValidClient(i) || GetClientTeam(i)<=view_as<int>(TFTeam_Spectator))
+		if(!IsValidClient(client) || GetClientTeam(client)<=view_as<int>(TFTeam_Spectator))
 			continue;
 
 		Players++;
-		if(Boss[i].Active)
+		if(Boss[client].Active)
 		{
 			if(respawn)
 			{
-				AssignTeam(i, view_as<int>(TFTeam_Blue));
+				AssignTeam(client, view_as<int>(TFTeam_Blue));
 			}
 			else
 			{
-				ChangeClientTeamEx(i, view_as<int>(TFTeam_Blue));
+				ChangeClientTeamEx(client, view_as<int>(TFTeam_Blue));
 			}
 		}
 		else
 		{
 			if(respawn)
 			{
-				AssignTeam(i, view_as<int>(TFTeam_Red));
+				AssignTeam(client, view_as<int>(TFTeam_Red));
 			}
 			else
 			{
-				ChangeClientTeamEx(i, view_as<int>(TFTeam_Red));
+				ChangeClientTeamEx(client, view_as<int>(TFTeam_Red));
 			}
 
 			switch(view_as<TFTeam>(BossTeam))
 			{
 				case TFTeam_Red:
-					Client[i].Team = view_as<int>(TFTeam_Blue);
+					Client[client].Team = view_as<int>(TFTeam_Blue);
 
 				//case TFTeam_Blue:
-					//Client[i].Team = TFTeam_Red;
+					//Client[client].Team = TFTeam_Red;
 
 				default:
-					Client[i].Team = TFTeam_Red; //GetRandomInt(2, 3);
+					Client[client].Team = TFTeam_Red; //GetRandomInt(2, 3);
 			}
 		}
 	}
@@ -1168,33 +1217,33 @@ void OnRoundSetupPost()
 		if(!IsValidClient(client) || GetClientTeam(client)<=view_as<int>(TFTeam_Spectator))
 			continue;
 
-		ChangeClientTeamEx(i, Client[i].Team);
-		if(Boss[i].Active)
+		ChangeClientTeamEx(client, Client[client].Team);
+		if(Boss[client].Active)
 		{
-			Client[i].RefreshAt = gameTime+0.1;
+			Client[client].RefreshAt = gameTime+0.1;
 			continue;
 		}
 
-		switch(Client[i].Pref[Pref_Boss])
+		switch(Client[client].Pref[Pref_Boss])
 		{
 			case Pref_Off:
 			{
-				FPrintToChat(i, "%t", "Notification Disabled");
+				FPrintToChat(client, "%t", "Notification Disabled");
 			}
 			case Pref_Temp:
 			{
-				FPrintToChat(i, "%t", "Notification Temp");
+				FPrintToChat(client, "%t", "Notification Temp");
 			}
 			case Pref_On:
 			{
-				if(Client[i].Queue >= 0)
+				if(Client[client].Queue >= 0)
 				{
 					for(int a; a<MaxClients; a++)
 					{
 						if(queueList[a] != client)
 							continue;
 
-						FPrintToChat(i, "%t", "Notification Queue", a+1);
+						FPrintToChat(client, "%t", "Notification Queue", a+1);
 						break;
 					}
 				}
@@ -1205,7 +1254,7 @@ void OnRoundSetupPost()
 	IntroMusicIn = gameTime+0.4;
 	IntroSoundIn = gameTime+((GetConVarFloat(FindConVar("tf_arena_preround_time"))*0.35);
 
-	for(i=MAXENTITIES-1; i>MaxClients; i--)
+	for(int i=MAXENTITIES-1; i>MaxClients; i--)
 	{
 		if(!IsValidEntity(i))
 			continue;
@@ -1228,7 +1277,7 @@ void OnRoundSetupPost()
 	}
 }
 
-/*void BeginScreen()
+void BeginScreen()
 {
 	
 }
@@ -1268,7 +1317,7 @@ void GameOverScreen(int winner, float duration)
 		{
 		}
 	}
-}*/
+}
 
 void RefreshClient(int client)
 {
@@ -1400,6 +1449,96 @@ void CheckAlivePlayers(bool noSound)
 		if(count)
 			PlayBossSound(clients[GetRandomInt(0, count-1)], "sound_lastman", 1);
 	}
+}
+
+void FindHealthBar()
+{
+	HealthBar = FindEntityByClassname2(-1, HEALTHBAR_CLASS);
+	if(!IsValidEntity(HealthBar))
+		HealthBar = CreateEntityByName(HEALTHBAR_CLASS);
+}
+
+public void ConVarHealthBar(Handle convar, const char[] oldValue, const char[] newValue)
+{
+	if(Enabled && CvarHealthBar.IntValue>0 && IsValidEntity(healthBar))
+	{
+		UpdateHealthBar();
+	}
+	else if(!IsValidEntity(g_Monoculus) && IsValidEntity(healthBar))
+	{
+		SetEntProp(healthBar, Prop_Send, HEALTHBAR_PROPERTY, 0);
+	}
+}
+
+void UpdateHealthBar()
+{
+	if(CvarHealthBar.IntValue<1 || IsValidEntity(Monoculus) || !IsValidEntity(HealthBar))
+		return;
+
+	int healthAmount, maxHealthAmount, healthPercent;
+	int healing = HealthBarMode ? 1 : 0;
+	for(int boss; boss<=MaxClients; boss++)
+	{
+		if(IsValidClient(Boss[boss]) && IsPlayerAlive(Boss[boss]))
+		{
+			if(Enabled3)
+			{
+				if(TF2_GetClientTeam(Boss[boss]) == TFTeam_Blue)
+				{
+					healthAmount += BossHealth[boss];
+				}
+				else
+				{
+					maxHealthAmount += BossHealth[boss];
+				}
+			}
+			else
+			{
+				if(cvarHealthBar.IntValue > 1)
+				{
+					healthAmount += BossHealth[boss];
+					maxHealthAmount += BossHealthMax[boss]*BossLivesMax[boss];
+				}
+				else
+				{
+					healthAmount += BossHealth[boss]-BossHealthMax[boss]*(BossLives[boss]-1);
+					maxHealthAmount += BossHealthMax[boss];
+				}
+			}
+			if(HealthBarModeC[boss])
+				healing = 1;
+		}
+	}
+
+	if(maxHealthAmount)
+	{
+		if(Enabled3)
+		{
+			if(maxHealthAmount > healthAmount)
+			{
+				healthPercent = RoundToCeil(float(healthAmount)/float(maxHealthAmount)*float(HEALTHBAR_MAX)*0.5);
+			}
+			else
+			{
+				healthPercent = RoundToCeil((1.0-(float(maxHealthAmount)/float(healthAmount)*0.5))*float(HEALTHBAR_MAX));
+			}
+		}
+		else
+		{
+			healthPercent = RoundToCeil(float(healthAmount)/float(maxHealthAmount)*float(HEALTHBAR_MAX));
+		}
+
+		if(healthPercent > HEALTHBAR_MAX)
+		{
+			healthPercent = HEALTHBAR_MAX;
+		}
+		else if(healthPercent < 1)
+		{
+			healthPercent = 1;
+		}
+	}
+	SetEntProp(healthBar, Prop_Send, HEALTHBAR_COLOR, healing);
+	SetEntProp(healthBar, Prop_Send, HEALTHBAR_PROPERTY, healthPercent);
 }
 
 public Action MainMenuC(int client, int args)

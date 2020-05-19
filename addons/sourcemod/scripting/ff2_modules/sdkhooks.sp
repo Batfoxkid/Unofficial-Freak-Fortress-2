@@ -379,6 +379,11 @@ public Action OnTakeDamage(int client, int &attacker, int &inflictor, float &dam
 		HealthBarFor = GetGameTime()+1.0;
 		return Plugin_Changed;
 	}
+	else if(custom == TF_CUSTOM_BOOTS_STOMP)
+	{
+		damage *= 5.0;
+		return Plugin_Changed;
+	}
 
 	if(Boss[attacker].Active || Client[attacker].Minion)
 		return Plugin_Continue;
@@ -760,17 +765,18 @@ public Action OnTakeDamageAlive(int client, int &attacker, int &inflictor, float
 		return Plugin_Continue;
 
 	int add = RoundToFloor(damage/500.0);
-	if((damage%500.0)+(float(Client[attacker].Damage)%500.0) >= 500)
+	int slot = RoundFloat(damage);
+	if((slot%500)+(Client[attacker].Damage%500) >= 500)
 		add++;
 
-	Client[attacker].Damage += RoundFloat(damage);
+	Client[attacker].Damage += slot;
 	if(add)
 		SetEntProp(attacker, Prop_Send, "m_nStreaks", GetEntProp(attacker, Prop_Send, "m_nStreaks")+add);
 
 	if(Enabled!=Game_Arena || weapon<=MaxClients || !IsValidEntity(weapon) || !HasEntProp(weapon, Prop_Send, "m_iItemDefinitionIndex"))
 		return Plugin_Continue;
 
-	int slot = GetPlayerWeaponSlot(client, TFWeaponSlot_Primary)==weapon ? TFWeaponSlot_Primary : GetPlayerWeaponSlot(client, TFWeaponSlot_Secondary)==weapon ? TFWeaponSlot_Secondary : GetPlayerWeaponSlot(client, TFWeaponSlot_Melee)==weapon ? TFWeaponSlot_Melee : -1;
+	slot = GetPlayerWeaponSlot(client, TFWeaponSlot_Primary)==weapon ? TFWeaponSlot_Primary : GetPlayerWeaponSlot(client, TFWeaponSlot_Secondary)==weapon ? TFWeaponSlot_Secondary : GetPlayerWeaponSlot(client, TFWeaponSlot_Melee)==weapon ? TFWeaponSlot_Melee : -1;
 	if(slot == -1)
 		return Plugin_Continue;
 
