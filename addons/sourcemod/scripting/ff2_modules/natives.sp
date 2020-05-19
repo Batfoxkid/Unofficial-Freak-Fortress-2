@@ -880,7 +880,9 @@ public any Native_RemoveClientShield(Handle plugin, int numParams)
 		if(!Weapon[client][i].Shield)
 			continue;
 
-		RemoveShield(client, 0, Weapon[client][i].Shield);
+		if(IsValidEntity(Weapon[client][i].Shield))
+			TF2_RemoveWearable(client, Weapon[client][i].Shield);
+
 		Weapon[client][i].Shield = 0;
 	}
 }

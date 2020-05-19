@@ -151,7 +151,6 @@ static float ParseFactor(LexState ls, const char[] formula, float n)
 
 static bool LexOctal(LexState ls, const char[] formula)
 {
-	int lit_flags = 0;
 	while(formula[ls.i] && (IsCharNumeric(formula[ls.i])))
 	{
 		switch(formula[ls.i])
@@ -173,7 +172,6 @@ static bool LexOctal(LexState ls, const char[] formula)
 
 static bool LexHex(LexState ls, const char[] formula)
 {
-	int lit_flags = 0;
 	while(formula[ls.i] && (IsCharNumeric(formula[ls.i]) || IsCharAlpha(formula[ls.i])))
 	{
 		switch(formula[ls.i])

@@ -72,11 +72,7 @@ void Bosses_Config(const char[] map)
 	if(Charsets != INVALID_HANDLE)
 		delete Charsets;
 
-	if(BossList != INVALID_HANDLE)
-		delete BossList;
-
 	Charsets = new ArrayList(MAX_CHARSET_LENGTH, 0);
-	BossList = new ArrayList(5, 0);
 
 	char filepath[PLATFORM_MAX_PATH];
 	BuildPath(Path_SM, filepath, PLATFORM_MAX_PATH, CHARSET_FILE);
@@ -158,52 +154,49 @@ void Bosses_Config(const char[] map)
 			continue;
 
 		int entries2 = snap2.Length;
-		if(!entires2)
+		if(entries2)
 		{
-			delete snap2;
-			continue;
-		}
-
-		Charsets.SetString(charset, buffer);
-		for(int i2; i2<entries2; i2++)
-		{
-			length = snap.KeyBufferSize(i2)+1;
-			char[] buffer2 = new char[length];
-			snap.GetKey(i2, buffer2, length);
-			PackVal val;
-			cfg.GetArray(buffer2, val, sizeof(val));
-			switch(val.tag)
+			Charsets.SetString(charset, buffer);
+			for(int i2; i2<entries2; i2++)
 			{
-				case KeyValType_Value:
+				length = snap.KeyBufferSize(i2)+1;
+				char[] buffer2 = new char[length];
+				snap.GetKey(i2, buffer2, length);
+				PackVal val2;
+				cfg.GetArray(buffer2, val2, sizeof(val2));
+				switch(val2.tag)
 				{
-					val.data.Reset();
-					val.data.ReadString(config, sizeof(config));
-					if(StrContains(config, "*") == -1)
+					case KeyValType_Value:
 					{
-						LoadCharacter(config, charset, map);
+						val2.data.Reset();
+						val2.data.ReadString(config, sizeof(config));
+						if(StrContains(config, "*") == -1)
+						{
+							LoadCharacter(config, charset, map);
+						}
+						else
+						{
+							ReplaceString(config, PLATFORM_MAX_PATH, "*", "");
+							ProcessDirectory(filepath, "", config, charset, map);
+						}
 					}
-					else
+					case KeyValType_Section:
 					{
-						ReplaceString(config, PLATFORM_MAX_PATH, "*", "");
-						ProcessDirectory(filepath, "", config, charset, map);
-					}
-				}
-				case KeyValType_Section:
-				{
-					if(StrContains(buffer2, "*") == -1)
-					{
-						LoadCharacter(buffer2, charset, map);
-					}
-					else
-					{
-						ReplaceString(buffer2, PLATFORM_MAX_PATH, "*", "");
-						ProcessDirectory(filepath, "", buffer2, charset, map);
+						if(StrContains(buffer2, "*") == -1)
+						{
+							LoadCharacter(buffer2, charset, map);
+						}
+						else
+						{
+							ReplaceString(buffer2, PLATFORM_MAX_PATH, "*", "");
+							ProcessDirectory(filepath, "", buffer2, charset, map);
+						}
 					}
 				}
 			}
+			charset++;
 		}
 		delete snap2;
-		charset++;
 	}
 	delete snap;
 
@@ -253,7 +246,7 @@ static void ProcessDirectory(const char[] base, const char[] current, const char
 		if(current[0])
 			Format(file, PLATFORM_MAX_PATH, "%s/%s", current, file);
 
-		ProcessDirectory(base, file, matching, pac, map);
+		ProcessDirectory(base, file, matching, pack, map);
 	}
 	delete listing;
 }
@@ -423,7 +416,6 @@ static void LoadCharacter(const char[] character, int charset, const char[] map)
 		if(FirstPlayable == -1)
 			FirstPlayable = Specials;
 
-		char key[PLATFORM_MAX_PATH];
 		StringMapSnapshot snap = cfg.Snapshot();
 		if(snap)
 		{
@@ -493,7 +485,7 @@ static void DownloadSection(ConfigMap cfg, SectionType type, const char[] charac
 					static const char extensions[][] = {".mdl", ".dx80.vtx", ".dx90.vtx", ".sw.vtx", ".vvd", ".phy"};
 					for(int x=0; x<sizeof(extensions); x++)
 					{
-						FormatEx(key, sizeof(key), "%s%s", config, extensions[x]);
+						FormatEx(key, sizeof(key), "%s%s", buffer, extensions[x]);
 						if(FileExists(key, true))
 						{
 							AddFileToDownloadsTable(key);
@@ -533,8 +525,9 @@ static void DownloadSection(ConfigMap cfg, SectionType type, const char[] charac
 
 void Bosses_Create(int client, TFTeam team)
 {
-	ConfigMap cfg = Special[boss].Cfg.GetSection("character");
+	ConfigMap cfg = Special[Boss[client].Special].Cfg.GetSection("character");
 
+	int i;
 	Boss[client].Triple = cfg.GetInt("triple", i) ? view_as<bool>(i) : CvarTriple.BoolValue;
 	Boss[client].Crits = cfg.GetInt("crits", i) ? view_as<bool>(i) : CvarCrits.BoolValue;
 	Boss[client].Healing = cfg.GetInt("healing", i) ? view_as<bool>(i) : CvarHealing.BoolValue;
@@ -542,12 +535,6 @@ void Bosses_Create(int client, TFTeam team)
 
 	Boss[client].Voice = cfg.GetInt("sound_block_vo", i) ? !i : true;
 	Boss[client].RageMode = cfg.GetInt("ragemode", i) ? view_as<bool>(i) : false;
-
-	float f;
-	Boss[client].RageMode = cfg.GetFloat("ragemode", f) ? f : 100.0;
-	Boss[client].RageMax = cfg.GetFloat("ragemax", f) ? f : 100.0;
-	Boss[client].RageMin = cfg.GetFloat("ragemin", f) ? f : 100.0;
-	Boss[client].MaxSpeed = cfg.GetFloat("maxspeed", f) ? f : 340.0;
 
 	if(!cfg.GetInt("sapper", i))
 		i = CvarSapper.IntValue;
@@ -564,6 +551,11 @@ void Bosses_Create(int client, TFTeam team)
 		Boss[client].HealthKits = false;
 		Boss[client].AmmoKits = false;
 	}
+
+	float f;
+	Boss[client].RageMax = cfg.GetFloat("ragemax", f) ? f : 100.0;
+	Boss[client].RageMin = cfg.GetFloat("ragemin", f) ? f : 100.0;
+	Boss[client].MaxSpeed = cfg.GetFloat("maxspeed", f) ? f : 340.0;
 
 	Boss[client].Killstreak = 0;
 	Boss[client].RPSHealth = 0;
@@ -583,32 +575,32 @@ void Bosses_Create(int client, TFTeam team)
 		break;
 	}
 
-	Client[client].Team = cfg.GetInt("bossteam", i) ? view_as<TFTeam>(i) : TFTeam_Unassigned;
-	if(Client[client].Team == TFTeam_Unassigned)
+	Client[client].Team = cfg.GetInt("bossteam", i) ? i : view_as<int>(TFTeam_Unassigned);
+	if(Client[client].Team == view_as<int>(TFTeam_Unassigned))
 	{
 		if(!cfg.GetInt("team", i) || i<0)
 		{
 			if(team == 4)
 			{
-				Client[client].Team = GetRandomInt(0, 1) ? TFTeam_Red : TFTeam_Blue;
+				Client[client].Team = GetRandomInt(0, 1) ? view_as<int>(TFTeam_Red) : view_as<int>(TFTeam_Blue);
 			}
 			else
 			{
-				Client[client].Team = view_as<TFTeam>(team);
+				Client[client].Team = team;
 			}
 		}
 		else if(i > 3)
 		{
-			Client[client].Team = GetRandomInt(0, 1) ? TFTeam_Red : TFTeam_Blue;
+			Client[client].Team = GetRandomInt(0, 1) ? view_as<int>(TFTeam_Red) : view_as<int>(TFTeam_Blue);
 		}
 		else
 		{
-			Client[client].Team = view_as<TFTeam>(i);
+			Client[client].Team = i;
 		}
 	}
-	else if(Client[client].Team == TFTeam_Spectator)
+	else if(Client[client].Team == view_as<int>(TFTeam_Spectator))
 	{
-		Client[client].Team = GetRandomInt(0, 1) ? TFTeam_Red : TFTeam_Blue;
+		Client[client].Team = GetRandomInt(0, 1) ? view_as<int>(TFTeam_Red) : view_as<int>(TFTeam_Blue);
 	}
 
 	if(nonLeader)
@@ -660,7 +652,7 @@ void Bosses_Prepare(int boss)
 			if(val.tag == KeyValType_Null)
 				continue;
 
-			SectionType type = SectionType(buffer);
+			SectionType type = GetSectionType(buffer);
 			if(type!=Section_Sound && type!=Section_Precache)
 				continue;
 

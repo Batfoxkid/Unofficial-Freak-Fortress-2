@@ -208,15 +208,15 @@ public Action OnTakeDamage(int client, int &attacker, int &inflictor, float &dam
 		}
 
 		#if defined FF2_TIMESTEN
-		damage = Pow(health, 0.65-(Weapon[attacker][2].Stale++*0.01))*(1.0+(0.5*(TimesTen_Value()-1.0)));
+		damage = Pow(float(health), 0.65-(Weapon[attacker][2].Stale++*0.01))*(1.0+(0.5*(TimesTen_Value()-1.0)));
 		#else
-		damage = Pow(health, 0.65-(Weapon[attacker][2].Stale++*0.01));
+		damage = Pow(float(health), 0.65-(Weapon[attacker][2].Stale++*0.01));
 		#endif
 		damagetype |= DMG_CRIT|DMG_PREVENT_PHYSICS_FORCE;
 
 		Action action = Plugin_Continue;
 		Call_StartForward(OnBackstabbed);
-		Call_PushCell(boss);
+		Call_PushCell(Boss[client].Leader ? 0 : client);
 		Call_PushCell(client);
 		Call_PushCell(attacker);
 		Call_Finish(action);
@@ -228,7 +228,7 @@ public Action OnTakeDamage(int client, int &attacker, int &inflictor, float &dam
 
 		float gameTime = GetGameTime();
 		float delay = Boss[attacker].Active ? gameTime+1.5 : gameTime+2.0;
-		SetEntPropFloat(weapon, Prop_Send, "m_flNextPrimaryAttack", delay;
+		SetEntPropFloat(weapon, Prop_Send, "m_flNextPrimaryAttack", delay);
 		SetEntPropFloat(attacker, Prop_Send, "m_flNextAttack", delay);
 		SetEntPropFloat(attacker, Prop_Send, "m_flStealthNextChangeTime", delay);
 
@@ -288,7 +288,7 @@ public Action OnTakeDamage(int client, int &attacker, int &inflictor, float &dam
 				}
 				case 356:
 				{
-					int health = GetClientHealth(attacker);
+					health = GetClientHealth(attacker);
 					if(health < 600)
 					{
 						int add = Weapon[attacker][2].Stale<6 ? 100 : 225-(Weapon[attacker][2].Stale*25);
@@ -311,7 +311,7 @@ public Action OnTakeDamage(int client, int &attacker, int &inflictor, float &dam
 				SetEntProp(attacker, Prop_Send, "m_iRevengeCrits", GetEntProp(attacker, Prop_Send, "m_iRevengeCrits")+2);
 		}
 
-		Bosses_AbilitySlot(boss, 6);
+		Bosses_AbilitySlot(client, 6);
 		return (action == Plugin_Stop) ? Plugin_Handled : Plugin_Changed;
 	}
 	else if(damagecustom == TF_CUSTOM_TELEFRAG)
@@ -440,7 +440,7 @@ public Action OnTakeDamage(int client, int &attacker, int &inflictor, float &dam
 		for(int target=1; target<=MaxClients; target++)
 		{
 			if(IsValidClient(target) && IsPlayerAlive(target) && GetHealingTarget(target, true)==attacker)
-				healers[count++] = healer;
+				healers[count++] = target;
 		}
 
 		for(int i; i<count; i++)
@@ -723,14 +723,26 @@ public Action OnTakeDamageAlive(int client, int &attacker, int &inflictor, float
 		{
 			for(int i; i<3; i++)
 			{
-				if(!Weapon[client][i].Shield)
+				if(!Weapon[client][i].Shield || !IsValidEntity(Weapon[client][i].Shield))
 					continue;
 
 				if(GetClientHealth(client) > damage*1.15)
 					break;
 
-				RemoveShield(client, attacker, Weapon[client][i].Shield);
-				Weapon[client][i].Shield = 0;
+				ClientCommand(attacker, "playgamesound Player.Spy_Shield_Break");
+				ClientCommand(client, "playgamesound Player.Spy_Shield_Break");
+
+				if(!GetEntityClassname(weapon, buffer, sizeof(buffer)) || !StrEqual(buffer, "tf_wearable_razorback", false))
+				{
+					TF2_RemoveWearable(client, Weapon[client][i].Shield);
+					Weapon[client][i].Shield = 0;
+					return Plugin_Handled;
+				}
+
+				Event event = CreateEvent("player_shield_blocked", true);
+				event.SetInt("attacker_entindex", attacker);
+				event.SetInt("blocker_entindex", client);
+				event.Fire();
 				return Plugin_Handled;
 			}
 		}
@@ -748,7 +760,7 @@ public Action OnTakeDamageAlive(int client, int &attacker, int &inflictor, float
 		return Plugin_Continue;
 
 	int add = RoundToFloor(damage/500.0);
-	if((damage%500.0)+(Client[attacker].Damage%500.0) >= 500)
+	if((damage%500.0)+(float(Client[attacker].Damage)%500.0) >= 500)
 		add++;
 
 	Client[attacker].Damage += RoundFloat(damage);

@@ -78,7 +78,7 @@ void DHook_MapStart()
 		DHookGamerules(TeamHook, false, _, DHook_SetWinningTeam);
 
 	if(StartHook)
-		DHookGamerules(StartHook, false, _, DHook_OnRoundStart);
+		DHookGamerules(StartHook, false, _, DHook_RoundSetup);
 }
 
 public MRESReturn DHook_Regen(int client)

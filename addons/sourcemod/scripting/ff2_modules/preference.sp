@@ -326,8 +326,8 @@ void Pref_BossMenu(int client, int pack)
 
 			ConfigMap cfg = Special[i].Cfg.GetSection("character");
 
-			int var;
-			if(cfg.GetInt("blocked", var) && var)
+			int blocked;
+			if(cfg.GetInt("blocked", blocked) && blocked)
 				continue;
 
 			CfgGetLang(cfg, "name", boss, sizeof(boss), client);
@@ -373,11 +373,11 @@ void Pref_BossMenu(int client, int pack)
 		if(Special[i].Charset != pack)
 			continue;
 
-		int access = CheckBossAccess(client, boss);
+		int access = CheckBossAccess(client, i);
 		if(access==-2 || !access)
 			continue;
 
-		KvGetLang(Special[i].Kv, "name", buffer, sizeof(buffer), client);
+		CfgGetLang(Special[i].Cfg, "character.name", buffer, sizeof(buffer), client);
 		if(i == Client[client].Selection)
 			strcopy(boss, sizeof(boss), buffer);
 

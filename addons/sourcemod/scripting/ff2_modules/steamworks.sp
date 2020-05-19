@@ -96,7 +96,7 @@ void SteamWorks_Client(int client)
 	Client[client].Private = true;
 
 	static char buffer[64];
-	if(!GetClientAuthId(client, AuthId_SteamID64, buffer, sizeof(buffer))
+	if(!GetClientAuthId(client, AuthId_SteamID64, buffer, sizeof(buffer)))
 		return;
 
 	Handle request = SteamWorks_CreateHTTPRequest(k_EHTTPMethodGET, PLAYERURL);
@@ -112,15 +112,19 @@ public int SteamWorks_Finish(Handle request, bool failed, bool success, EHTTPSta
 {
 	if(success && status==k_EHTTPStatusCode200OK)
 	{
+		int client = GetClientOfUserId(userid);
+		if(!IsValidClient(client))
+			return;
+
 		int length;
 		SteamWorks_GetHTTPResponseBodySize(request, length);
 		if(length > 2047)
 			return;
 
 		char[] buffer = new char[length];
-		SteamWorks_GetHTTPResponseBodyData(hRequest, buffer, length);
+		SteamWorks_GetHTTPResponseBodyData(request, buffer, length);
 
-		Handle json = json_load(sBody);
+		Handle json = json_load(buffer);
 		Handle response = json_object_get(json, "response");
 		Handle players = json_object_get(response, "players");
 		Handle player = json_array_get(players, 0);

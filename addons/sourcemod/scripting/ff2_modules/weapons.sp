@@ -27,13 +27,14 @@ void Weapons_Setup()
 	}
 
 	WeaponCfg = new ConfigMap(config);
-	if(WeaponCfg = null)
+	if(WeaponCfg == null)
 		LogError2("[Weapons] '%s' failed to be converted to ConfigMap!", WEAPON_CONFIG);
 
-	ConfigMap cfg = Special[Specials].Cfg.GetSection("Weapons");
+	ConfigMap cfg = WeaponCfg.GetSection("Weapons");
 	if(cfg == null)
 	{
 		DeleteCfg(WeaponCfg);
+		WeaponCfg = null;
 		LogError2("[Weapons] '%s' is improperly formatted!", WEAPON_CONFIG);
 	}
 }
@@ -47,7 +48,7 @@ public void Weapons_Check(int userid)
 	if(!IsValidClient(client))
 		return;
 
-	ConfigMap cfg = Special[Specials].Cfg.GetSection("Weapons");
+	ConfigMap cfg = WeaponCfg.GetSection("Weapons");
 	for(int slot; slot<4; slot++)
 	{
 		static char classname[MAX_CLASSNAME_LENGTH];
@@ -78,20 +79,16 @@ public void Weapons_Check(int userid)
 				}
 
 				if(!found)
-					weapon == -1;
+					weapon = -1;
 			}
 			else
 			{
-				weapon == -1;
+				weapon = -1;
 			}
 		}
 
 		if(weapon != -1)
 		{
-			int index = GetEntProp(weapon, Prop_Send, "m_iItemDefinitionIndex");
-			GetEntityClassname(weapon, classname, sizeof(classname));
-
-			bool found;
 			StringMapSnapshot snap = cfg.Snapshot();
 			if(snap)
 			{
@@ -99,7 +96,10 @@ public void Weapons_Check(int userid)
 				int entries = snap.Length;
 				if(entries)
 				{
-					for(i=0; i<entries; i++)
+					int index = GetEntProp(weapon, Prop_Send, "m_iItemDefinitionIndex");
+					GetEntityClassname(weapon, classname, sizeof(classname));
+
+					for(int i; i<entries; i++)
 					{
 						int length = snap.KeyBufferSize(i)+1;
 						char[] buffer = new char[length];
@@ -109,26 +109,62 @@ public void Weapons_Check(int userid)
 						if(val.tag != KeyValType_Section)
 							continue;
 
-						static char names[8][MAX_CLASSNAME_LENGTH];
-						int num = ExplodeString(buffer, " ; ", names, sizeof(names), sizeof(names[]));
-						for(int i; i<num; i++)
+						val.data.Reset();
+						ConfigMap section = val.data.ReadCell();
+
+						static char skip[256], names[8][MAX_CLASSNAME_LENGTH];
+						if(section.GetString("skip", skip, sizeof(skip)))
 						{
-							if(StrContains(names[i], "tf_") == -1)
+							length = ExplodeString(skip, " ; ", names, sizeof(names), sizeof(names[]));
+							for(int x; x<length; x++)
 							{
-								if(StringToInt(names[i]) != index)
+								if(StringToInt(names[x]) != index)
+									continue;
+
+								found = true;
+								break;
+							}
+
+							if(!found)
+								continue;
+
+							found = false;
+						}
+
+						bool old = !StrContains(buffer, "weapon");
+						if(old)
+						{
+							if(!section.GetString("classname", skip, sizeof(skip)))
+							{
+								if(!section.GetString("index", skip, sizeof(skip)))
 									continue;
 							}
-							else if(StrContains(names[i], "*") == -1)
+
+							length = ExplodeString(skip, " ; ", names, sizeof(names), sizeof(names[]));
+						}
+						else
+						{
+							length = ExplodeString(buffer, " ; ", names, sizeof(names), sizeof(names[]));
+						}
+
+						for(int x; x<length; x++)
+						{
+							if(StrContains(names[x], "tf_") == -1)
 							{
-								if(!StrEqual(names[i], classname))
+								if(StringToInt(names[x]) != index)
 									continue;
 							}
-							else if(ReplaceString(names[i], sizeof(names[]), "*", "") > 1)
+							else if(StrContains(names[x], "*") == -1)
 							{
-								if(StrContains(names[i], classname) == -1)
+								if(!StrEqual(names[x], classname))
 									continue;
 							}
-							else if(!StrContains(names[i], classname))
+							else if(ReplaceString(names[x], sizeof(names[]), "*", "") > 1)
+							{
+								if(StrContains(names[x], classname) == -1)
+									continue;
+							}
+							else if(!StrContains(names[x], classname))
 							{
 								continue;
 							}
@@ -140,27 +176,31 @@ public void Weapons_Check(int userid)
 						if(!found)
 							continue;
 
-						int i = WeaponCfg.GetNum("slot", slot);
+						i = slot;
+						section.GetInt("slot", i);
 						if(i<0 || i>2)
 						{
 							found = false;
 							break;
 						}
 
-						Weapon[client][i].Stale = WeaponCfg.GetNum("stale");
-						Weapon[client][i].Shield = view_as<bool>(WeaponCfg.GetNum("shield")) ? weapon : 0;
-						Weapon[client][i].Crit = WeaponCfg.GetNum("crits", -1);
-						Weapon[client][i].Special = WeaponCfg.GetFloat("special");
-						Weapon[client][i].Outline = WeaponCfg.GetFloat("outline");
-						Weapon[client][i].Stun = WeaponCfg.GetFloat("stun");
-						Weapon[client][i].Uber = WeaponCfg.GetFloat("uber");
-						Weapon[client][i].Stab = WeaponCfg.GetFloat("stab", 1.0);
-						Weapon[client][i].Fall = WeaponCfg.GetFloat("fall", 1.0);
-						Weapon[client][i].Damage[0] = WeaponCfg.GetFloat("damage", 1.0);
-						Weapon[client][i].Damage[1] = WeaponCfg.GetFloat("damage mini", 1.0);
-						Weapon[client][i].Damage[2] = WeaponCfg.GetFloat("damage crit", 1.0);
-						Weapon[client][i].HealthKit = view_as<bool>(WeaponCfg.GetNum("kit"));
-						Weapon[client][i].NoForce = !WeaponCfg.GetNum("knockback", 1);
+						Weapon[client][i].Stale = section.GetInt("stale", length) ? length : 0;
+						Weapon[client][i].Crit = section.GetInt("crits", length) ? length : -1;
+						Weapon[client][i].Shield = (section.GetInt("shield", length) && length) ? weapon : 0;
+						Weapon[client][i].HealthKit = (section.GetInt("kit", length) && length);
+						Weapon[client][i].NoForce = (section.GetInt("knockback", length) && !length);
+
+						float value;
+						section.GetFloat("special", value);
+						Weapon[client][i].Special = value;
+						Weapon[client][i].Outline = section.GetFloat("outline", value) ? value : 0.0;
+						Weapon[client][i].Stun = section.GetFloat("stun", value) ? value : 0.0;
+						Weapon[client][i].Uber = section.GetFloat("uber", value) ? value : 0.0;
+						Weapon[client][i].Stab = section.GetFloat("stab", value) ? value : 1.0;
+						Weapon[client][i].Fall = section.GetFloat("fall", value) ? value : 1.0;
+						Weapon[client][i].Damage[0] = section.GetFloat("damage", value) ? value : 1.0;
+						Weapon[client][i].Damage[1] = section.GetFloat("damage mini", value) ? value : 1.0;
+						Weapon[client][i].Damage[2] = section.GetFloat("damage crit", value) ? value : 1.0;
 						break;
 					}
 				}
@@ -174,8 +214,10 @@ public void Weapons_Check(int userid)
 			continue;
 
 		Weapon[client][slot].Stale = 0;
-		Weapon[client][slot].Shield = 0;
 		Weapon[client][slot].Crit = -1;
+		Weapon[client][slot].Shield = 0;
+		Weapon[client][slot].HealthKit = false;
+		Weapon[client][slot].NoForce = false;
 		Weapon[client][slot].Special = 0.0;
 		Weapon[client][slot].Outline = 0.0;
 		Weapon[client][slot].Stun = 0.0;
@@ -185,7 +227,5 @@ public void Weapons_Check(int userid)
 		Weapon[client][slot].Damage[0] = 1.0;
 		Weapon[client][slot].Damage[1] = 1.0;
 		Weapon[client][slot].Damage[2] = 1.0;
-		Weapon[client][slot].HealthKit = false;
-		Weapon[client][slot].NoForce = false;
 	}
 }

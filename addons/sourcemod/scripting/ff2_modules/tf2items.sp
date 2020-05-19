@@ -56,66 +56,129 @@ public Action TF2Items_OnGiveNamedItem(int client, char[] classname, int index, 
 			}
 			default:
 			{
-				return cosmetics ? Plugin_Continue : Plugin_Stop;
+				return Boss[Boss[client].Special].Cosmetics ? Plugin_Continue : Plugin_Stop;
 			}
 		}
 	}
 
-	if(Enabled!=Game_Arena || WeaponKV==null)
+	if(Enabled!=Game_Arena || WeaponCfg==null)
 		return Plugin_Continue;
 
-	WeaponKV.Rewind();
-	WeaponKV.GotoFirstSubKey();
-	do
+	ConfigMap cfg = WeaponCfg.GetSection("Weapons");
+	StringMapSnapshot snap = cfg.Snapshot();
+	if(!snap)
+		return Plugin_Continue;
+
+	int entries = snap.Length;
+	if(entries)
 	{
-		static char attrib[256];
-		if(!WeaponKV.GetSectionName(attrib, sizeof(attrib)))
-			continue;
-
-		static char names[8][MAX_CLASSNAME_LENGTH];
-		int num = ExplodeString(attrib, " ; ", names, sizeof(names), sizeof(names[]));
 		bool found;
-		for(int i; i<num; i++)
+		for(int i; i<entries; i++)
 		{
-			if(StrContains(names[i], "tf_") == -1)
-			{
-				if(StringToInt(names[i]) != index)
-					continue;
-			}
-			else if(StrContains(names[i], "*") == -1)
-			{
-				if(!StrEqual(names[i], classname))
-					continue;
-			}
-			else if(ReplaceString(names[i], sizeof(names[]), "*", "") > 1)
-			{
-				if(StrContains(names[i], classname) == -1)
-					continue;
-			}
-			else if(!StrContains(names[i], classname))
-			{
+			int length = snap.KeyBufferSize(i)+1;
+			char[] buffer = new char[length];
+			snap.GetKey(i, buffer, length);
+			PackVal val;
+			cfg.GetArray(buffer, val, sizeof(val));
+			if(val.tag != KeyValType_Section)
 				continue;
-				
+
+			val.data.Reset();
+			ConfigMap section = val.data.ReadCell();
+
+			static char attrib[256], names[8][MAX_CLASSNAME_LENGTH];
+			if(section.GetString("skip", attrib, sizeof(attrib)))
+			{
+				length = ExplodeString(attrib, " ; ", names, sizeof(names), sizeof(names[]));
+				for(int x; x<length; x++)
+				{
+					if(StringToInt(names[x]) != index)
+						continue;
+
+					found = true;
+					break;
+				}
+
+				if(!found)
+					continue;
+
+				found = false;
 			}
-			mode = true;
-			break;
+
+			bool old = !StrContains(buffer, "weapon");
+			if(old)
+			{
+				if(!section.GetString("classname", attrib, sizeof(attrib)))
+				{
+					if(!section.GetString("index", attrib, sizeof(attrib)))
+						continue;
+				}
+
+				length = ExplodeString(attrib, " ; ", names, sizeof(names), sizeof(names[]));
+			}
+			else
+			{
+				length = ExplodeString(buffer, " ; ", names, sizeof(names), sizeof(names[]));
+			}
+
+			length = ExplodeString(buffer, " ; ", names, sizeof(names), sizeof(names[]));
+			for(int x; x<length; x++)
+			{
+				if(StrContains(names[x], "tf_") == -1)
+				{
+					if(StringToInt(names[x]) != index)
+						continue;
+				}
+				else if(StrContains(names[x], "*") == -1)
+				{
+					if(!StrEqual(names[x], classname))
+						continue;
+				}
+				else if(ReplaceString(names[x], sizeof(names[]), "*", "") > 1)
+				{
+					if(StrContains(names[x], classname) == -1)
+						continue;
+				}
+				else if(!StrContains(names[x], classname))
+				{
+					continue;
+				}
+
+				found = true;
+				break;
+			}
+
+			if(!found)
+				continue;
+
+			if(old)
+			{
+				found = (section.GetInt("mode", length) && length>1);
+				length = 0;
+				names[0][0] = 0;
+			}
+			else
+			{
+				found = (section.GetInt("preserve", length) && length);
+				length = (section.GetInt("index", length)) ? length : -1;
+				if(!section.GetString("classname", names[0], sizeof(names[])))
+					names[0][0] = 0;
+			}
+
+			if(!section.GetString("attributes", attrib, sizeof(attrib)))
+				attrib[0] = 0;
+
+			Handle itemOverride = PrepareItemHandle(item, names[0], length, attrib, found);
+			if(itemOverride == INVALID_HANDLE)
+				break;
+
+			item = itemOverride;
+			delete snap;
+			return Plugin_Changed;
 		}
-
-		if(!found)
-			continue;
-
-		found = view_as<bool>(WeaponKV.GetNum("preserve"));
-		num = WeaponKV.GetNum("index", index, -1);
-		WeaponKV.GetString("classname", names[0], sizeof(names[]));
-		WeaponKV.GetString("attributes", attrib, sizeof(attrib));
-
-		Handle itemOverride = PrepareItemHandle(item, names[0], num, attrib, found);
-		if(itemOverride == null)
-			break;
-
-		item = itemOverride;
-		return Plugin_Changed;
-	} while(WeaponKV.GotoNextKey());
+	}
+	delete snap;
+	return Plugin_Continue;
 }
 
 static Handle PrepareItemHandle(Handle item, char[] name="", int index=-1, const char[] att="", bool dontPreserve=false)
@@ -190,7 +253,7 @@ static Handle PrepareItemHandle(Handle item, char[] name="", int index=-1, const
 				return INVALID_HANDLE;
 			}
 
-			TF2Items_SetAttribute(weapon, i2, StringToInt(weaponAttribsArray[i]), StringToFloat(weaponAttribsArray[i+1]));
+			TF2Items_SetAttribute(weapon, i2, attrib, StringToFloat(weaponAttribsArray[i+1]));
 			i2++;
 		}
 	}
@@ -202,7 +265,7 @@ static Handle PrepareItemHandle(Handle item, char[] name="", int index=-1, const
 	return weapon;
 }
 
-stock int TF2Items_SpawnWeapon(int client, const char[] name, int index, int level, int qual, const char[] att)
+stock int TF2Items_SpawnWeapon(int client, char[] name, int index, int level, int qual, const char[] att)
 {
 	Handle weapon = TF2Items_CreateItem(OVERRIDE_ALL|FORCE_GENERATION);
 	if(weapon == INVALID_HANDLE)
