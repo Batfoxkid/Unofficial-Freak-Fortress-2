@@ -301,14 +301,13 @@ void MainMenu(int client) { MainMenuC(client, 0); }
 #tryinclude "ff2_modules/weapons.sp"
 
 #include "ff2_modules/formula.sp"	// tf2x10
-#include "ff2_modules/sdkhooks.sp"	// dhooks, tts, tf2attributes
 #tryinclude "ff2_modules/tf2items.sp"	// weapons
 #tryinclude "ff2_modules/steamworks.sp"	// tf2x10
 
 #include "ff2_modules/bosses.sp"	// convars, sdkhooks, tf2items
+#include "ff2_modules/sdkhooks.sp"	// bosses, dhooks, tts, tf2attributes
 #tryinclude "ff2_modules/stomp.sp"	// sdkhooks
-
-//#include "ff2_modules/natives.sp"
+#include "ff2_modules/natives.sp"
 
 // Require either one due to needing weapon attributes for bosses
 #if !defined FF2_TF2ATTRIBUTES
@@ -647,6 +646,7 @@ public void OnRoundStart(Event event, const char[] name, bool dontBroadcast)
 
 	CheckAlivePlayers(true);
 	LastMann = MercPlayers==1;
+	float engineTime = GetEngineTime()+30.0;
 	for(int client=1; client<=MaxClients; client++)
 	{
 		if(!IsValidClient(client) || GetClientTeam(client)<=view_as<int>(TFTeam_Spectator))
@@ -668,12 +668,15 @@ public void OnRoundStart(Event event, const char[] name, bool dontBroadcast)
 			continue;
 		}
 
-		if(TF2_GetPlayerClass(client) == TFClass_Medic)
-		{
-			int medigun = GetPlayerWeaponSlot(client, TFWeaponSlot_Secondary);
-			if(IsValidEntity(medigun))
-				SetEntPropFloat(medigun, Prop_Send, "m_flChargeLevel", 0.0);
-		}
+		if(Client[client].Pref[Pref_Boss]==Pref_Undef && !IsFakeClient(client))
+			Client[client].PopUpAt = engineTime;
+
+		if(TF2_GetPlayerClass(client) != TFClass_Medic)
+			continue;
+
+		int medigun = GetPlayerWeaponSlot(client, TFWeaponSlot_Secondary);
+		if(IsValidEntity(medigun))
+			SetEntPropFloat(medigun, Prop_Send, "m_flChargeLevel", 0.0);
 	}
 
 	RequestFrame(BeginScreen);
@@ -803,8 +806,6 @@ public void OnPlayerRunCmdPost(int nullVar1, int nullVar2, int nullVar3, const f
 
 	#if defined FF2_STATTRAK
 	int stattrack = StatEnabled ? CvarStatTrak.IntValue : 0;
-	#else
-	int stattrak;
 	#endif
 	char buffer[256];
 	for(int i; i<max; i++)
@@ -863,10 +864,12 @@ public void OnPlayerRunCmdPost(int nullVar1, int nullVar2, int nullVar3, const f
 				{
 					FormatEx(buffer, sizeof(buffer), "%t", "Hud Stats Spec", "It Is You", Client[client].Damage, Client[client].Healing, Client[client].Assist);
 				}
+				#if defined FF2_STATTRAK
 				else if(stattrack)
 				{
 					FormatEx(buffer, sizeof(buffer), "%t", "Hud Boss Spec", "It Is You", Client[client].Stat[Stat_Win], Client[client].Stat[Stat_Lose], Client[client].Stat[Stat_Kill], Client[client].Stat[Stat_Death]);
 				}
+				#endif
 				else
 				{
 					buffer[0] = 0;
@@ -875,16 +878,18 @@ public void OnPlayerRunCmdPost(int nullVar1, int nullVar2, int nullVar3, const f
 				static char buffer2[64];
 				if(!Boss[observer].Active)
 				{
-					GetClientName(client, buffer2, sizeof(buffer2));
+					GetClientName(observer, buffer2, sizeof(buffer2));
 					SetHudTextParams(-1.0, 0.83, 0.35, 90, 255, 90, 255, 0, 0.35, 0.0, 0.1);
 					ShowSyncHudText(client, HudDamage, "%t\n%s", "Hud Stats Spec", buffer2, Client[observer].Damage, Client[observer].Healing, Client[observer].Assist, buffer);
 				}
+				#if defined FF2_STATTRAK
 				else if(stattrack == 2)
 				{
-					GetClientName(client, buffer2, sizeof(buffer2));
+					GetClientName(observer, buffer2, sizeof(buffer2));
 					SetHudTextParams(-1.0, 0.83, 0.35, 90, 255, 90, 255, 0, 0.35, 0.0, 0.1);
 					ShowSyncHudText(client, HudDamage, "%t\n%s", "Hud Boss Spec", buffer2, Client[observer].Stat[Stat_Win], Client[observer].Stat[Stat_Lose], Client[observer].Stat[Stat_Kill], Client[observer].Stat[Stat_Death], buffer);
 				}
+				#endif
 				else if(buffer[0])
 				{
 					SetHudTextParams(-1.0, 0.88, 0.35, 90, 255, 90, 255, 0, 0.35, 0.0, 0.1);
@@ -896,11 +901,13 @@ public void OnPlayerRunCmdPost(int nullVar1, int nullVar2, int nullVar3, const f
 				SetHudTextParams(-1.0, 0.88, 0.35, 90, 255, 90, 255, 0, 0.35, 0.0, 0.1);
 				FormatEx(buffer, sizeof(buffer), "%t", "Hud Stats", Client[client].Damage, Client[client].Healing, Client[client].Assist);
 			}
+			#if defined FF2_STATTRAK
 			else if(stattrak)
 			{
 				SetHudTextParams(-1.0, 0.88, 0.35, 90, 255, 90, 255, 0, 0.35, 0.0, 0.1);
 				FormatEx(buffer, sizeof(buffer), "%t", "Hud Boss", Client[client].[Stat_Win], Client[client].Stat[Stat_Lose], Client[client].Stat[Stat_Kill], Client[client].Stat[Stat_Death]);
 			}
+			#endif
 		}
 
 		#if defined FF2_MUSIC
@@ -1287,13 +1294,13 @@ void GameOverScreen(int winner, float duration)
 	int leader = GetZeroBoss();
 	if(leader != -1)
 	{
-		if(team == BossTeam)
+		if(team == Client[leader].Team)
 		{
 			PlayBossSound(leader, "sound_win", 1, _, false);
 			if(!PlayBossSound(leader, "sound_outtromusic_win", 2))
 				PlayBossSound(leader, "sound_outtromusic", 2);
 		}
-		else if(team == 4)
+		else if(team)
 		{
 			if(IsPlayerAlive(leader))
 				PlayBossSound(leader, "sound_stalemate", 1, _, false);
@@ -1311,11 +1318,63 @@ void GameOverScreen(int winner, float duration)
 		}
 	}
 
-	for(int client=1; client<=MaxClients; client++)
+	int clients[4], value[3];
+	int[] client = new int[MaxClients];
+	for(int i=1; i<=MaxClients; i++)
 	{
-		if(IsValidClient(client))
+		if(!IsValidClient(i))
+			continue;
+
+		client[clients[3]++] = i;
+		if(Boss[client].Active)
+			continue;
+
+		if(Client[i].Damage > value[0])
 		{
+			clients[0] = i;
 		}
+		else if(Client[i].Assist > value[1])
+		{
+			clients[1] = i;
+		}
+		else if(Client[i].Healing > value[2])
+		{
+			clients[2] = i;
+		}
+	}
+
+	GameRules_SetProp("m_bIsInTraining", true, 1, _, true);
+	GameRules_SetProp("m_bIsTrainingHUDVisible", true, 1, _, true);
+
+	for(int i; i<clients[3]; i++)
+	{
+		Handle message = StartMessageOne("TrainingObjective", client[i]);
+		BfWriteString(message, sTitle);
+		EndMessage();
+
+		message = StartMessageOne("TrainingMsg", client[i]);
+		BfWriteString(message, sMessage);
+		EndMessage();
+
+		#if defined FF2_STATTRAK
+		if(StatEnabled)
+		{
+			if(Boss[client[i]].Active)
+			{
+				if(team == Client[client[i]].Team)
+				{
+					Client[client[i]].Stat[Stat_Win]++;
+				}
+				else if(team)
+				{
+					Client[client[i]].Stat[Stat_Lose]++;
+				}
+			}
+			else
+			{
+			}
+		}
+		#endif
 	}
 }
 
