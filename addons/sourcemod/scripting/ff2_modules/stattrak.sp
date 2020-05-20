@@ -30,11 +30,30 @@ void StatTrak_Setup()
 
 void StatTrak_Check()
 {
-	int players = CvarStatPlayers.IntValue;
-	if(!players)
-		players = MaxClients/3;
+	if(Enabled != Game_Arena)
+	{
+		StatEnabled = false;
+		return;
+	}
 
-	StatEnabled = (Enabled==Game_Arena && Players>CvarStatPlayers.IntValue);
+	int required = CvarStatPlayers.IntValue;
+	if(!required)
+		required = MaxClients/3;
+
+	for(int client=1; client<=MaxClients; client++)
+	{
+		if(!IsValidClient(client) || GetClientTeam(client)<=view_as<int>(TFTeam_Spectator))
+			continue;
+
+		if(IsFakeClient(client))
+		{
+			StatEnabled = false;
+			return;
+		}
+
+		required--;
+	}
+	StatEnabled = required<1;
 }
 
 void StatTrak_Save(int client)
@@ -109,7 +128,7 @@ void StatTrak_Client(int client)
 
 void StatTrak_Add(int client, int stat, TFClassType class=TFClass_Unknown, int amount=1)
 {
-	if(!StatEnabled && !IsFakeClient(client))
+	if(!StatEnabled)
 		return;
 
 	if(stat < Stat_MAX)
