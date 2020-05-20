@@ -562,8 +562,12 @@ void Bosses_Create(int client, int team)
 	Boss[client].Killstreak = 0;
 	Boss[client].RPSHealth = 0;
 	Boss[client].RPSCount = 0;
-	Boss[client].Charge[0] = 0.0;
 	Boss[client].Hazard = 0.0;
+
+	for(int i; i<4; i++)
+	{
+		Boss[client].Charge[4] = 0.0;
+	}
 
 	Bosses_Prepare(Boss[client].Special);
 
