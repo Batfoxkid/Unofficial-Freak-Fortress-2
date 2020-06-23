@@ -7,6 +7,7 @@
 public void OnPluginStart()
 {
 	RegServerCmd("ff2_showconfig", OnCommand, "StringMap Testing");
+	RegServerCmd("ff2_readconfig", OnCommand2, "StringMap Testing");
 }
 
 public Action OnCommand(int args)
@@ -43,6 +44,48 @@ public Action OnCommand(int args)
 			val.data.Reset();
 			ConfigMap section = val.data.ReadCell();
 			PrintCfg2(section);
+		}
+	}
+
+	delete snap;
+	delete cfg;
+	return Plugin_Handled;
+}
+
+public Action OnCommand2(int args)
+{
+	if(args != 1)
+	{
+		PrintToServer("[SM] Usage: ff2_readconfig <filepath>");
+		return Plugin_Handled;
+	}
+
+	char path[PLATFORM_MAX_PATH];
+	GetCmdArgString(path, sizeof(path));
+	ConfigMap cfg = new ConfigMap(path);
+	if(cfg == null)
+		return Plugin_Handled;
+
+	StringMapSnapshot snap = cfg.Snapshot();
+	if(!snap)
+	{
+		delete cfg;
+		return Plugin_Handled;
+	}
+
+	int entries = snap.Length;
+	for(int i; i<entries; i++)
+	{
+		int strsize = snap.KeyBufferSize(i)+1;
+		char[] key_buffer = new char[strsize];
+		snap.GetKey(i, key_buffer, strsize);
+		PackVal val;
+		cfg.GetArray(key_buffer, val, sizeof(val));
+		if(val.tag == KeyValType_Section)
+		{
+			val.data.Reset();
+			ConfigMap section = val.data.ReadCell();
+			PrintCfg3(section);
 		}
 	}
 
@@ -89,6 +132,58 @@ stock void PrintCfg2(ConfigMap cfg)
 			}
 		}
 	}
+
+	delete snap;
+	delete cfg;
+}
+
+stock void PrintCfg3(ConfigMap cfg)
+{
+	if(cfg == null)
+		return;
+
+	StringMapSnapshot snap = cfg.Snapshot();
+	if(!snap)
+	{
+		delete cfg;
+		return;
+	}
+
+	PrintToServer("{");
+	int entries = snap.Length;
+	for(int i; i<entries; i++)
+	{
+		int strsize = snap.KeyBufferSize(i)+1;
+		char[] key_buffer = new char[strsize];
+		snap.GetKey(i, key_buffer, strsize);
+		PackVal val;
+		cfg.GetArray(key_buffer, val, sizeof(val));
+		switch(val.tag)
+		{
+			case KeyValType_Value:
+			{
+				val.data.Reset();
+				char buffer[256];
+				val.data.ReadString(buffer, sizeof(buffer));
+				if(buffer[0])
+				{
+					PrintToServer("\"%s\"    \"%s\"", key_buffer, buffer);
+				}
+				else
+				{
+					PrintToServer("\"%s\"", key_buffer);
+				}
+			}
+			case KeyValType_Section:
+			{
+				PrintToServer("\"%s\"", key_buffer);
+				val.data.Reset();
+				ConfigMap section = val.data.ReadCell();
+				PrintCfg3(section);
+			}
+		}
+	}
+	PrintToServer("}");
 
 	delete snap;
 	delete cfg;
