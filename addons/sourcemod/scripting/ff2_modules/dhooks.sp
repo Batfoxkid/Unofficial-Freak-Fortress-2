@@ -4,8 +4,9 @@
 	void DHook_MapStart()
 
 	Credits:
-	Ragenewb - Healing/Regen
-	FortyTwoFortyTwo - SetWinningTeam/RoundRespawn
+	Ragenewb - RegenThink/AllowedToHealTarget/CouldHealTarget
+	Redsun Servers - SetWinningTeam/RoundRespawn
+	Slender Fortress - IsInTraining
 */
 
 #if !defined _dhooks_included
@@ -14,7 +15,10 @@
 
 #define FF2_DHOOKS
 
+float EndHudAt;
+
 Handle StartHook;
+Handle TrainHook;
 static Handle TeamHook;
 
 void DHook_Setup(GameData gameData)
@@ -23,19 +27,26 @@ void DHook_Setup(GameData gameData)
 		return;
 
 	Handle hook = DHookCreateDetourEx(gameData, "CTFPlayer::RegenThink", CallConv_THISCALL, ReturnType_Void, ThisPointer_CBaseEntity);
-	if(!hook || !DHookEnableDetour(hook, false, DHook_Regen))
-		LogError2("[Gamedata] Could not load detour for CTFPlayer::RegenThink");
+	if(hook)
+	{
+		if(!DHookEnableDetour(hook, false, DHook_Regen))
+			LogError2("[Gamedata] Could not enable detour for CTFPlayer::RegenThink");
+	}
+	else
+	{
+		LogError2("[Gamedata] Could not find CTFPlayer::RegenThink");
+	}
 
 	hook = DHookCreateDetourEx(gameData, "CWeaponMedigun::AllowedToHealTarget", CallConv_THISCALL, ReturnType_Bool, ThisPointer_CBaseEntity);
 	if(hook)
 	{
 		DHookAddParam(hook, HookParamType_CBaseEntity);
 		if(!DHookEnableDetour(hook, false, DHook_Healing))
-			LogError2("[Gamedata] Could not load detour for CWeaponMedigun::AllowedToHealTarget");
+			LogError2("[Gamedata] Could not enable detour for CWeaponMedigun::AllowedToHealTarget");
 	}
 	else
 	{
-		LogError2("[Gamedata] Could not load detour for CWeaponMedigun::AllowedToHealTarget");
+		LogError2("[Gamedata] Could not find CWeaponMedigun::AllowedToHealTarget");
 	}
 
 	hook = DHookCreateDetourEx(gameData, "CObjectDispenser::CouldHealTarget", CallConv_THISCALL, ReturnType_Bool, ThisPointer_CBaseEntity);
@@ -43,11 +54,11 @@ void DHook_Setup(GameData gameData)
 	{
 		DHookAddParam(hook, HookParamType_CBaseEntity);
 		if(!DHookEnableDetour(hook, false, DHook_Healing))
-			LogError2("[Gamedata] Could not load detour for CObjectDispenser::CouldHealTarget");
+			LogError2("[Gamedata] Could not enable detour for CObjectDispenser::CouldHealTarget");
 	}
 	else
 	{
-		LogError2("[Gamedata] Could not load detour for CObjectDispenser::CouldHealTarget");
+		LogError2("[Gamedata] Could not find CObjectDispenser::CouldHealTarget");
 	}
 
 	int offset = gameData.GetOffset("CTFGameRules::SetWinningTeam");
@@ -69,7 +80,12 @@ void DHook_Setup(GameData gameData)
 	offset = gameData.GetOffset("CTeamplayRoundBasedRules::RoundRespawn");
 	StartHook = DHookCreate(offset, HookType_GameRules, ReturnType_Void, ThisPointer_Ignore);
 	if(!StartHook)
-		LogError2("Failed to create hook: CTeamplayRoundBasedRules::RoundRespawn!");
+		LogError2("[Gamedata] Could not find CTeamplayRoundBasedRules::RoundRespawn");
+
+	offset = gameData.GetOffset("CTFGameRules::IsInTraining");
+	TrainHook = DHookCreate(offset, HookType_GameRules, ReturnType_Bool, ThisPointer_Address);
+	if(!TrainHook)
+		LogError2("[Gamedata] Could not find CTFGameRules::IsInTraining");
 }
 
 void DHook_MapStart()
@@ -79,14 +95,14 @@ void DHook_MapStart()
 
 	if(StartHook)
 		DHookGamerules(StartHook, false, _, DHook_RoundSetup);
+
+	if(TrainHook)
+		DHookGamerules(TrainHook, false, _, DHook_Training);
 }
 
 public MRESReturn DHook_Regen(int client)
 {
-	if(Enabled <= Game_Disabled)
-		return MRES_Ignored;
-
-	if(!Boss[client].Active || Boss[client].Healing || TF2_GetPlayerClass(client)!=TFClass_Medic)
+	if(Enabled<=Game_Disabled || !Boss[client].Active || Boss[client].Healing || TF2_GetPlayerClass(client)!=TFClass_Medic)
 		return MRES_Ignored;
 
 	return MRES_Supercede;
@@ -124,6 +140,12 @@ public MRESReturn DHook_RoundSetup(Handle params)
 {
 	OnRoundSetupPre(false);
 	return MRES_Ignored;
+}
+
+public MRESReturn DHook_Training(Address address, Handle retur)
+{
+	DHookSetReturn(retur, false);
+	return MRES_Supercede;
 }
 
 static Handle DHookCreateDetourEx(Handle gameData, const char[] name, CallingConvention call, ReturnType type, ThisPointerType pointer)
