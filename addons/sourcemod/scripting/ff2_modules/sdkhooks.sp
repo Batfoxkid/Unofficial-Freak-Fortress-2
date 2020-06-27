@@ -379,7 +379,7 @@ public Action OnTakeDamage(int client, int &attacker, int &inflictor, float &dam
 		HealthBarFor = GetGameTime()+1.0;
 		return Plugin_Changed;
 	}
-	else if(custom == TF_CUSTOM_BOOTS_STOMP)
+	else if(damagecustom == TF_CUSTOM_BOOTS_STOMP)
 	{
 		damage *= 5.0;
 		return Plugin_Changed;
@@ -837,4 +837,33 @@ public Action OnGetMaxHealth(int client, int &health)
 	health = Boss[client].MaxHealth-GetClientHealth(client);
 	health = health>0 ? Boss[client].MaxHealth-(health*2/3) : Boss[client].MaxHealth;
 	return Plugin_Changed;
+}
+
+public void OnItemSpawned(int entity)
+{
+	SDKHook(entity, SDKHook_StartTouch, OnPickup);
+	SDKHook(entity, SDKHook_Touch, OnPickup);
+}
+
+public Action OnPickup(int entity, int client)  //Thanks friagram!
+{
+	if(Client[client].Minion)
+		return Plugin_Handled;
+
+	if(Boss[client].Active)
+	{
+		static char classname[32];
+		GetEntityClassname(entity, classname, sizeof(classname));
+		if(!StrContains(classname, "item_healthkit"))
+		{
+			if(!Boss[client].HealthKits)
+				return Plugin_Handled;
+		}
+		else if(!StrContains(classname, "item_ammopack") || StrEqual(classname, "tf_ammo_pack"))
+		{
+			if(!Boss[client].AmmoKits)
+				return Plugin_Handled;
+		}
+	}
+	return Plugin_Continue;
 }

@@ -105,6 +105,12 @@
 #define MAXSPECIALS	1024
 #define MAXTF2PLAYERS	36
 
+#define HEALTHBAR_CLASS		"monster_resource"
+#define HEALTHBAR_PROPERTY	"m_iBossHealthPercentageByte"
+#define HEALTHBAR_COLOR		"m_iBossState"
+#define HEALTHBAR_MAX		255
+#define MONOCULUS		"eyeball_boss"
+
 #define HUD_DAMAGE	(1 << 0)
 #define HUD_ITEM	(1 << 1)
 #define HUD_HEALTH	(1 << 2)
@@ -203,6 +209,8 @@ enum struct ClientEnum
 	float PopUpAt;
 	float RefreshAt;
 	int Damage;
+	int Healing;
+	int Assist;
 	int Queue;
 	int Selection;
 	int Pref[Pref_MAX];
@@ -262,6 +270,7 @@ int BossTeam;
 ArrayList Charsets;
 int QueueList[MAXTF2PLAYERS];
 int Charset;
+int Monoculus;
 char TeamName[4][48];
 
 WeaponEnum Weapon[MAXTF2PLAYERS][3];
@@ -301,12 +310,12 @@ void MainMenu(int client) { MainMenuC(client, 0); }
 #tryinclude "ff2_modules/tts.sp"
 #tryinclude "ff2_modules/weapons.sp"
 
+#include "ff2_modules/sdkhooks.sp"	// dhooks, tts, tf2attributes
 #include "ff2_modules/formula.sp"	// tf2x10
 #tryinclude "ff2_modules/tf2items.sp"	// weapons
 #tryinclude "ff2_modules/steamworks.sp"	// tf2x10
 
 #include "ff2_modules/bosses.sp"	// convars, sdkhooks, tf2items
-#include "ff2_modules/sdkhooks.sp"	// bosses, dhooks, tts, tf2attributes
 #tryinclude "ff2_modules/stomp.sp"	// sdkhooks
 #include "ff2_modules/natives.sp"
 
@@ -435,17 +444,18 @@ public void OnPluginStart()
 	HookEvent("arena_round_start", OnRoundStart, EventHookMode_PostNoCopy);
 	HookEvent("teamplay_round_win", OnRoundEnd);
 
-	HookEvent("teamplay_point_startcapture", OnStartCapture, EventHookMode_PostNoCopy);
+	HookEvent("player_death", OnPlayerDeath, EventHookMode_Pre);
+	HookEvent("player_spawn", OnPlayerSpawn, EventHookMode_Pre);
+	HookEvent("player_hurt", OnPlayerHurt, EventHookMode_Pre);
+
+	/*HookEvent("teamplay_point_startcapture", OnStartCapture, EventHookMode_PostNoCopy);
 	HookEvent("teamplay_capture_broken", OnBreakCapture);
 
 	HookEvent("post_inventory_application", OnPostInventoryApplication, EventHookMode_Pre);
 	HookEvent("player_healed", OnPlayerHealed, EventHookMode_Pre);
-	HookEvent("player_spawn", OnPlayerSpawn, EventHookMode_Pre);
-	HookEvent("player_death", OnPlayerDeath, EventHookMode_Pre);
-	HookEvent("player_hurt", OnPlayerHurt, EventHookMode_Pre);
 	HookEvent("player_chargedeployed", OnUberDeployed);
 	HookEvent("object_deflected", OnObjectDeflected, EventHookMode_Pre);
-	HookEvent("rps_taunt_event", OnRPS);
+	HookEvent("rps_taunt_event", OnRPS);*/
 
 	AddCommandListener(OnJoinTeam, "jointeam");
 	AddCommandListener(OnAutoTeam, "autoteam");
@@ -468,7 +478,6 @@ public void OnPluginStart()
 public void OnPluginEnd()
 {
 	OnMapEnd();
-	//hostName.SetString(oldName);
 	if(Enabled!=Game_Arena || CheckRoundState()!=1)
 		return;
 
@@ -495,14 +504,13 @@ public void OnMapStart()
 
 public void OnMapEnd()
 {
-	if(Enabled || Enabled2)
-		DisableFF2();
+	#if defined FF2_CONVARS
+	Convars_Disable();
+	#endif
 }
 
 public void OnConfigsExecuted()
 {
-	CvarVersion.SetString(PLUGIN_VERSION);
-
 	char buffer[64];
 	GetCurrentMap(buffer, sizeof(buffer));
 	if(CvarEnabled.BoolValue)
@@ -527,6 +535,10 @@ public void OnConfigsExecuted()
 		ArenaRounds = CvarArenaRounds.IntValue-(GetTeamScore(view_as<int>(TFTeam_Red))+GetTeamScore(view_as<int>(TFTeam_Blue)));
 		if(ArenaRounds > 0)
 			Enabled = Game_Fun;
+
+		#if defined FF2_CONVARS
+		Convars_Enable();
+		#endif
 
 		#if defined FF2_STEAMWORKS
 		SteamWorks_Toggle(true);
@@ -702,11 +714,13 @@ public Action OnPlayerHurt(Event event, const char[] name, bool dontBroadcast)
 	if(!IsValidClient(client) || !Boss[client].Active)
 		return Plugin_Continue;
 
-	int attacker = GetClientOfUserId(event.GetInt("attacker"));
-	int damage = event.GetInt("damageamount");
 	int custom = event.GetInt("custom");
 	if(!(custom & TF_CUSTOM_BACKSTAB) && !(custom & TF_CUSTOM_COMBO_PUNCH) && !(custom & TF_CUSTOM_TELEFRAG) && event.GetBool("minicrit") && event.GetBool("allseecrit"))
+	{
 		event.SetBool("allseecrit", false);
+		return Plugin_Changed;
+	}
+	return Plugin_Continue;
 }
 
 #if SETTING_TICKMODE>0
@@ -749,7 +763,7 @@ public void OnPlayerRunCmdPost()
 				if(Client[client].RefreshAt < gameTime)
 				{
 					Client[client].RefreshAt = FAR_FUTURE;
-					if(alive && !Client[client].Minion)
+					if(IsPlayerAlive(client) && !Client[client].Minion)
 						RefreshClient(client);
 				}
 			}
@@ -767,11 +781,11 @@ public void OnPlayerRunCmdPost()
 			continue;
 
 		clients[max++] = i;
-		if(Client[client].RefreshAt < gameTime)
+		if(Client[i].RefreshAt < gameTime)
 		{
-			Client[client].RefreshAt = FAR_FUTURE;
-			if(alive && !Client[client].Minion)
-				RefreshClient(client);
+			Client[i].RefreshAt = FAR_FUTURE;
+			if(IsPlayerAlive(i) && !Client[i].Minion)
+				RefreshClient(i);
 		}
 
 		if(Boss[i].Active)
@@ -783,7 +797,7 @@ public void OnPlayerRunCmdPost()
 			continue;
 		}
 
-		if(Damage[client] < 1)
+		if(Client[i].Damage < 1)
 			continue;
 
 		for(int a; a<10; a++)
@@ -847,7 +861,7 @@ public void OnPlayerRunCmdPost()
 					if(observer)
 					{
 						static float position[3], position2[3];
-						GetEntPropVector(client, Prop_Send, "m_vecOrigin", position);
+						GetEntPropVector(clients[i], Prop_Send, "m_vecOrigin", position);
 						GetEntPropVector(observer, Prop_Send, "m_vecOrigin", position2);
 						if(GetVectorDistance(position, position2) > 800)
 							observer = 0;
@@ -860,23 +874,23 @@ public void OnPlayerRunCmdPost()
 			}
 			else
 			{
-				observer = GetEntPropEnt(client, Prop_Send, "m_hObserverTarget");
-				if(observer==client || !IsValidClient(observer))
+				observer = GetEntPropEnt(clients[i], Prop_Send, "m_hObserverTarget");
+				if(observer==clients[i] || !IsValidClient(observer))
 					observer = 0;
 			}
 
-			SetGlobalTransTarget(client);
+			SetGlobalTransTarget(clients[i]);
 
 			if(observer)
 			{
-				if(!Boss[client].Active)
+				if(!Boss[clients[i]].Active)
 				{
-					FormatEx(buffer, sizeof(buffer), "%t", "Hud Stats Spec", "It Is You", Client[client].Damage, Client[client].Healing, Client[client].Assist);
+					FormatEx(buffer, sizeof(buffer), "%t", "Hud Stats Spec", "It Is You", Client[clients[i]].Damage, Client[clients[i]].Healing, Client[clients[i]].Assist);
 				}
 				#if defined FF2_STATTRAK
 				else if(stattrack)
 				{
-					FormatEx(buffer, sizeof(buffer), "%t", "Hud Boss Spec", "It Is You", Client[client].Stat[Stat_Win], Client[client].Stat[Stat_Lose], Client[client].Stat[Stat_Kill], Client[client].Stat[Stat_Death]);
+					FormatEx(buffer, sizeof(buffer), "%t", "Hud Boss Spec", "It Is You", Client[clients[i]].Stat[Stat_Win], Client[clients[i]].Stat[Stat_Lose], Client[clients[i]].Stat[Stat_Kill], Client[clients[i]].Stat[Stat_Death]);
 				}
 				#endif
 				else
@@ -889,61 +903,61 @@ public void OnPlayerRunCmdPost()
 				{
 					GetClientName(observer, buffer2, sizeof(buffer2));
 					SetHudTextParams(-1.0, 0.83, 0.35, 90, 255, 90, 255, 0, 0.35, 0.0, 0.1);
-					ShowSyncHudText(client, HudDamage, "%t\n%s", "Hud Stats Spec", buffer2, Client[observer].Damage, Client[observer].Healing, Client[observer].Assist, buffer);
+					ShowSyncHudText(clients[i], HudDamage, "%t\n%s", "Hud Stats Spec", buffer2, Client[observer].Damage, Client[observer].Healing, Client[observer].Assist, buffer);
 				}
 				#if defined FF2_STATTRAK
 				else if(stattrack == 2)
 				{
 					GetClientName(observer, buffer2, sizeof(buffer2));
 					SetHudTextParams(-1.0, 0.83, 0.35, 90, 255, 90, 255, 0, 0.35, 0.0, 0.1);
-					ShowSyncHudText(client, HudDamage, "%t\n%s", "Hud Boss Spec", buffer2, Client[observer].Stat[Stat_Win], Client[observer].Stat[Stat_Lose], Client[observer].Stat[Stat_Kill], Client[observer].Stat[Stat_Death], buffer);
+					ShowSyncHudText(clients[i], HudDamage, "%t\n%s", "Hud Boss Spec", buffer2, Client[observer].Stat[Stat_Win], Client[observer].Stat[Stat_Lose], Client[observer].Stat[Stat_Kill], Client[observer].Stat[Stat_Death], buffer);
 				}
 				#endif
 				else if(buffer[0])
 				{
 					SetHudTextParams(-1.0, 0.88, 0.35, 90, 255, 90, 255, 0, 0.35, 0.0, 0.1);
-					ShowSyncHudText(client, HudDamage, buffer);
+					ShowSyncHudText(clients[i], HudDamage, buffer);
 				}
 			}
-			else if(!Boss[client].Active)
+			else if(!Boss[clients[i]].Active)
 			{
 				SetHudTextParams(-1.0, 0.88, 0.35, 90, 255, 90, 255, 0, 0.35, 0.0, 0.1);
-				FormatEx(buffer, sizeof(buffer), "%t", "Hud Stats", Client[client].Damage, Client[client].Healing, Client[client].Assist);
+				FormatEx(buffer, sizeof(buffer), "%t", "Hud Stats", Client[clients[i]].Damage, Client[clients[i]].Healing, Client[clients[i]].Assist);
 			}
 			#if defined FF2_STATTRAK
 			else if(stattrak)
 			{
 				SetHudTextParams(-1.0, 0.88, 0.35, 90, 255, 90, 255, 0, 0.35, 0.0, 0.1);
-				FormatEx(buffer, sizeof(buffer), "%t", "Hud Boss", Client[client].[Stat_Win], Client[client].Stat[Stat_Lose], Client[client].Stat[Stat_Kill], Client[client].Stat[Stat_Death]);
+				FormatEx(buffer, sizeof(buffer), "%t", "Hud Boss", Client[clients[i]].[Stat_Win], Client[clients[i]].Stat[Stat_Lose], Client[clients[i]].Stat[Stat_Kill], Client[clients[i]].Stat[Stat_Death]);
 			}
 			#endif
 		}
 
 		#if defined FF2_MUSIC
-		if(Client[client].BGMAt < engineTime)
-			Music_Play(client, engineTime, -1);
+		if(Client[clients[i]].BGMAt < engineTime)
+			Music_Play(clients[i], engineTime, -1);
 		#endif
 
-		if(Client[client].PopUpAt < engineTime)
+		if(Client[clients[i]].PopUpAt < engineTime)
 		{
-			Client[client].PopUpAt = FAR_FUTURE;
-			if(Client[client].Pref[Pref_Boss] == Pref_Undef)
-				Pref_QuickToggle(client, -2);
+			Client[clients[i]].PopUpAt = FAR_FUTURE;
+			if(Client[clients[i]].Pref[Pref_Boss] == Pref_Undef)
+				Pref_QuickToggle(clients[i], -2);
 		}
 
 		if(!alive)
 			continue;
 
-		if(Client[client].GlowFor)
+		if(Client[clients[i]].GlowFor)
 		{
-			if(Client[client].GlowFor < gameTime)
+			if(Client[clients[i]].GlowFor < gameTime)
 			{
-				Client[client].GlowFor = 0.0;
-				SetEntProp(client, Prop_Send, "m_bGlowEnabled", 0);
+				Client[clients[i]].GlowFor = 0.0;
+				SetEntProp(clients[i], Prop_Send, "m_bGlowEnabled", 0);
 			}
 			else
 			{
-				SetEntProp(client, Prop_Send, "m_bGlowEnabled", 1);
+				SetEntProp(clients[i], Prop_Send, "m_bGlowEnabled", 1);
 			}
 		}
 	}
@@ -1293,9 +1307,31 @@ void OnRoundSetupPost()
 	}
 }
 
-void BeginScreen()
+public void BeginScreen()
 {
-	
+	for(int client=1; client<=MaxClients; client++)
+	{
+		if(!IsValidClient(client))
+			continue;
+
+		for(int boss=1; boss<=MaxClients; boss++)
+		{
+			if(Client[client].Team==Client[boss].Team || !Boss[boss].Active)
+				continue;
+
+			static char buffer[64];
+			CfgGetLang(Special[Boss[boss].Special].Cfg, "character.name", buffer, sizeof(buffer), client);
+
+			if(Boss[boss].MaxLives)
+			{
+				CreateAttachedAnnotation(client, boss, _, 5.0, "%t", "Became Boss Lives", boss, buffer, Boss[boss].MaxHealth, Boss[boss].MaxLives);
+			}
+			else
+			{
+				CreateAttachedAnnotation(client, boss, _, 5.0, "%t", "Became Boss", boss, buffer, Boss[boss].MaxHealth);
+			}
+		}
+	}
 }
 
 void GameOverScreen(int team, float duration)
@@ -1330,7 +1366,9 @@ void GameOverScreen(int team, float duration)
 	char title[128];
 
 	bool leader[4];
-	int boss[5], clients[4], value[3];
+	int clients[4], value[3];
+	int boss[] = {0, 0, 0, 0, -1};
+
 	int[] client = new int[MaxClients];
 	for(int i=1; i<=MaxClients; i++)
 	{
@@ -1338,15 +1376,15 @@ void GameOverScreen(int team, float duration)
 			continue;
 
 		client[clients[3]++] = i;
-		if(Boss[i].Active)
+		if(Boss[i].Active)	// Get the "leader" boss in each team
 		{
-			if(boss[4] && boss[4]!=(Client[i].Team+1))
+			if(boss[4] && boss[4]!=Client[i].Team)	// Get if there's only one boss team
 			{
-				boss[4] = 5;
+				boss[4] = 4;
 			}
 			else
 			{
-				boss[4] = Client[i].Team+1;
+				boss[4] = Client[i].Team;
 			}
 
 			if(!leader[Client[i].Team])
@@ -1355,7 +1393,6 @@ void GameOverScreen(int team, float duration)
 				if(CfgGetLang(Special[Boss[i].Special].Cfg, "character.team", title, sizeof(title)))
 					leader[Client[i].Team] = true;
 			}
-
 			continue;
 		}
 
@@ -1373,14 +1410,38 @@ void GameOverScreen(int team, float duration)
 		}
 	}
 
+	#if defined FF2_STATTRAK
+	if(StatEnabled)
+	{
+		if(clients[0])
+		{
+			Client[clients[0]].Stat[Stat_Mvp]++;
+		}
+		else if(clients[1])
+		{
+			Client[clients[1]].Stat[Stat_Mvp]++;
+		}
+		else if(clients[2])
+		{
+			Client[clients[2]].Stat[Stat_Mvp]++;
+		}
+	}
+	#endif
+
+	if(boss[4] == 4)
+	{
+		boss[4] = team;
+	}
+	else if(boss[4] < 0)
+	{
+		strcopy(title, sizeof(title), "");
+	}
+
+	int health;
 	for(int i; i<clients[3]; i++)
 	{
-		if(!Boss[i].Active)
-			continue;
-
-		if(team==Client[i].Team && IsPlayerAlive(i))
-			health += Boss[i].Health(i);
-
+		if(Boss[client[i]].Active && boss[4]==Client[client[i]].Team && IsPlayerAlive(client[i]))
+			health += Boss[client[i]].Health(client[i]);
 	}
 
 	#if defined FF2_DHOOKS
@@ -1396,67 +1457,56 @@ void GameOverScreen(int team, float duration)
 	{
 		SetGlobalTransTarget(client[i]);
 
-		if(!CfgGetLang(Special[Boss[victim].Special].Cfg, "character.team", title, sizeof(title), client[i]))
-		if(TeamName[team][0])
+		if(boss[4] >= 0)
 		{
-			if(health)
-			{
-				FormatEx(title, sizeof(title), "%t", "Boss Won", TeamName[team], health);
-			}
-			else
-			{
-				FormatEx(title, sizeof(title), "%t", "Team Won", TeamName[team]);
-			}
-		}
-		else
-		{
-			for(int t=3; i>-2; t--)
-			{
-				if(!TeamName[team][0])
-					continue;
+			if(!leader[boss[4]] || !CfgGetLang(Special[Boss[boss[boss[4]].Special].Cfg, "character.team", message, sizeof(message), client[i]))
+				CfgGetLang(Special[Boss[boss[boss[4]].Special].Cfg, "character.name", message, sizeof(message), client[i]);
 
-				if(health)
+			if(boss[4] == team)
+			{
+				if(leader[boss[4]])
 				{
-					FormatEx(title, sizeof(title), "%t", "Boss Loss", TeamName[team], health);
+					FormatEx(title, sizeof(title), "%t", "Team Won", message, health);
 				}
 				else
 				{
-					FormatEx(title, sizeof(title), "%t", "Team Loss", TeamName[team]);
+					FormatEx(title, sizeof(title), "%t", "Boss Won", message, health);
 				}
-				break;
 			}
-		}
-
-		FormatEx(message, sizeof(message), "%t", "MVPs "
-
-		#if defined FF2_DHOOKS
-		BfWrite msg = view_as<BfWrite>(StartMessageOne("TrainingObjective", client[i]));
-		msg.WriteString(sTitle);
-		EndMessage();
-
-		msg = view_as<BfWrite>(StartMessageOne("TrainingMsg", client[i]));
-		msg.WriteString(sMessage);
-		EndMessage();
-		#else
-		ShowHudText(client, -1, "");
-		#endif
-
-		#if defined FF2_STATTRAK
-		if(StatEnabled)
-		{
-			if(Boss[client[i]].Active)
+			else if(leader[boss[4]])
 			{
-				if(team == Client[client[i]].Team)
-				{
-					Client[client[i]].Stat[Stat_Win]++;
-				}
-				else if(team)
-				{
-					Client[client[i]].Stat[Stat_Lose]++;
-				}
+				FormatEx(title, sizeof(title), "%t", "Team Loss", message, health);
 			}
 			else
 			{
+				FormatEx(title, sizeof(title), "%t", "Boss Loss", message, health);
+			}
+		}
+
+		FormatEx(message, sizeof(message), "\n%t\n%t\n%t", "Top Damage", clients[0], Client[clients[0]].Damage, "Top Assist", clients[1], Client[clients[1]].Assist, "Top Healing", clients[2], Client[clients[2]].Healing);
+
+		#if defined FF2_DHOOKS
+		BfWrite msg = view_as<BfWrite>(StartMessageOne("TrainingObjective", client[i]));
+		msg.WriteString(title);
+		EndMessage();
+
+		msg = view_as<BfWrite>(StartMessageOne("TrainingMsg", client[i]));
+		msg.WriteString(message);
+		EndMessage();
+		#else
+		ShowHudText(client[i], -1, "%s\n%s", title, message);
+		#endif
+
+		#if defined FF2_STATTRAK
+		if(StatEnabled && Boss[client[i]].Active)
+		{
+			if(team == Client[client[i]].Team)
+			{
+				Client[client[i]].Stat[Stat_Win]++;
+			}
+			else if(team)
+			{
+				Client[client[i]].Stat[Stat_Lose]++;
 			}
 		}
 		#endif
