@@ -262,6 +262,7 @@ int BossTeam;
 ArrayList Charsets;
 int QueueList[MAXTF2PLAYERS];
 int Charset;
+char TeamName[4][48];
 
 WeaponEnum Weapon[MAXTF2PLAYERS][3];
 ClientEnum Client[MAXTF2PLAYERS];
@@ -662,7 +663,7 @@ public void OnRoundStart(Event event, const char[] name, bool dontBroadcast)
 
 			#if defined FF2_CONVARS
 			if(Boss[client].Leader && CvarNameChange.IntValue==1)
-				Convars_NameSuffix(CfgGetLang(cfg, "character.name", buffer, sizeof(buffer)) ? buffer : "");
+				Convars_NameSuffix(CfgGetLang(cfg, "name", buffer, sizeof(buffer)) ? buffer : "");
 			#endif
 
 			continue;
@@ -713,20 +714,28 @@ public Action OnGameTimer(Handle timer)
 #elseif SETTING_TICKMODE<0
 public void OnGameFrame()
 #else
-public void OnPlayerRunCmdPost(int nullVar1, int nullVar2, int nullVar3, const float nullVar4[3], const float nullVar5[3], int nullVar6, int nullVar7, int nullVar8, int nullVar9, int nullVar0, const int nullVar[2])
+public void OnPlayerRunCmdPost()
 #endif
 {
 	if(Enabled <= Game_Disabled)
 		return;
 
-	float engineTime = GetEngineTime();
+	float gameTime = GetGameTime();
 
+	#if defined FF2_DHOOKS
+	if(EndHudAt < gameTime)
+	{
+		EndHudAt = FAR_FUTURE;
+		GameRules_SetProp("m_bIsTrainingHUDVisible", false, 1, _, true);
+	}
+	#endif
+
+	float engineTime = GetEngineTime();
 	static float hudAt;
 	if(hudAt > engineTime)
 		return;
 
 	hudAt = engineTime+SETTING_HUDDELAY;
-	float gameTime = GetGameTime();
 	if(Enabled == Game_Arena)
 	{
 		int roundState = CheckRoundState();
@@ -1289,7 +1298,7 @@ void BeginScreen()
 	
 }
 
-void GameOverScreen(int winner, float duration)
+void GameOverScreen(int team, float duration)
 {
 	int leader = GetZeroBoss();
 	if(leader != -1)
@@ -1318,7 +1327,10 @@ void GameOverScreen(int winner, float duration)
 		}
 	}
 
-	int clients[4], value[3];
+	char title[128];
+
+	bool leader[4];
+	int boss[5], clients[4], value[3];
 	int[] client = new int[MaxClients];
 	for(int i=1; i<=MaxClients; i++)
 	{
@@ -1326,8 +1338,26 @@ void GameOverScreen(int winner, float duration)
 			continue;
 
 		client[clients[3]++] = i;
-		if(Boss[client].Active)
+		if(Boss[i].Active)
+		{
+			if(boss[4] && boss[4]!=(Client[i].Team+1))
+			{
+				boss[4] = 5;
+			}
+			else
+			{
+				boss[4] = Client[i].Team+1;
+			}
+
+			if(!leader[Client[i].Team])
+			{
+				boss[Client[i].Team] = i;
+				if(CfgGetLang(Special[Boss[i].Special].Cfg, "character.team", title, sizeof(title)))
+					leader[Client[i].Team] = true;
+			}
+
 			continue;
+		}
 
 		if(Client[i].Damage > value[0])
 		{
@@ -1343,18 +1373,73 @@ void GameOverScreen(int winner, float duration)
 		}
 	}
 
-	GameRules_SetProp("m_bIsInTraining", true, 1, _, true);
-	GameRules_SetProp("m_bIsTrainingHUDVisible", true, 1, _, true);
-
 	for(int i; i<clients[3]; i++)
 	{
-		Handle message = StartMessageOne("TrainingObjective", client[i]);
-		BfWriteString(message, sTitle);
+		if(!Boss[i].Active)
+			continue;
+
+		if(team==Client[i].Team && IsPlayerAlive(i))
+			health += Boss[i].Health(i);
+
+	}
+
+	#if defined FF2_DHOOKS
+	EndHudAt = GetGameTime()+duration;
+	GameRules_SetProp("m_bIsInTraining", true, 1, _, true);
+	GameRules_SetProp("m_bIsTrainingHUDVisible", true, 1, _, true);
+	#else
+	SetHudTextParams(-1.0, 0.25, duration, 255, 255, 255, 255);
+	#endif
+
+	char message[256];
+	for(int i; i<clients[3]; i++)
+	{
+		SetGlobalTransTarget(client[i]);
+
+		if(!CfgGetLang(Special[Boss[victim].Special].Cfg, "character.team", title, sizeof(title), client[i]))
+		if(TeamName[team][0])
+		{
+			if(health)
+			{
+				FormatEx(title, sizeof(title), "%t", "Boss Won", TeamName[team], health);
+			}
+			else
+			{
+				FormatEx(title, sizeof(title), "%t", "Team Won", TeamName[team]);
+			}
+		}
+		else
+		{
+			for(int t=3; i>-2; t--)
+			{
+				if(!TeamName[team][0])
+					continue;
+
+				if(health)
+				{
+					FormatEx(title, sizeof(title), "%t", "Boss Loss", TeamName[team], health);
+				}
+				else
+				{
+					FormatEx(title, sizeof(title), "%t", "Team Loss", TeamName[team]);
+				}
+				break;
+			}
+		}
+
+		FormatEx(message, sizeof(message), "%t", "MVPs "
+
+		#if defined FF2_DHOOKS
+		BfWrite msg = view_as<BfWrite>(StartMessageOne("TrainingObjective", client[i]));
+		msg.WriteString(sTitle);
 		EndMessage();
 
-		message = StartMessageOne("TrainingMsg", client[i]);
-		BfWriteString(message, sMessage);
+		msg = view_as<BfWrite>(StartMessageOne("TrainingMsg", client[i]));
+		msg.WriteString(sMessage);
 		EndMessage();
+		#else
+		ShowHudText(client, -1, "");
+		#endif
 
 		#if defined FF2_STATTRAK
 		if(StatEnabled)
